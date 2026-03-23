@@ -16,7 +16,6 @@ pub struct CircuitBreaker {
     failure_count: AtomicU32,
     success_count: AtomicU32,
     threshold: u32,
-    #[allow(dead_code)]
     recovery_timeout_ms: u64,
 }
 

@@ -10,10 +10,6 @@ pub mod tools;
 pub use domain::*;
 
 // Security modules
-#[cfg(feature = "security")]
-pub mod encryption {
-    pub use crate::infrastructure::database::encryption::*;
-}
 
 #[cfg(feature = "security")]
 pub mod rate_limiter {

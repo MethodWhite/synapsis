@@ -23,6 +23,7 @@ use synapsis::core::orchestrator::{AgentStatus, Orchestrator};
 use synapsis::core::recycle::bin::RecycleBin;
 use synapsis::core::tool_registry::ToolRegistry;
 use synapsis::core::uuid::Uuid;
+use synapsis::core::rate_limiter::RateLimiter;
 use synapsis::core::vault::SecureVault;
 use synapsis::infrastructure::shared_state::SharedState;
 
@@ -183,7 +184,6 @@ struct ServerState {
     event_bus: Arc<EventBus>,
     active_connections: Arc<Mutex<Vec<ConnectionInfo>>>,
     orchestrator: Arc<Orchestrator>,
-    #[allow(dead_code)]
     classifier: Arc<AgentClassifier>,
     challenge_response: Arc<ChallengeResponse>,
     tpm_mfa: Arc<TpmMfaProvider>,
@@ -194,11 +194,10 @@ struct ServerState {
     event_subscriptions: Arc<Mutex<std::collections::HashMap<String, String>>>,
     discovery: Arc<EnvironmentDiscovery>,
     tool_registry: Arc<RwLock<ToolRegistry>>,
-    #[allow(dead_code)]
     auto_integrate: Arc<Mutex<Option<AutoIntegrate>>>,
+    rate_limiter: RateLimiter,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct ConnectionInfo {
     session_id: String,
@@ -251,6 +250,7 @@ impl ServerState {
             discovery: Arc::new(EnvironmentDiscovery::new()),
             tool_registry: Arc::new(RwLock::new(ToolRegistry::new())),
             auto_integrate: Arc::new(Mutex::new(None)),
+            rate_limiter: RateLimiter::new(10, 100), // 10 requests per second, burst up to 100
         }
     }
 
@@ -1080,16 +1080,53 @@ fn main() {
         match stream {
             Ok(stream) => {
                 let state = Arc::clone(&state);
+                let peer_addr = match stream.peer_addr() {
+                    Ok(addr) => addr.to_string(),
+                    Err(_) => "unknown".to_string(),
+                };
                 std::thread::spawn(move || {
-                    let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+                    let cloned_stream = match stream.try_clone() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("[TCP] Failed to clone stream: {}", e);
+                            return;
+                        }
+                    };
+                    let mut reader = std::io::BufReader::new(cloned_stream);
                     let mut writer = stream;
                     let mut line = String::new();
-                    while reader.read_line(&mut line).unwrap() > 0 {
-                        if line.trim().is_empty() { continue; }
-                        let response = handle_request(&line, &state);
-                        writeln!(writer, "{}", response).unwrap();
-                        writer.flush().unwrap();
-                        line.clear();
+                    loop {
+                        match reader.read_line(&mut line) {
+                            Ok(0) => break, // EOF
+                            Ok(_) => {
+                                if line.trim().is_empty() {
+                                    line.clear();
+                                    continue;
+                                }
+                                // Rate limiting per connection
+                                if let Err(e) = state.rate_limiter.check(&peer_addr) {
+                                    let error_response = serde_json::json!({
+                                        "jsonrpc": "2.0",
+                                        "error": {"code": -32000, "message": format!("Rate limit exceeded: {}", e)},
+                                        "id": null,
+                                    });
+                                    if let Ok(json) = serde_json::to_string(&error_response) {
+                                        let _ = writeln!(writer, "{}", json);
+                                        let _ = writer.flush();
+                                    }
+                                    line.clear();
+                                    continue;
+                                }
+                                let response = handle_request(&line, &state);
+                                let _ = writeln!(writer, "{}", response);
+                                let _ = writer.flush();
+                                line.clear();
+                            }
+                            Err(e) => {
+                                eprintln!("[TCP] Read error: {}", e);
+                                break;
+                            }
+                        }
                     }
                 });
             }

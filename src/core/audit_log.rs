@@ -2,9 +2,10 @@
 //!
 //! Provides audit trail for observation modifications.
 
+use crate::infrastructure::database::Database;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-// use std::sync::Arc;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Audit Log Entry
@@ -22,72 +23,68 @@ pub struct AuditEntry {
 
 /// Audit Log Manager
 pub struct AuditLog {
-    // In production: would have DB connection
+    db: Arc<Database>,
 }
 
 impl AuditLog {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(db: Arc<Database>) -> Self {
+        Self { db }
     }
 
     /// Log an update action
     pub fn log_update(&self, obs_id: i64, agent_id: &str, old_content: &str, new_content: &str, reason: Option<&str>) -> Result<()> {
-        let _entry = AuditEntry {
-            id: self.current_timestamp(),
-            observation_id: obs_id,
-            action: "update".to_string(),
-            agent_id: agent_id.to_string(),
-            old_value: Some(old_content.to_string()),
-            new_value: Some(new_content.to_string()),
-            reason: reason.map(String::from),
-            timestamp: self.current_timestamp(),
-        };
-
-        // In production: save to audit_log table
-        eprintln!("[Audit] UPDATE obs={} by agent={}", obs_id, agent_id);
-        Ok(())
+        Ok(self.db.log_audit(
+            Some(obs_id),
+            "update",
+            agent_id,
+            Some(old_content),
+            Some(new_content),
+            reason,
+        )?)
     }
 
     /// Log a soft delete action
     pub fn log_delete(&self, obs_id: i64, agent_id: &str, reason: Option<&str>) -> Result<()> {
-        let _entry = AuditEntry {
-            id: self.current_timestamp(),
-            observation_id: obs_id,
-            action: "delete".to_string(),
-            agent_id: agent_id.to_string(),
-            old_value: None,
-            new_value: None,
-            reason: reason.map(String::from),
-            timestamp: self.current_timestamp(),
-        };
-
-        // In production: save to audit_log table
-        eprintln!("[Audit] DELETE obs={} by agent={}", obs_id, agent_id);
-        Ok(())
+        Ok(self.db.log_audit(
+            Some(obs_id),
+            "delete",
+            agent_id,
+            None,
+            None,
+            reason,
+        )?)
     }
 
     /// Log a restore action
     pub fn log_restore(&self, obs_id: i64, agent_id: &str) -> Result<()> {
-        let _entry = AuditEntry {
-            id: self.current_timestamp(),
-            observation_id: obs_id,
-            action: "restore".to_string(),
-            agent_id: agent_id.to_string(),
-            old_value: None,
-            new_value: None,
-            reason: Some("Restored from soft delete".to_string()),
-            timestamp: self.current_timestamp(),
-        };
-
-        // In production: save to audit_log table
-        eprintln!("[Audit] RESTORE obs={} by agent={}", obs_id, agent_id);
-        Ok(())
+        Ok(self.db.log_audit(
+            Some(obs_id),
+            "restore",
+            agent_id,
+            None,
+            None,
+            Some("Restored from soft delete"),
+        )?)
     }
 
     /// Get audit trail for an observation
-    pub fn get_audit_trail(&self, _obs_id: i64) -> Result<Vec<AuditEntry>> {
-        // In production: query audit_log table
-        Ok(vec![])
+    pub fn get_audit_trail(&self, obs_id: i64) -> Result<Vec<AuditEntry>> {
+        let json_entries = self.db.get_audit_trail(obs_id)?;
+        let mut entries = Vec::new();
+        for json_entry in json_entries {
+            let entry = AuditEntry {
+                id: json_entry["id"].as_i64().unwrap_or(0),
+                observation_id: json_entry["observation_id"].as_i64().unwrap_or(0),
+                action: json_entry["action"].as_str().unwrap_or("").to_string(),
+                agent_id: json_entry["agent_id"].as_str().unwrap_or("").to_string(),
+                old_value: json_entry["old_value"].as_str().map(String::from),
+                new_value: json_entry["new_value"].as_str().map(String::from),
+                reason: json_entry["reason"].as_str().map(String::from),
+                timestamp: json_entry["timestamp"].as_i64().unwrap_or(0),
+            };
+            entries.push(entry);
+        }
+        Ok(entries)
     }
 
     fn current_timestamp(&self) -> i64 {
@@ -98,19 +95,27 @@ impl AuditLog {
     }
 }
 
-impl Default for AuditLog {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ports::StoragePort;
+    use crate::infrastructure::database::Database;
+    use std::sync::Arc;
 
     #[test]
     fn test_audit_log_creation() {
-        let log = AuditLog::new();
+        // Create an in-memory database for testing
+        std::env::set_var("XDG_DATA_HOME", "/tmp/synapsis-test-audit");
+        std::fs::create_dir_all("/tmp/synapsis-test-audit/synapsis").ok();
+        let db = Arc::new(Database::new());
+        db.init().ok();
+        
+        let log = AuditLog::new(db);
         assert!(log.log_update(1, "agent1", "old", "new", None).is_ok());
+        
+        // Cleanup
+        std::fs::remove_dir_all("/tmp/synapsis-test-audit").ok();
     }
 }

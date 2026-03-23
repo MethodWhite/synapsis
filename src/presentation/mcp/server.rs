@@ -12,6 +12,9 @@ use crate::infrastructure::skills::SkillRegistry;
 use crate::core::orchestrator::Orchestrator;
 use crate::core::antibrick::{AntiBrickEngine, AntiBrickConfig};
 use crate::core::watchdog::FilesystemWatchdog;
+use crate::tools::web_research::mcp_tools as web_research_tools;
+use crate::tools::cve_search::mcp_tools as cve_search_tools;
+use crate::tools::security_classify::mcp_tools as security_classify_tools;
 
 pub struct McpServer {
     db: Arc<Database>,
@@ -37,7 +40,8 @@ impl McpServer {
     pub fn init(&self) {
         self.skills.init().ok();
         self.agents.init().ok();
-        eprintln!("[MCP] Rust Server Initialized");
+        self.watchdog.start_monitoring();
+        eprintln!("[MCP] Rust Server Initialized (watchdog started)");
     }
 
     pub fn run(&self) -> Result<()> {
@@ -331,6 +335,42 @@ impl McpServer {
                             },
                             "required": ["path"]
                         }
+                    },
+                    {
+                        "name": "web_research",
+                        "description": "Research information from the web",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": { "type": "string" },
+                                "limit": { "type": "integer", "default": 5 }
+                            },
+                            "required": ["query"]
+                        }
+                    },
+                    {
+                        "name": "cve_search",
+                        "description": "Search for CVEs (Common Vulnerabilities and Exposures)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "cve_id": { "type": "string" },
+                                "keyword": { "type": "string" },
+                                "limit": { "type": "integer", "default": 10 }
+                            }
+                        }
+                    },
+                    {
+                        "name": "security_classify",
+                        "description": "Classify security level of text",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "text": { "type": "string" },
+                                "context": { "type": "string", "default": "general" }
+                            },
+                            "required": ["text"]
+                        }
                     }
                 ]
             }
@@ -539,6 +579,43 @@ impl McpServer {
             "watchdog_check_path" => {
                 let path = args["path"].as_str().unwrap_or("/").to_string();
                 let result = crate::core::watchdog::mcp_tools::handle_watchdog_check_path(&self.watchdog, path);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            },
+            "web_research" => {
+                let query = args["query"].as_str().unwrap_or("");
+                let limit = args["limit"].as_u64().unwrap_or(5) as usize;
+                let result = web_research_tools::handle_web_research(query, limit);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            },
+            "cve_search" => {
+                let cve_id = args["cve_id"].as_str();
+                let keyword = args["keyword"].as_str();
+                let limit = args["limit"].as_u64().unwrap_or(10) as usize;
+                let result = cve_search_tools::handle_cve_search(cve_id, keyword, limit);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            },
+            "security_classify" => {
+                let text = args["text"].as_str().unwrap_or("");
+                let context = args["context"].as_str().unwrap_or("general");
+                let result = security_classify_tools::handle_security_classify(text, context);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,

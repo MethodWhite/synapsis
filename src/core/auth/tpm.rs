@@ -199,7 +199,7 @@ impl TpmMfaProvider {
 
     fn generate_totp_secret() -> String {
         let mut secret = vec![0u8; 20];
-        getrandom::getrandom(&mut secret).ok();
+        getrandom(&mut secret).ok();
         BASE64.encode(&secret)
     }
 
@@ -207,7 +207,7 @@ impl TpmMfaProvider {
         let mut codes = Vec::with_capacity(10);
         for _ in 0..10 {
             let mut code = vec![0u8; 8];
-            getrandom::getrandom(&mut code).ok();
+            getrandom(&mut code).ok();
             let hex: String = code.iter().map(|b| format!("{:02x}", b)).collect();
             codes.push(hex);
         }
@@ -284,7 +284,7 @@ impl TpmMfaProvider {
 
     pub fn generate_challenge(&self, session_id: &str) -> String {
         let mut nonce = vec![0u8; 32];
-        getrandom::getrandom(&mut nonce).ok();
+        getrandom(&mut nonce).ok();
         let nonce_b64 = BASE64.encode(&nonce);
 
         let expiry = current_timestamp() + 300;

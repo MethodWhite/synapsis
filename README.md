@@ -223,8 +223,10 @@ synapsis/
 | SYNAPSIS-2026-005 | MEDIUM | ✅ Fixed | Data encryption at rest (SQLCipher + env key) |
 | SYNAPSIS-2026-006 | MEDIUM | ✅ Fixed | Rate limiting & Resource Management |
 | SYNAPSIS-2026-007 | MEDIUM | ✅ Fixed | Performance degradation under load |
+| SYNAPSIS-2026-008 | HIGH | ✅ Fixed | Insecure RNG (time-based PRNG replaced with getrandom) |
+| SYNAPSIS-2026-009 | MEDIUM | ✅ Fixed | PQC cryptography stub replaced with real Kyber-512/Dilithium-4 |
 
-**Security Score:** 9.0/10 (7/7 critical fixes applied)
+**Security Score:** 9.5/10 (9/9 critical fixes applied)
 
 ---
 

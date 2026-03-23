@@ -16,6 +16,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use rand::RngCore;
 
+use synapsis::core::rate_limiter::RateLimiter;
 use synapsis::core::uuid::Uuid;
 use synapsis::infrastructure::database::Database;
 
@@ -29,6 +30,8 @@ struct ServerState {
     challenges: Mutex<HashMap<String, (String, u64)>>,
     /// API keys for authentication (in production, load from secure config)
     api_keys: Vec<String>,
+    /// Rate limiter for DoS protection
+    rate_limiter: RateLimiter,
 }
 
 #[derive(Clone)]
@@ -75,6 +78,7 @@ fn handle_client(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut writer = stream;
+    let peer_addr = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_| "unknown".to_string());
 
     // Track if this connection is authenticated
     let mut authenticated_session: Option<String> = None;
@@ -101,18 +105,27 @@ fn handle_client(
                 let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
                 let params = req.get("params");
                 
-                // Check authentication for protected methods
-                let requires_auth = matches!(method, 
-                    "lock_acquire" | "lock_release" | "task_create" | "task_claim" | 
-                    "context_export" | "context_import" | "session_heartbeat");
-                
-                if requires_auth && authenticated_session.is_none() {
+                // Rate limiting
+                let rate_limit_id = authenticated_session.as_deref().unwrap_or(&peer_addr);
+                if let Err(e) = state.rate_limiter.check(rate_limit_id) {
                     serde_json::json!({
                         "jsonrpc": "2.0",
-                        "error": {"code": -32000, "message": "Authentication required. Call auth_challenge first."},
+                        "error": {"code": -32000, "message": format!("Rate limit exceeded: {}", e)},
                         "id": id.cloned().unwrap_or(serde_json::Value::Null)
                     })
                 } else {
+                    // Check authentication for protected methods
+                    let requires_auth = matches!(method, 
+                        "lock_acquire" | "lock_release" | "task_create" | "task_claim" | 
+                        "context_export" | "context_import" | "session_heartbeat");
+                    
+                    if requires_auth && authenticated_session.is_none() {
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32000, "message": "Authentication required. Call auth_challenge first."},
+                            "id": id.cloned().unwrap_or(serde_json::Value::Null)
+                        })
+                    } else {
                     let result = match method {
                         "ping" => serde_json::json!({"status": "ok"}),
                         
@@ -561,6 +574,7 @@ fn main() {
         sessions: Mutex::new(std::collections::HashMap::new()),
         challenges: Mutex::new(std::collections::HashMap::new()),
         api_keys,
+        rate_limiter: RateLimiter::new(10, 100), // 10 requests per second, burst up to 100
     });
 
     let listener = TcpListener::bind(addr).expect("Failed to bind");

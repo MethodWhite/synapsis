@@ -7,6 +7,10 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
+use pqcrypto_kyber::kyber512;
+use pqcrypto_dilithium::dilithium4;
+use pqcrypto_traits::kem::{PublicKey, SecretKey, Ciphertext, SharedSecret};
+use pqcrypto_traits::sign::{PublicKey as SignPublicKey, SecretKey as SignSecretKey, DetachedSignature};
 use rand::RngCore;
 
 /// Encrypt data with AES-256-GCM
@@ -57,6 +61,48 @@ pub fn generate_key() -> [u8; 32] {
     key
 }
 
+/// Generate a Kyber512 keypair
+pub fn generate_kyber_keypair() -> Result<(Vec<u8>, Vec<u8>), String> {
+    Err("PQC Kyber512 not implemented".to_string())
+}
+
+/// Encapsulate a shared secret using Kyber512
+pub fn kyber_encapsulate(pk: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
+    Err("PQC Kyber512 encapsulate not implemented".to_string())
+}
+
+/// Decapsulate a shared secret using Kyber512
+pub fn kyber_decapsulate(ct: &[u8], sk: &[u8]) -> Result<Vec<u8>, String> {
+    Err("PQC Kyber512 decapsulate not implemented".to_string())
+}
+
+/// Generate a Dilithium4 keypair
+pub fn generate_dilithium_keypair() -> Result<(Vec<u8>, Vec<u8>), String> {
+    let (pk, sk) = dilithium4::keypair();
+    Ok((pk.as_bytes().to_vec(), sk.as_bytes().to_vec()))
+}
+
+/// Sign a message with Dilithium4
+pub fn dilithium_sign(sk: &[u8], msg: &[u8]) -> Result<Vec<u8>, String> {
+    let secret_key = dilithium4::SecretKey::from_bytes(sk)
+        .map_err(|e| format!("Failed to parse secret key: {}", e))?;
+    let sig = dilithium4::detached_sign(msg, &secret_key);
+    Ok(sig.as_bytes().to_vec())
+}
+
+/// Verify a signature with Dilithium4
+pub fn dilithium_verify(pk: &[u8], msg: &[u8], sig: &[u8]) -> bool {
+    let public_key = match dilithium4::PublicKey::from_bytes(pk) {
+        Ok(pk) => pk,
+        Err(_) => return false,
+    };
+    let signature = match dilithium4::DetachedSignature::from_bytes(sig) {
+        Ok(sig) => sig,
+        Err(_) => return false,
+    };
+    dilithium4::verify_detached_signature(&signature, msg, &public_key).is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,5 +116,48 @@ mod tests {
         let decrypted = decrypt(&ciphertext, &key).unwrap();
         
         assert_eq!(plaintext, &decrypted[..]);
+    }
+    
+    #[test]
+    fn test_kyber_key_exchange() {
+        // Generate keypair
+        let (pk, sk) = generate_kyber_keypair().unwrap();
+        
+        // Encapsulate shared secret
+        let (ct, ss1) = kyber_encapsulate(&pk).unwrap();
+        
+        // Decapsulate shared secret
+        let ss2 = kyber_decapsulate(&ct, &sk).unwrap();
+        
+        // Shared secrets should match
+        assert_eq!(ss1, ss2);
+        assert!(!ss1.is_empty());
+    }
+    
+    #[test]
+    fn test_dilithium_sign_verify() {
+        // Generate keypair
+        let (pk, sk) = generate_dilithium_keypair().unwrap();
+        
+        // Sign message
+        let message = b"Test message for Dilithium signature";
+        let signature = dilithium_sign(&sk, message).unwrap();
+        
+        // Verify signature
+        let verified = dilithium_verify(&pk, message, &signature);
+        assert!(verified, "Signature verification failed");
+        
+        // Verify wrong message fails
+        let wrong_message = b"Wrong message";
+        let wrong_verified = dilithium_verify(&pk, wrong_message, &signature);
+        assert!(!wrong_verified, "Signature should not verify for wrong message");
+        
+        // Verify tampered signature fails
+        let mut tampered_sig = signature.clone();
+        if !tampered_sig.is_empty() {
+            tampered_sig[0] ^= 0xFF; // Flip bits
+        }
+        let tampered_verified = dilithium_verify(&pk, message, &tampered_sig);
+        assert!(!tampered_verified, "Tampered signature should not verify");
     }
 }

@@ -22,9 +22,9 @@ path = "src/main.rs"
 name = "synapsis-mcp"
 path = "src/bin/mcp.rs"
 
-[[bin]]
-name = "synapsis-server"
-path = "src/bin/server.rs"
+#[[bin]]
+#name = "synapsis-server"
+#path = "src/bin/server.rs"
 
 [[bin]]
 name = "synapsis-ollama"
@@ -53,6 +53,8 @@ hex = "0.4"
 
 # PQC
 pqcrypto-traits = "0.3"
+pqcrypto-kyber = "0.3"
+pqcrypto-dilithium = "0.3"
 
 # CLI
 clap = { version = "4", features = ["derive"] }

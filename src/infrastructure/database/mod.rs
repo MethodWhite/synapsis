@@ -10,7 +10,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 pub mod multi_agent;
-pub mod encryption;
 
 pub struct Database {
     conn: Arc<Mutex<Connection>>,
@@ -182,6 +181,17 @@ impl Database {
                 token_count INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL,
                 checksum TEXT
+            );
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                observation_id INTEGER,
+                action TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT,
+                reason TEXT,
+                timestamp INTEGER NOT NULL,
+                FOREIGN KEY (observation_id) REFERENCES observations(id) ON DELETE SET NULL
             );
             "
         )?;
@@ -447,6 +457,44 @@ impl Database {
             }))
         })?;
 
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Log an audit entry
+    pub fn log_audit(&self, observation_id: Option<i64>, action: &str, agent_id: &str, old_value: Option<&str>, new_value: Option<&str>, reason: Option<&str>) -> Result<()> {
+        let conn = self.get_conn();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        
+        conn.execute(
+            "INSERT INTO audit_log (observation_id, action, agent_id, old_value, new_value, reason, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params![observation_id, action, agent_id, old_value, new_value, reason, timestamp],
+        )?;
+        Ok(())
+    }
+
+    /// Get audit trail for an observation
+    pub fn get_audit_trail(&self, observation_id: i64) -> Result<Vec<serde_json::Value>> {
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, observation_id, action, agent_id, old_value, new_value, reason, timestamp FROM audit_log WHERE observation_id = ? ORDER BY timestamp DESC"
+        )?;
+        
+        let rows = stmt.query_map(params![observation_id], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, i64>(0)?,
+                "observation_id": row.get::<_, Option<i64>>(1)?,
+                "action": row.get::<_, String>(2)?,
+                "agent_id": row.get::<_, String>(3)?,
+                "old_value": row.get::<_, Option<String>>(4)?,
+                "new_value": row.get::<_, Option<String>>(5)?,
+                "reason": row.get::<_, Option<String>>(6)?,
+                "timestamp": row.get::<_, i64>(7)?,
+            }))
+        })?;
+        
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 }
