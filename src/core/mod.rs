@@ -53,3 +53,5 @@ pub mod chunk_query;
 pub mod agent_registry_ext;
 pub mod providers;
 pub mod zero_trust;
+pub mod integrity;
+pub mod anti_tampering;

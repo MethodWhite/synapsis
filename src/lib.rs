@@ -6,6 +6,7 @@ pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
 pub mod tools;
+pub mod api;
 
 pub use domain::*;
 

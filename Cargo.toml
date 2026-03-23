@@ -30,6 +30,10 @@ path = "src/bin/mcp.rs"
 name = "synapsis-ollama"
 path = "src/bin/ollama.rs"
 
+[[bin]]
+name = "synapsis-http"
+path = "src/bin/http.rs"
+
 [dependencies]
 # Core
 serde = { version = "1.0", features = ["derive"] }
@@ -52,21 +56,25 @@ lazy_static = "1.4"
 hex = "0.4"
 
 # PQC
-pqcrypto-traits = "0.3"
+pqcrypto-traits = "0.3.2"
 pqcrypto-kyber = "0.3"
 pqcrypto-dilithium = "0.3"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
 regex = "1"
+env_logger = "0.11"
 
 # Async
 tokio = { version = "1", features = ["full"] }
+warp = "0.3"
 
 # Crypto
 aes-gcm = "0.10"
 hmac = "0.12"
 sha2 = "0.10"
+sha3 = "0.10"
+chacha20poly1305 = "0.10"
 mdns-sd = "0.11"
 
 # System monitoring
@@ -74,3 +82,4 @@ sysinfo = "0.38"
 
 [dev-dependencies]
 proptest = "1.4"
+tempfile = "3.10"

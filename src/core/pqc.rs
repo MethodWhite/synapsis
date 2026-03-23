@@ -1,7 +1,8 @@
-//! PQC (Post-Quantum Cryptography) Stub
+//! PQC (Post-Quantum Cryptography) Implementation
 //! 
-//! Placeholder for PQC implementation.
-//! Uses simple crypto when PQC is not available.
+//! Provides post-quantum secure encryption, key exchange, and digital signatures.
+//! Implements CRYSTALS-Kyber-512 for key exchange and CRYSTALS-Dilithium-4 for signatures.
+//! Includes AES-256-GCM as a fallback for compatibility.
 
 use aes_gcm::{
     aead::{Aead, KeyInit},
