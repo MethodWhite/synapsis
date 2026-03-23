@@ -52,3 +52,4 @@ pub mod timeline_manager;
 pub mod chunk_query;
 pub mod agent_registry_ext;
 pub mod providers;
+pub mod zero_trust;

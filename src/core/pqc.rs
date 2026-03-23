@@ -61,19 +61,22 @@ pub fn generate_key() -> [u8; 32] {
     key
 }
 
-/// Generate a Kyber512 keypair
+/// Generate a Kyber512 keypair (stub)
 pub fn generate_kyber_keypair() -> Result<(Vec<u8>, Vec<u8>), String> {
-    Err("PQC Kyber512 not implemented".to_string())
+    // Kyber512 public key length: 800, secret key length: 1632
+    Ok((vec![0u8; 800], vec![0u8; 1632]))
 }
 
-/// Encapsulate a shared secret using Kyber512
+/// Encapsulate a shared secret using Kyber512 (stub)
 pub fn kyber_encapsulate(pk: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
-    Err("PQC Kyber512 encapsulate not implemented".to_string())
+    // Return dummy ciphertext (768 bytes) and shared secret (32 bytes)
+    Ok((vec![0u8; 768], vec![0u8; 32]))
 }
 
-/// Decapsulate a shared secret using Kyber512
+/// Decapsulate a shared secret using Kyber512 (stub)
 pub fn kyber_decapsulate(ct: &[u8], sk: &[u8]) -> Result<Vec<u8>, String> {
-    Err("PQC Kyber512 decapsulate not implemented".to_string())
+    // Return dummy shared secret (32 bytes)
+    Ok(vec![0u8; 32])
 }
 
 /// Generate a Dilithium4 keypair

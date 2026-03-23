@@ -20,3 +20,8 @@ pub mod rate_limiter {
 pub mod audit_log {
     pub use crate::core::audit_log::*;
 }
+
+#[cfg(feature = "security")]
+pub mod zero_trust {
+    pub use crate::core::zero_trust::*;
+}

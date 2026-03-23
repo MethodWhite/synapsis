@@ -19,6 +19,7 @@ use rand::RngCore;
 use synapsis::core::rate_limiter::RateLimiter;
 use synapsis::core::uuid::Uuid;
 use synapsis::infrastructure::database::Database;
+use synapsis::core::zero_trust::{PolicyEngine, RequestContext, Resource, Action, default_policies};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -32,6 +33,8 @@ struct ServerState {
     api_keys: Vec<String>,
     /// Rate limiter for DoS protection
     rate_limiter: RateLimiter,
+    /// Zero-trust policy engine for continuous verification
+    policy_engine: PolicyEngine,
 }
 
 #[derive(Clone)]
@@ -78,6 +81,7 @@ fn handle_client(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut writer = stream;
+    let peer_addr = writer.peer_addr().unwrap().to_string();
 
     // Track if this connection is authenticated
     let mut authenticated_session: Option<String> = None;
@@ -95,6 +99,18 @@ fn handle_client(
 
         let line = line.trim();
         if line.is_empty() {
+            continue;
+        }
+
+        // Rate limiting per connection
+        if let Err(e) = state.rate_limiter.check(&peer_addr) {
+            let error_response = serde_json::json!({
+                "jsonrpc": "2.0",
+                "error": {"code": -32000, "message": format!("Rate limit exceeded: {}", e)},
+                "id": null,
+            });
+            let _ = writeln!(writer, "{}", serde_json::to_string(&error_response)?);
+            let _ = writer.flush();
             continue;
         }
 
@@ -116,6 +132,54 @@ fn handle_client(
                         "id": id.cloned().unwrap_or(serde_json::Value::Null)
                     })
                 } else {
+                    // Zero-trust policy evaluation
+                    let policy_allowed = {
+                        // Lock sessions mutex and keep guard alive
+                        let sessions_guard = state.sessions.lock().unwrap();
+                        let session_info = authenticated_session.as_ref()
+                            .and_then(|session_id| sessions_guard.get(session_id));
+                        
+                        let agent_id = authenticated_session.as_deref().unwrap_or(&peer_addr).to_string();
+                        let agent_type = session_info.map(|s| s.agent_type.as_str()).unwrap_or("unauthenticated").to_string();
+                        let project = session_info.map(|s| s.project.as_str()).unwrap_or("default").to_string();
+                        let auth_level = if authenticated_session.is_some() { 1 } else { 0 }; // 1 = API key auth, 2 = challenge-response
+                        
+                        // Map method to resource and action
+                        let (resource, action) = match method {
+                            "auth_challenge" | "auth_verify" | "auth_quick" | "session_register" => (Resource::Session, Action::Create),
+                            "session_heartbeat" => (Resource::Session, Action::Update),
+                            "lock_acquire" => (Resource::Lock, Action::Create),
+                            "lock_release" => (Resource::Lock, Action::Delete),
+                            "task_create" => (Resource::Task, Action::Create),
+                            "task_claim" => (Resource::Task, Action::Execute),
+                            "context_export" => (Resource::Chunk, Action::Read),
+                            "context_import" => (Resource::Chunk, Action::Create),
+                            "agents_active" => (Resource::Session, Action::Read),
+                            "stats" => (Resource::Any, Action::Read),
+                            "ping" => (Resource::Any, Action::Execute),
+                            _ => (Resource::Any, Action::Any),
+                        };
+                        
+                        let ctx = RequestContext {
+                            agent_id,
+                            agent_type,
+                            project,
+                            auth_level,
+                            resource,
+                            action,
+                            params: HashMap::new(), // Could extract from params if needed
+                        };
+                        
+                        state.policy_engine.evaluate(&ctx).is_ok()
+                    };
+                    
+                    if !policy_allowed {
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32001, "message": "Access denied by zero-trust policy"},
+                            "id": id.cloned().unwrap_or(serde_json::Value::Null)
+                        })
+                    } else {
                     let result = match method {
                         "ping" => serde_json::json!({"status": "ok"}),
                         
@@ -515,6 +579,7 @@ fn handle_client(
                 }
                 resp
             }
+            }
         }
             Err(e) => serde_json::json!({
                 "error": format!("Parse error: {:?}", e),
@@ -559,12 +624,18 @@ fn main() {
     println!();
 
     let db = Database::new();
+    let mut policy_engine = PolicyEngine::new();
+    for policy in default_policies() {
+        policy_engine.add_policy(policy);
+    }
+    
     let state = Arc::new(ServerState {
         db,
         sessions: Mutex::new(std::collections::HashMap::new()),
         challenges: Mutex::new(std::collections::HashMap::new()),
         api_keys,
         rate_limiter: RateLimiter::new(10, 100), // 10 requests per second, burst up to 100
+        policy_engine,
     });
 
     let listener = TcpListener::bind(addr).expect("Failed to bind");

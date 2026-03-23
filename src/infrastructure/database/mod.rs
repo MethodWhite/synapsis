@@ -505,6 +505,119 @@ impl Database {
         
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
+
+    /// Update observation content with audit logging
+    pub fn update_observation(&self, observation_id: ObservationId, new_content: &str, agent_id: &str, reason: Option<&str>) -> Result<()> {
+        let conn = self.get_conn();
+        
+        // Get current content for audit log
+        let old_content: String = conn.query_row(
+            "SELECT content FROM observations WHERE id = ? AND deleted_at IS NULL",
+            [observation_id.0],
+            |row| row.get(0)
+        )?;
+        
+        // Update observation
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        
+        conn.execute(
+            "UPDATE observations SET content = ?, revision_count = revision_count + 1, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+            params![new_content, now, observation_id.0],
+        )?;
+        
+        // Log audit entry
+        self.log_audit(
+            Some(observation_id.0),
+            "update",
+            agent_id,
+            Some(&old_content),
+            Some(new_content),
+            reason,
+        )?;
+        
+        Ok(())
+    }
+
+    /// Soft delete observation with audit logging
+    pub fn delete_observation(&self, observation_id: ObservationId, agent_id: &str, reason: Option<&str>) -> Result<()> {
+        let conn = self.get_conn();
+        
+        // Check if observation exists and is not already deleted
+        let exists: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM observations WHERE id = ? AND deleted_at IS NULL",
+            [observation_id.0],
+            |row| row.get(0)
+        )?;
+        
+        if exists == 0 {
+            return Err(crate::domain::errors::invalid_data("Observation not found or already deleted"));
+        }
+        
+        // Soft delete (set deleted_at timestamp)
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        
+        conn.execute(
+            "UPDATE observations SET deleted_at = ?, updated_at = ? WHERE id = ?",
+            params![now, now, observation_id.0],
+        )?;
+        
+        // Log audit entry
+        self.log_audit(
+            Some(observation_id.0),
+            "delete",
+            agent_id,
+            None,
+            None,
+            reason,
+        )?;
+        
+        Ok(())
+    }
+
+    /// Restore soft-deleted observation with audit logging
+    pub fn restore_observation(&self, observation_id: ObservationId, agent_id: &str) -> Result<()> {
+        let conn = self.get_conn();
+        
+        // Check if observation exists and is deleted
+        let deleted_at: Option<i64> = conn.query_row(
+            "SELECT deleted_at FROM observations WHERE id = ?",
+            [observation_id.0],
+            |row| row.get(0)
+        )?;
+        
+        if deleted_at.is_none() {
+            return Err(crate::domain::errors::invalid_data("Observation is not deleted"));
+        }
+        
+        // Restore (clear deleted_at)
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        
+        conn.execute(
+            "UPDATE observations SET deleted_at = NULL, updated_at = ? WHERE id = ?",
+            params![now, observation_id.0],
+        )?;
+        
+        // Log audit entry
+        self.log_audit(
+            Some(observation_id.0),
+            "restore",
+            agent_id,
+            None,
+            None,
+            Some("Restored from soft delete"),
+        )?;
+        
+        Ok(())
+    }
 }
 
 impl Default for Database {
@@ -520,19 +633,335 @@ impl StoragePort for Database {
         Ok(())
     }
 
-    fn get_observation(&self, _id: ObservationId) -> Result<Option<Observation>> {
-        Ok(None)
+    fn get_observation(&self, id: ObservationId) -> Result<Option<Observation>> {
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, sync_id, session_id, observation_type, title, content, tool_name, project, scope, topic_key, content_hash, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at, integrity_hash, classification
+             FROM observations
+             WHERE id = ? AND deleted_at IS NULL"
+        )?;
+        
+        let result = stmt.query_row([id.0], |row| {
+            let observation_type_int: i64 = row.get(3)?;
+            let scope_int: i64 = row.get(8)?;
+            let classification_int: i64 = row.get(18)?;
+            
+            Ok(Observation {
+                id: ObservationId(row.get(0)?),
+                sync_id: SyncId(row.get(1)?),
+                session_id: SessionId(row.get(2)?),
+                observation_type: match observation_type_int {
+                    0 => ObservationType::Manual,
+                    1 => ObservationType::ToolUse,
+                    2 => ObservationType::FileChange,
+                    3 => ObservationType::Command,
+                    4 => ObservationType::FileRead,
+                    5 => ObservationType::Search,
+                    6 => ObservationType::Decision,
+                    7 => ObservationType::Architecture,
+                    8 => ObservationType::Bugfix,
+                    9 => ObservationType::Pattern,
+                    10 => ObservationType::Config,
+                    11 => ObservationType::Discovery,
+                    12 => ObservationType::Learning,
+                    _ => ObservationType::Manual,
+                },
+                title: row.get(4)?,
+                content: row.get(5)?,
+                tool_name: row.get(6)?,
+                project: row.get(7)?,
+                scope: match scope_int {
+                    0 => Scope::Project,
+                    1 => Scope::Personal,
+                    _ => Scope::Project,
+                },
+                topic_key: row.get(9)?,
+                content_hash: ContentHash(row.get::<_, [u8; 32]>(10)?),
+                revision_count: row.get(11)?,
+                duplicate_count: row.get(12)?,
+                last_seen_at: row.get::<_, Option<i64>>(13)?.map(Timestamp),
+                created_at: Timestamp(row.get(14)?),
+                updated_at: Timestamp(row.get(15)?),
+                deleted_at: row.get::<_, Option<i64>>(16)?.map(Timestamp),
+                integrity_hash: row.get(17)?,
+                classification: match classification_int {
+                    0 => Classification::Public,
+                    1 => Classification::Internal,
+                    2 => Classification::Confidential,
+                    3 => Classification::Secret,
+                    4 => Classification::TopSecret,
+                    _ => Classification::Public,
+                },
+            })
+        }).optional()?;
+        
+        Ok(result)
     }
 
-    fn save_observation(&self, _obs: &Observation) -> Result<ObservationId> {
-        Ok(ObservationId(0))
+    fn save_observation(&self, obs: &Observation) -> Result<ObservationId> {
+        let conn = self.get_conn();
+        
+        // Convert enums to integers
+        let observation_type_int = match obs.observation_type {
+            ObservationType::Manual => 0,
+            ObservationType::ToolUse => 1,
+            ObservationType::FileChange => 2,
+            ObservationType::Command => 3,
+            ObservationType::FileRead => 4,
+            ObservationType::Search => 5,
+            ObservationType::Decision => 6,
+            ObservationType::Architecture => 7,
+            ObservationType::Bugfix => 8,
+            ObservationType::Pattern => 9,
+            ObservationType::Config => 10,
+            ObservationType::Discovery => 11,
+            ObservationType::Learning => 12,
+        };
+        
+        let scope_int = match obs.scope {
+            Scope::Project => 0,
+            Scope::Personal => 1,
+        };
+        
+        let classification_int = match obs.classification {
+            Classification::Public => 0,
+            Classification::Internal => 1,
+            Classification::Confidential => 2,
+            Classification::Secret => 3,
+            Classification::TopSecret => 4,
+        };
+        
+        // Check if observation with same sync_id exists
+        let existing_id: Option<i64> = conn.query_row(
+            "SELECT id FROM observations WHERE sync_id = ? AND deleted_at IS NULL",
+            [obs.sync_id.0.as_str()],
+            |row| row.get(0)
+        ).optional()?;
+        
+        if let Some(existing_id) = existing_id {
+            // Update existing observation
+            conn.execute(
+                "UPDATE observations SET 
+                 session_id = ?, observation_type = ?, title = ?, content = ?, 
+                 tool_name = ?, project = ?, scope = ?, topic_key = ?, 
+                 content_hash = ?, revision_count = revision_count + 1, 
+                 last_seen_at = ?, updated_at = ?, deleted_at = ?, 
+                 integrity_hash = ?, classification = ?
+                 WHERE id = ? AND deleted_at IS NULL",
+                params![
+                    obs.session_id.0,
+                    observation_type_int,
+                    &obs.title,
+                    &obs.content,
+                    obs.tool_name,
+                    obs.project,
+                    scope_int,
+                    obs.topic_key,
+                    &obs.content_hash.0[..],
+                    obs.last_seen_at.map(|t| t.0),
+                    obs.updated_at.0,
+                    obs.deleted_at.map(|t| t.0),
+                    obs.integrity_hash,
+                    classification_int,
+                    existing_id,
+                ],
+            )?;
+            
+            // Log audit for update (agent_id placeholder "system" for now)
+            self.log_audit(
+                Some(existing_id),
+                "update",
+                "system",
+                Some("previous content"), // TODO: get old content
+                Some(&obs.content),
+                Some("Observation updated via save_observation"),
+            )?;
+            
+            Ok(ObservationId(existing_id))
+        } else {
+            // Insert new observation
+            conn.execute(
+                "INSERT INTO observations (
+                 sync_id, session_id, observation_type, title, content, 
+                 tool_name, project, scope, topic_key, content_hash, 
+                 revision_count, duplicate_count, last_seen_at, 
+                 created_at, updated_at, deleted_at, integrity_hash, classification
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![
+                    obs.sync_id.0,
+                    obs.session_id.0,
+                    observation_type_int,
+                    &obs.title,
+                    &obs.content,
+                    obs.tool_name,
+                    obs.project,
+                    scope_int,
+                    obs.topic_key,
+                    &obs.content_hash.0[..],
+                    obs.revision_count,
+                    obs.duplicate_count,
+                    obs.last_seen_at.map(|t| t.0),
+                    obs.created_at.0,
+                    obs.updated_at.0,
+                    obs.deleted_at.map(|t| t.0),
+                    obs.integrity_hash,
+                    classification_int,
+                ],
+            )?;
+            
+            let id = conn.last_insert_rowid();
+            
+            // Log audit for create
+            self.log_audit(
+                Some(id),
+                "create",
+                "system",
+                None,
+                Some(&obs.content),
+                Some("Observation created via save_observation"),
+            )?;
+            
+            Ok(ObservationId(id))
+        }
     }
 
-    fn search_observations(&self, _params: &SearchParams) -> Result<Vec<SearchResult>> {
-        Ok(vec![])
+    fn search_observations(&self, params: &SearchParams) -> Result<Vec<SearchResult>> {
+        let conn = self.get_conn();
+        let mut conditions = vec!["deleted_at IS NULL".to_string()];
+        let mut query_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        
+        // Add text search condition
+        if !params.query.is_empty() {
+            conditions.push("(title LIKE ? OR content LIKE ?)".to_string());
+            let search_term = format!("%{}%", params.query);
+            query_params.push(Box::new(search_term.clone()));
+            query_params.push(Box::new(search_term));
+        }
+        
+        // Add observation type filter
+        if let Some(obs_type) = params.obs_type {
+            conditions.push("observation_type = ?".to_string());
+             let obs_type_int = match obs_type {
+                ObservationType::Manual => 0,
+                ObservationType::ToolUse => 1,
+                ObservationType::FileChange => 2,
+                ObservationType::Command => 3,
+                ObservationType::FileRead => 4,
+                ObservationType::Search => 5,
+                ObservationType::Decision => 6,
+                ObservationType::Architecture => 7,
+                ObservationType::Bugfix => 8,
+                ObservationType::Pattern => 9,
+                ObservationType::Config => 10,
+                ObservationType::Discovery => 11,
+                ObservationType::Learning => 12,
+            };
+            query_params.push(Box::new(obs_type_int));
+        }
+        
+        // Add project filter
+        if let Some(project) = &params.project {
+            conditions.push("project = ?".to_string());
+            query_params.push(Box::new(project.clone()));
+        }
+        
+        // Add scope filter
+        if let Some(scope) = params.scope {
+            conditions.push("scope = ?".to_string());
+            let scope_int = match scope {
+                Scope::Project => 0,
+                Scope::Personal => 1,
+            };
+            query_params.push(Box::new(scope_int));
+        }
+        
+        // Build SQL
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+        
+        let sql = format!(
+            "SELECT id, sync_id, session_id, observation_type, title, content, tool_name, project, scope, topic_key, content_hash, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at, integrity_hash, classification
+             FROM observations
+             {}
+             ORDER BY created_at DESC
+             LIMIT ?",
+            where_clause
+        );
+        
+        // Add limit parameter
+        query_params.push(Box::new(params.limit));
+        
+        let mut stmt = conn.prepare(&sql)?;
+        
+        // Convert query_params to array of &dyn ToSql
+        let params_ref: Vec<&dyn rusqlite::ToSql> = query_params.iter().map(|p| &**p as &dyn rusqlite::ToSql).collect();
+        
+        let rows = stmt.query_map(params_ref.as_slice(), |row| {
+            let observation_type_int: i64 = row.get(3)?;
+            let scope_int: i64 = row.get(8)?;
+            let classification_int: i64 = row.get(18)?;
+            
+            Ok(SearchResult {
+                observation: Observation {
+                    id: ObservationId(row.get(0)?),
+                    sync_id: SyncId(row.get(1)?),
+                    session_id: SessionId(row.get(2)?),
+                    observation_type: match observation_type_int {
+                        0 => ObservationType::Manual,
+                        1 => ObservationType::ToolUse,
+                        2 => ObservationType::FileChange,
+                        3 => ObservationType::Command,
+                        4 => ObservationType::FileRead,
+                        5 => ObservationType::Search,
+                        6 => ObservationType::Decision,
+                        7 => ObservationType::Architecture,
+                        8 => ObservationType::Bugfix,
+                        9 => ObservationType::Pattern,
+                        10 => ObservationType::Config,
+                        _ => ObservationType::Manual,
+                    },
+                    title: row.get(4)?,
+                    content: row.get(5)?,
+                    tool_name: row.get(6)?,
+                    project: row.get(7)?,
+                    scope: match scope_int {
+                        0 => Scope::Project,
+                        1 => Scope::Personal,
+                        _ => Scope::Project,
+                    },
+                    topic_key: row.get(9)?,
+                    content_hash: ContentHash(row.get::<_, [u8; 32]>(10)?),
+                    revision_count: row.get(11)?,
+                    duplicate_count: row.get(12)?,
+                    last_seen_at: row.get::<_, Option<i64>>(13)?.map(Timestamp),
+                    created_at: Timestamp(row.get(14)?),
+                    updated_at: Timestamp(row.get(15)?),
+                    deleted_at: row.get::<_, Option<i64>>(16)?.map(Timestamp),
+                    integrity_hash: row.get(17)?,
+                    classification: match classification_int {
+                        0 => Classification::Public,
+                        1 => Classification::Internal,
+                        2 => Classification::Confidential,
+                        3 => Classification::Secret,
+                        4 => Classification::TopSecret,
+                        _ => Classification::Public,
+                    },
+                },
+                rank: 1.0, // Simple rank for now
+                highlights: vec![],
+            })
+        })?;
+        
+        let results: Vec<SearchResult> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(results)
     }
 
     fn get_timeline(&self, _limit: i32) -> Result<Vec<TimelineEntry>> {
+        // TODO: Implement proper timeline retrieval
+        // For now, return empty vector to satisfy interface
         Ok(vec![])
     }
 }
