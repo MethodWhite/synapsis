@@ -1,0 +1,25 @@
+<idea-plugin>
+    <id>com.synapsis.mcp</id>
+    <name>Synapsis MCP</name>
+    <version>1.0.0</version>
+    <vendor>Synapsis Team</vendor>
+    
+    <description>
+        Persistent memory engine for AI agents with multi-agent coordination.
+        FTS5 search, chunks, global context, distributed locks.
+    </description>
+    
+    <depends>com.intellij.modules.platform</depends>
+    
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Synapsis" anchor="bottom" factoryClass="com.synapsis.mcp.SynapsisToolWindow"/>
+        <applicationService serviceImplementation="com.synapsis.mcp.SynapsisService"/>
+    </extensions>
+    
+    <actions>
+        <action id="Synapsis.SaveContext" class="com.synapsis.mcp.actions.SaveContextAction" text="Save Context"/>
+        <action id="Synapsis.Search" class="com.synapsis.mcp.actions.SearchAction" text="Search Memory"/>
+        <action id="Synapsis.GlobalContext" class="com.synapsis.mcp.actions.GlobalContextAction" text="Global Context"/>
+        <action id="Synapsis.ActiveAgents" class="com.synapsis.mcp.actions.ActiveAgentsAction" text="Active Agents"/>
+    </actions>
+</idea-plugin>

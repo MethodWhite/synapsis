@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "synapsis": {
+      "type": "stdio",
+      "command": "/home/methodwhite/Projects/synapsis/target/release/synapsis",
+      "args": ["mcp"],
+      "env": {
+        "SYNAPSIS_PROJECT": "${workspaceFolder}"
+      }
+    }
+  }
+}

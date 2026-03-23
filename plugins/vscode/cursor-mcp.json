@@ -1,0 +1,10 @@
+{
+  "mcp": {
+    "synapsis": {
+      "command": "/home/methodwhite/Projects/synapsis/target/release/synapsis",
+      "args": ["mcp"],
+      "enabled": true,
+      "autoStart": true
+    }
+  }
+}

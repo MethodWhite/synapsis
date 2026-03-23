@@ -1,0 +1,37 @@
+{
+  "schema": "https://raw.githubusercontent.com/methodwhite/synapsis/main/plugins/claude-code/schema.json",
+  "name": "synapsis",
+  "description": "Synapsis - Persistent memory for AI agents with PQC security",
+  "version": "0.1.0",
+  "tools": [
+    {
+      "name": "mem_save",
+      "description": "Save an important observation to persistent memory"
+    },
+    {
+      "name": "mem_search",
+      "description": "Search persistent memory across all sessions"
+    },
+    {
+      "name": "mem_context",
+      "description": "Get recent memory context from previous sessions"
+    },
+    {
+      "name": "mem_session_summary",
+      "description": "Save end-of-session summary"
+    },
+    {
+      "name": "mem_session_start",
+      "description": "Register session start"
+    },
+    {
+      "name": "mem_session_end",
+      "description": "Mark session as completed"
+    }
+  ],
+  "hooks": {
+    "session_start": "synapsis-session-start",
+    "session_stop": "synapsis-session-stop",
+    "post_compact": "synapsis-post-compact"
+  }
+}

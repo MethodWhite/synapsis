@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "synapsis": {
+      "type": "tcp",
+      "host": "127.0.0.1",
+      "port": 7438,
+      "enabled": true,
+      "autoRegister": true,
+      "projectKey": "${workspaceFolderBasename}",
+      "heartbeatInterval": 30
+    }
+  }
+}

@@ -1,0 +1,71 @@
+[package]
+name = "synapsis"
+version = "0.1.0"
+edition = "2021"
+authors = ["methodwhite"]
+description = "Persistent memory engine for AI agents with PQC security"
+license = "MIT"
+
+[features]
+security = []
+tui = []
+
+[lib]
+name = "synapsis"
+path = "src/lib.rs"
+
+[[bin]]
+name = "synapsis"
+path = "src/main.rs"
+
+[[bin]]
+name = "synapsis-mcp"
+path = "src/bin/mcp.rs"
+
+[[bin]]
+name = "synapsis-server"
+path = "src/bin/server.rs"
+
+[[bin]]
+name = "synapsis-ollama"
+path = "src/bin/ollama.rs"
+
+[dependencies]
+# Core
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.31", features = ["bundled", "blob", "serde_json", "sqlcipher"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5.0"
+thiserror = "1.0"
+anyhow = "1.0"
+base64 = "0.22"
+rand = "0.8"
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking"], default-features = false }
+uuid = { version = "1.0", features = ["v4", "fast-rng"] }
+hmac-sha1 = "0.2"
+
+# Session ID
+hostname = "0.4"
+getrandom = "0.2"
+lazy_static = "1.4"
+hex = "0.4"
+
+# PQC
+pqcrypto-traits = "0.3"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# Crypto
+aes-gcm = "0.10"
+hmac = "0.12"
+sha2 = "0.10"
+mdns-sd = "0.11"
+
+[dev-dependencies]
+proptest = "1.4"

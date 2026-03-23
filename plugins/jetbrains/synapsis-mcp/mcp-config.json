@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "synapsis": {
+      "type": "tcp",
+      "host": "127.0.0.1",
+      "port": 7438,
+      "enabled": true,
+      "config": {
+        "project_key": "jetbrains-ide",
+        "auto_register": true,
+        "heartbeat_interval": 30,
+        "tools": [
+          "memory_search_fts",
+          "chunk_create",
+          "chunk_get",
+          "global_context_set",
+          "global_context_get",
+          "context_export",
+          "context_import",
+          "agent_session_register",
+          "agent_heartbeat",
+          "lock_acquire",
+          "lock_release"
+        ]
+      }
+    }
+  }
+}

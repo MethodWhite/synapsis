@@ -1,0 +1,729 @@
+//! MCP Protocol Tests for Synapsis
+//!
+//! Unit tests for the MCP server covering JSON-RPC protocol,
+//! tool registration, resource access, and prompt handling.
+
+use serde_json::json;
+use synapsis::presentation::mcp::McpServer;
+use synapsis::infrastructure::database::Database;
+use synapsis::core::orchestrator::Orchestrator;
+use std::sync::Arc;
+
+fn test_server() -> McpServer {
+    let db = Arc::new(Database::new());
+    let orchestrator = Arc::new(Orchestrator::new());
+    McpServer::new(db, orchestrator)
+}
+
+mod mcp_tests {
+    use super::*;
+
+    #[test]
+    fn test_initialize_returns_capabilities() {
+        let server = test_server();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some(), "Should return response");
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+
+        assert_eq!(resp_json["jsonrpc"], "2.0");
+        assert!(resp_json["result"].is_object(), "Should have result object");
+
+        let capabilities = &resp_json["result"]["capabilities"];
+        assert!(
+            capabilities["tools"].is_object(),
+            "Should have tools capability"
+        );
+        assert!(
+            capabilities["resources"].is_object(),
+            "Should have resources capability"
+        );
+        assert!(
+            capabilities["prompts"].is_object(),
+            "Should have prompts capability"
+        );
+
+        let server_info = &resp_json["result"]["serverInfo"];
+        assert_eq!(server_info["name"], "synapsis");
+        assert!(server_info["version"].is_string(), "Should have version");
+    }
+
+    #[test]
+    fn test_initialize_with_protocol_version() {
+        let server = test_server();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "clientInfo": {
+                    "name": "test-client",
+                    "version": "1.0.0"
+                }
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        assert!(resp_json["result"].is_object());
+    }
+
+    #[test]
+    fn test_tools_list_returns_all_tools() {
+        let server = test_server();
+
+        let initialize = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        });
+        server.handle_message(&initialize.to_string());
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {}
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let tools = &resp_json["result"]["tools"];
+
+        assert!(tools.is_array(), "Should return tools array");
+
+        let tool_names: Vec<&str> = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+
+        assert!(tool_names.contains(&"memory_add"), "Should have memory_add");
+        assert!(
+            tool_names.contains(&"memory_search"),
+            "Should have memory_search"
+        );
+        assert!(
+            tool_names.contains(&"memory_timeline"),
+            "Should have memory_timeline"
+        );
+        assert!(
+            tool_names.contains(&"memory_stats"),
+            "Should have memory_stats"
+        );
+        assert!(
+            tool_names.contains(&"skill_register"),
+            "Should have skill_register"
+        );
+        assert!(tool_names.contains(&"skill_list"), "Should have skill_list");
+        assert!(
+            tool_names.contains(&"agent_register"),
+            "Should have agent_register"
+        );
+        assert!(tool_names.contains(&"agent_list"), "Should have agent_list");
+    }
+
+    #[test]
+    fn test_memory_add_via_mcp() {
+        let server = test_server();
+
+        server.init();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "memory_add",
+                "arguments": {
+                    "title": "Test Memory",
+                    "content": "Test content for MCP"
+                }
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+
+        assert!(resp_json["result"].is_object(), "Should have result");
+        let content = &resp_json["result"]["content"];
+        assert!(content.is_array(), "Should have content array");
+
+        let text = content[0]["text"].as_str().unwrap();
+        assert!(text.contains("observation"), "Should mention observation");
+    }
+
+    #[test]
+    fn test_memory_search_via_mcp() {
+        let server = test_server();
+        server.init();
+
+        let add_request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "memory_add",
+                "arguments": {
+                    "title": "Rust Programming",
+                    "content": "Learning Rust programming language"
+                }
+            }
+        });
+        server.handle_message(&add_request.to_string());
+
+        let search_request = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "memory_search",
+                "arguments": {
+                    "query": "Rust",
+                    "limit": 10
+                }
+            }
+        });
+
+        let response = server.handle_message(&search_request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(text.contains("Rust"), "Should find Rust-related content");
+    }
+
+    #[test]
+    fn test_memory_timeline_via_mcp() {
+        let server = test_server();
+        server.init();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "memory_timeline",
+                "arguments": {
+                    "limit": 10
+                }
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(
+            text.contains("Timeline") || text.contains("No observations"),
+            "Should return timeline or empty message"
+        );
+    }
+
+    #[test]
+    fn test_memory_stats_via_mcp() {
+        let server = test_server();
+        server.init();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "memory_stats",
+                "arguments": {}
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(
+            text.contains("Observations"),
+            "Should contain observation count"
+        );
+    }
+
+    #[test]
+    fn test_skill_register_via_mcp() {
+        let server = test_server();
+        server.init();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "skill_register",
+                "arguments": {
+                    "name": "test-skill",
+                    "description": "A test skill",
+                    "category": "coding"
+                }
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(text.contains("skill"), "Should confirm skill registration");
+    }
+
+    #[test]
+    fn test_skill_list_via_mcp() {
+        let server = test_server();
+        server.init();
+
+        let register_request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "skill_register",
+                "arguments": {
+                    "name": "listable-skill",
+                    "description": "Can be listed"
+                }
+            }
+        });
+        server.handle_message(&register_request.to_string());
+
+        let list_request = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "skill_list",
+                "arguments": {}
+            }
+        });
+
+        let response = server.handle_message(&list_request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(text.contains("skill"), "Should list skills");
+    }
+
+    #[test]
+    fn test_agent_register_via_mcp() {
+        let server = test_server();
+        server.init();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "agent_register",
+                "arguments": {
+                    "name": "TestAgent",
+                    "role": "coder",
+                    "description": "A test agent"
+                }
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(text.contains("agent"), "Should confirm agent registration");
+    }
+
+    #[test]
+    fn test_agent_list_via_mcp() {
+        let server = test_server();
+        server.init();
+
+        let register_request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "agent_register",
+                "arguments": {
+                    "name": "ListableAgent",
+                    "role": "reviewer"
+                }
+            }
+        });
+        server.handle_message(&register_request.to_string());
+
+        let list_request = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "agent_list",
+                "arguments": {}
+            }
+        });
+
+        let response = server.handle_message(&list_request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(
+            text.contains("agent") || text.contains("Agent"),
+            "Should list agents"
+        );
+    }
+
+    #[test]
+    fn test_resources_list() {
+        let server = test_server();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/list",
+            "params": {}
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let resources = &resp_json["result"]["resources"];
+
+        assert!(resources.is_array(), "Should return resources array");
+        assert!(
+            !resources.as_array().unwrap().is_empty(),
+            "Should have resources"
+        );
+
+        let uris: Vec<&str> = resources
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["uri"].as_str().unwrap())
+            .collect();
+
+        assert!(
+            uris.iter().any(|u| u.contains("synapsis://memory")),
+            "Should have memory resource"
+        );
+        assert!(
+            uris.iter().any(|u| u.contains("synapsis://skills")),
+            "Should have skills resource"
+        );
+        assert!(
+            uris.iter().any(|u| u.contains("synapsis://agents")),
+            "Should have agents resource"
+        );
+    }
+
+    #[test]
+    fn test_prompts_list() {
+        let server = test_server();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "prompts/list",
+            "params": {}
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let prompts = &resp_json["result"]["prompts"];
+
+        assert!(prompts.is_array(), "Should return prompts array");
+        assert!(
+            !prompts.as_array().unwrap().is_empty(),
+            "Should have prompts"
+        );
+    }
+
+    #[test]
+    fn test_prompts_get_memory_context() {
+        let server = test_server();
+        server.init();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "prompts/get",
+            "params": {
+                "name": "memory_context",
+                "arguments": {
+                    "limit": 5
+                }
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+
+        if resp_json["result"].is_object() && resp_json["result"]["messages"].is_array() {
+            let messages = &resp_json["result"]["messages"];
+            assert!(
+                !messages.as_array().unwrap().is_empty(),
+                "Should have context messages"
+            );
+        }
+    }
+
+    #[test]
+    fn test_invalid_jsonrpc_request() {
+        let server = test_server();
+
+        let response = server.handle_message("not valid json");
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        assert!(resp_json["error"].is_object(), "Should return error");
+        assert!(resp_json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid JSON"));
+    }
+
+    #[test]
+    fn test_unknown_method_error() {
+        let server = test_server();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "unknown/method",
+            "params": {}
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        assert!(resp_json["error"].is_object(), "Should return error");
+    }
+
+    #[test]
+    fn test_unknown_tool_error() {
+        let server = test_server();
+        server.init();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "nonexistent_tool",
+                "arguments": {}
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        assert!(resp_json["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Unknown tool"));
+    }
+
+    #[test]
+    fn test_tool_without_arguments() {
+        let server = test_server();
+        server.init();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "memory_stats"
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        assert!(
+            resp_json["result"].is_object(),
+            "Should handle missing arguments"
+        );
+    }
+
+    #[test]
+    fn test_request_id_preserved() {
+        let server = test_server();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 42,
+            "method": "initialize",
+            "params": {}
+        });
+
+        let response = server.handle_message(&request.to_string());
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+
+        assert_eq!(resp_json["id"], 42, "Request ID should be preserved");
+    }
+
+    #[test]
+    fn test_multiple_memory_operations() {
+        let server = test_server();
+        server.init();
+
+        let titles = ["First", "Second", "Third"];
+
+        for title in &titles {
+            let request = json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "memory_add",
+                    "arguments": {
+                        "title": title,
+                        "content": format!("Content for {}", title)
+                    }
+                }
+            });
+            server.handle_message(&request.to_string());
+        }
+
+        let search_request = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "memory_search",
+                "arguments": {
+                    "query": "Content",
+                    "limit": 10
+                }
+            }
+        });
+
+        let response = server.handle_message(&search_request.to_string());
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(
+            text.contains("3") || text.contains("result"),
+            "Should find multiple results"
+        );
+    }
+
+    #[test]
+    fn test_task_create_via_mcp() {
+        let server = test_server();
+        server.init();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "task_create",
+                "arguments": {
+                    "title": "Test Task",
+                    "description": "A task for testing"
+                }
+            }
+        });
+
+        let response = server.handle_message(&request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(
+            text.contains("task") || text.contains("Task"),
+            "Should confirm task creation"
+        );
+    }
+
+    #[test]
+    fn test_task_list_via_mcp() {
+        let server = test_server();
+        server.init();
+
+        let create_request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "task_create",
+                "arguments": {
+                    "title": "Listed Task"
+                }
+            }
+        });
+        server.handle_message(&create_request.to_string());
+
+        let list_request = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "task_list",
+                "arguments": {}
+            }
+        });
+
+        let response = server.handle_message(&list_request.to_string());
+        assert!(response.is_some());
+
+        let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+        let content = &resp_json["result"]["content"];
+        let text = content[0]["text"].as_str().unwrap();
+
+        assert!(
+            text.contains("task") || text.contains("Task"),
+            "Should list tasks"
+        );
+    }
+}

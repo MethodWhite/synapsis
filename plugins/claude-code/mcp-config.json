@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "synapsis": {
+      "type": "stdio",
+      "command": "/home/methodwhite/Projects/synapsis/target/release/synapsis",
+      "args": ["mcp"],
+      "enabled": true,
+      "autoStart": true,
+      "config": {
+        "project_key": "claude-code",
+        "heartbeat_interval": 30,
+        "auto_save_context": true,
+        "tools": [
+          "memory_add",
+          "memory_search",
+          "memory_search_fts",
+          "memory_timeline",
+          "chunk_create",
+          "chunk_get",
+          "global_context_set",
+          "global_context_get",
+          "context_export",
+          "context_import",
+          "agent_session_register",
+          "agent_heartbeat",
+          "agents_active",
+          "lock_acquire",
+          "lock_release",
+          "task_queue_create",
+          "task_claim"
+        ]
+      }
+    }
+  }
+}
