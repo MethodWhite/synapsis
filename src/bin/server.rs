@@ -16,6 +16,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use rand::RngCore;
 
+use synapsis::core::rate_limiter::RateLimiter;
 use synapsis::core::uuid::Uuid;
 use synapsis::infrastructure::database::Database;
 
@@ -29,6 +30,8 @@ struct ServerState {
     challenges: Mutex<HashMap<String, (String, u64)>>,
     /// API keys for authentication (in production, load from secure config)
     api_keys: Vec<String>,
+    /// Rate limiter for DoS protection
+    rate_limiter: RateLimiter,
 }
 
 #[derive(Clone)]
@@ -561,6 +564,7 @@ fn main() {
         sessions: Mutex::new(std::collections::HashMap::new()),
         challenges: Mutex::new(std::collections::HashMap::new()),
         api_keys,
+        rate_limiter: RateLimiter::new(10, 100), // 10 requests per second, burst up to 100
     });
 
     let listener = TcpListener::bind(addr).expect("Failed to bind");

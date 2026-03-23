@@ -50,10 +50,18 @@ impl Database {
             conn.execute_batch(&format!("PRAGMA key = 'x{}'", hex_key)).unwrap();
             // Verify encryption is active
             conn.execute_batch("PRAGMA cipher_version").unwrap();
+            // SQLCipher performance optimizations
+            conn.execute_batch("PRAGMA cipher_page_size = 4096").unwrap();
             conn
         } else {
             Connection::open(&db_path).unwrap()
         };
+
+        // Common performance optimizations for SQLite/SQLCipher
+        conn.execute_batch("PRAGMA journal_mode = WAL").unwrap();
+        conn.execute_batch("PRAGMA synchronous = NORMAL").unwrap();
+        conn.execute_batch("PRAGMA cache_size = -2000").unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
 
         Self {
             conn: Arc::new(Mutex::new(conn)),

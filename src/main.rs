@@ -640,7 +640,7 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                 .and_then(|v| v.as_str())
                 .map(String::from);
 
-            // Whitelist: only allow identified AI agents
+            // Whitelist: only allow identified AI agents and CLI interfaces
             let allowed = [
                 "opencode",
                 "qwen",
@@ -650,6 +650,9 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                 "cursor",
                 "windsurf",
                 "copilot",
+                "mw",
+                "mw-cli",
+                "cli",
             ];
             if !allowed
                 .iter()
