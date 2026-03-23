@@ -12,6 +12,7 @@
 //! Supports TOTP-based MFA as backup when TPM is not available.
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use getrandom::getrandom;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -471,21 +472,7 @@ mod hmac_sha1 {
     }
 }
 
-mod getrandom {
-    pub fn getrandom(dest: &mut [u8]) -> Result<(), ()> {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0) as u64;
 
-        for (i, byte) in dest.iter_mut().enumerate() {
-            let val = seed.wrapping_mul(i as u64 + 1).wrapping_mul(1103515245);
-            *byte = ((val >> 16) ^ val) as u8;
-        }
-        Ok(())
-    }
-}
 
 #[cfg(test)]
 mod tests {

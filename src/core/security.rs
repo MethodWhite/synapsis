@@ -1,5 +1,7 @@
 //! Security Module - Minimal external dependencies
 
+use getrandom::getrandom;
+
 pub struct SecureRng;
 
 impl SecureRng {
@@ -8,33 +10,13 @@ impl SecureRng {
     }
 
     pub fn fill_random(buf: &mut [u8]) {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let mut state = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as u64;
-
-        let pid = std::process::id() as u64;
-
-        for byte in buf.iter_mut() {
-            state = state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            state = state.rotate_left(1);
-            state ^= pid.wrapping_mul(31337);
-            state ^= 17u64.wrapping_mul(state >> 32);
-            *byte = (state >> 32) as u8;
-        }
-
-        for i in (8..buf.len()).step_by(8) {
-            let mut seed = state;
-            let end = buf.len().min(i + 8);
-            for byte in &mut buf[i..end] {
-                seed = seed.wrapping_mul(2805825398015834229);
-                seed = seed.rotate_right(3);
-                *byte = (seed >> 24) as u8;
-            }
+        if let Err(e) = getrandom(buf) {
+            // Fallback: use OS RNG via rand crate if getrandom fails
+            // This should be extremely rare (only in specific environments)
+            eprintln!("[SECURITY WARNING] getrandom failed: {}, using fallback RNG", e);
+            use rand::RngCore;
+            let mut rng = rand::rngs::OsRng;
+            rng.fill_bytes(buf);
         }
     }
 

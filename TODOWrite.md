@@ -6,8 +6,23 @@
 
 - [ ] **Security 10/10 Verification**
   - Assigned to: deepseek-r1-i1
-  - Status: ✅ COMPLETED
-  - Notes: All 6 vulnerabilities mitigated
+  - Status: ⚠️ IN PROGRESS
+  - Notes: 6/7 vulnerabilities mitigated. PQC implementation incomplete, RNG insecure, SQLCipher not integrated.
+
+- [ ] **Implement PQC Cryptography**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ⏳ PENDING
+  - Notes: Replace AES-256-GCM stub with real PQC (CRYSTALS-Kyber-512/Dilithium-4) or update documentation
+
+- [ ] **Fix Insecure RNG**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ⏳ PENDING
+  - Notes: Replace time-based RNG in security.rs and tpm.rs with cryptographic RNG (OsRng/getrandom)
+
+- [ ] **Integrate SQLCipher Encryption**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ⏳ PENDING
+  - Notes: Integrate EncryptedDB into Database or remove unused module
 
 - [ ] **GitHub Repository Setup**
   - Assigned to: huihui-qwen-9b
@@ -31,6 +46,16 @@
   - Status: ⏳ PENDING
   - Notes: Complete MCP tools documentation
 
+- [ ] **Integrate Rate Limiting**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ⏳ PENDING
+  - Notes: Integrate rate_limiter.rs into TCP/MCP servers for DoS protection
+
+- [ ] **Complete MCP Tools Implementation**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ⏳ PENDING
+  - Notes: Implement missing MCP tools (web_research, cve_search, security_classify, etc.)
+
 ### 📝 MEDIUM (Priority 5-7)
 
 - [ ] **Unit Tests**
@@ -47,6 +72,16 @@
   - Assigned to: huihui-qwen-9b
   - Status: ⏳ PENDING
   - Notes: Compare with Engram baseline
+
+- [ ] **Improve Audit Logging**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ⏳ PENDING
+  - Notes: Implement persistent audit logging in database (replace stub)
+
+- [ ] **Cleanup Dead Code**
+  - Assigned to: deepseek-coder:1.3b
+  - Status: ⏳ PENDING
+  - Notes: Remove #[allow(dead_code)] and unused modules
 
 ### 🐛 LOW (Priority 1-4)
 
@@ -93,9 +128,9 @@
 
 ## Progress Tracking
 
-- **Total Tasks:** 10
-- **Completed:** 1 (10%)
-- **In Progress:** 1 (10%)
-- **Pending:** 8 (80%)
+- **Total Tasks:** 17
+- **Completed:** 0 (0%)
+- **In Progress:** 2 (12%)
+- **Pending:** 15 (88%)
 
-**Last Updated:** 2026-03-22 08:50
+**Last Updated:** 2026-03-23

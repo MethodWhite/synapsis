@@ -538,8 +538,9 @@ fn main() {
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();
 
-    let addr = "127.0.0.1:7438";
+    let addr = "127.0.0.1:7439";
     println!("Listening on {}", addr);
+    println!("(Alternative TCP server - main server uses port 7438)");
     println!("Press Ctrl+C to stop");
     println!();
 
