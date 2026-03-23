@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::net::IpAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 // use std::time::{Duration, SystemTime};
 
@@ -149,20 +149,17 @@ pub struct DeviceRecord {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum DeviceType {
     Desktop,
     Laptop,
     Server,
     Mobile,
     IoT,
+    #[default]
     Unknown,
 }
 
-impl Default for DeviceType {
-    fn default() -> Self {
-        DeviceType::Unknown
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentMetadata {
@@ -180,19 +177,16 @@ pub struct AgentMetadata {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ClientType {
     Cli,
     Ide,
     SpecialCLI,
     Browser,
+    #[default]
     Unknown,
 }
 
-impl Default for ClientType {
-    fn default() -> Self {
-        ClientType::Unknown
-    }
-}
 
 impl ClientType {
     pub fn from_agent_type(agent_type: &str) -> Self {
@@ -257,7 +251,7 @@ impl AgentClassifier {
         }
     }
 
-    pub fn load_registry(&mut self, data_dir: &PathBuf) -> Result<(), std::io::Error> {
+    pub fn load_registry(&mut self, data_dir: &Path) -> Result<(), std::io::Error> {
         let registry_path = data_dir.join("device_registry.json");
         if registry_path.exists() {
             let data = std::fs::read_to_string(&registry_path)?;
@@ -269,7 +263,7 @@ impl AgentClassifier {
         Ok(())
     }
 
-    pub fn save_registry(&self, data_dir: &PathBuf) -> Result<(), std::io::Error> {
+    pub fn save_registry(&self, data_dir: &Path) -> Result<(), std::io::Error> {
         let registry_path = data_dir.join("device_registry.json");
         let reg = self.device_registry.read().unwrap();
         let data = serde_json::to_string_pretty(&*reg)?;
@@ -309,7 +303,7 @@ impl AgentClassifier {
         let mut warnings = Vec::new();
         let mut blocked_reason = None;
 
-        let is_known_device = device_id.map_or(false, |id| {
+        let is_known_device = device_id.is_some_and(|id| {
             self.device_registry.read().unwrap().contains_key(id)
         });
 
@@ -356,7 +350,7 @@ impl AgentClassifier {
             );
         }
 
-        let (trust_level, permission_set) = self.assign_permissions(agent_class, &metadata);
+        let (trust_level, permission_set) = self.assign_permissions(agent_class, metadata);
 
         let can_delegate = permission_set.can_delegate;
 

@@ -41,7 +41,7 @@ impl ToolRegistry {
         for cap in &tool.capabilities {
             self.capability_index
                 .entry(cap.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(name.clone());
         }
     }

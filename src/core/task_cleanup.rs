@@ -88,7 +88,7 @@ impl TaskCleanupManager {
             eprintln!("[TaskCleanup] Removed {} stale pending tasks", removed);
         }
 
-        Ok(removed as usize)
+        Ok(removed)
     }
 
     /// Remove failed tasks older than failed_task_ttl_secs
@@ -108,7 +108,7 @@ impl TaskCleanupManager {
             eprintln!("[TaskCleanup] Removed {} old failed tasks", removed);
         }
 
-        Ok(removed as usize)
+        Ok(removed)
     }
 
     /// Archive old completed tasks (keep only recent ones)
@@ -150,7 +150,7 @@ impl TaskCleanupManager {
             eprintln!("[TaskCleanup] Archived {} old completed tasks", archived);
         }
 
-        Ok(archived as usize)
+        Ok(archived)
     }
 
     /// Vacuum database to reclaim space

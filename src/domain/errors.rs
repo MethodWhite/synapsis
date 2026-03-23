@@ -12,9 +12,9 @@ impl From<rusqlite::Error> for SynapsisError {
     fn from(err: rusqlite::Error) -> Self {
         match err {
             rusqlite::Error::SqliteFailure(e, _) => {
-                SynapsisError::new(ErrorKind::Storage, 0x0101, &format!("SQLite error: {}", e))
+                SynapsisError::new(ErrorKind::Storage, 0x0101, format!("SQLite error: {}", e))
             }
-            _ => SynapsisError::new(ErrorKind::Internal, 0x0A01, &format!("Database error: {}", err))
+            _ => SynapsisError::new(ErrorKind::Internal, 0x0A01, format!("Database error: {}", err))
         }
     }
 }
@@ -22,7 +22,7 @@ impl From<rusqlite::Error> for SynapsisError {
 // Convert serde_json errors to SynapsisError
 impl From<serde_json::Error> for SynapsisError {
     fn from(err: serde_json::Error) -> Self {
-        SynapsisError::new(ErrorKind::Internal, 0x0A04, &format!("JSON error: {}", err))
+        SynapsisError::new(ErrorKind::Internal, 0x0A04, format!("JSON error: {}", err))
     }
 }
 

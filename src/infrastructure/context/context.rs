@@ -33,22 +33,21 @@ pub enum ContextState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum Priority {
     Critical,
     High,
+    #[default]
     Normal,
     Low,
     Frozen,
 }
 
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Normal
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ContextType {
+    #[default]
     Session,
     Project,
     Task,
@@ -56,11 +55,6 @@ pub enum ContextType {
     System,
 }
 
-impl Default for ContextType {
-    fn default() -> Self {
-        ContextType::Session
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ContextRef {

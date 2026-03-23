@@ -22,6 +22,7 @@ pub mod uuid;
 pub mod vault;
 pub mod watchdog;
 pub mod worker;
+pub mod resource_manager;
 
 pub use agent::*;
 pub use auto_integrate::*;

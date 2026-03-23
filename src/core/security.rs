@@ -101,10 +101,8 @@ impl SysCall {
 
     pub fn list_directory(path: &str) -> std::io::Result<Vec<String>> {
         let mut entries = Vec::new();
-        for entry in std::fs::read_dir(path)? {
-            if let Ok(e) = entry {
-                entries.push(e.file_name().into_string().unwrap_or_default());
-            }
+        for e in std::fs::read_dir(path)?.flatten() {
+            entries.push(e.file_name().into_string().unwrap_or_default());
         }
         Ok(entries)
     }

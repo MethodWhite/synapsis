@@ -159,7 +159,7 @@ fn handle_client(
                                 .unwrap_or("");
                             
                             // Verify API key
-                            if !is_valid_api_key(&api_key, &state.api_keys) {
+                            if !is_valid_api_key(api_key, &state.api_keys) {
                                 serde_json::json!({"authenticated": false, "error": "Invalid API key"})
                             } else {
                                 // Verify challenge response
@@ -174,8 +174,8 @@ fn handle_client(
                                         serde_json::json!({"authenticated": false, "error": "Challenge expired"})
                                     } else {
                                         // Verify: response = HMAC(api_key, challenge)
-                                        let _expected = compute_hmac(&api_key, &challenge);
-                                        if verify_hmac(&api_key, &challenge, &response_sig) {
+                                        let _expected = compute_hmac(api_key, challenge);
+                                        if verify_hmac(api_key, challenge, response_sig) {
                                             // Mark session as authenticated
                                             drop(challenges);
                                             state.challenges.lock().unwrap().remove(session_id);
@@ -246,7 +246,7 @@ fn handle_client(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("default");
                             
-                            if !is_valid_api_key(&api_key, &state.api_keys) {
+                            if !is_valid_api_key(api_key, &state.api_keys) {
                                 serde_json::json!({"authenticated": false, "error": "Invalid API key"})
                             } else {
                                 let now = SystemTime::now()

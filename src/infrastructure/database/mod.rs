@@ -187,7 +187,7 @@ impl Database {
 
         if rows == 0 {
             let parts: Vec<&str> = session_id.splitn(3, '-').collect();
-            let agent_type = parts.get(0).unwrap_or(&"unknown");
+            let agent_type = parts.first().unwrap_or(&"unknown");
             let agent_instance = parts.get(1).unwrap_or(&"unknown");
             conn.execute(
                 "INSERT INTO agent_sessions (id, agent_type, agent_instance, project_key, started_at, last_heartbeat, current_task, is_active) VALUES (?, ?, ?, 'default', ?, ?, ?, 1)",
@@ -300,7 +300,7 @@ impl Database {
             "DELETE FROM agent_sessions WHERE is_active = 0 AND last_heartbeat < ?",
             params![threshold],
         )?;
-        Ok(deleted as usize)
+        Ok(deleted)
     }
 
     pub fn get_stats(&self) -> Result<serde_json::Value> {

@@ -175,7 +175,7 @@ impl RecycleBin {
             for keyword in &entry.keywords {
                 by_keyword
                     .entry(keyword.clone())
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(id.to_string());
             }
         }
@@ -184,7 +184,7 @@ impl RecycleBin {
             let mut by_category = self.by_category.write().unwrap();
             by_category
                 .entry(entry.category)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(id.to_string());
         }
 
@@ -192,7 +192,7 @@ impl RecycleBin {
             let mut by_task = self.by_task.write().unwrap();
             by_task
                 .entry(task_id.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(id.to_string());
         }
 
@@ -200,7 +200,7 @@ impl RecycleBin {
             let mut by_agent = self.by_agent.write().unwrap();
             by_agent
                 .entry(entry.agent_fingerprint.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(id.to_string());
         }
 

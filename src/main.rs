@@ -9,7 +9,7 @@ use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
@@ -105,7 +105,7 @@ impl EventBus {
             if let (Some(to), Some(content)) = (&event.to, &event.content) {
                 let mut queue = self.message_queue.lock().unwrap();
                 let msg = PendingMessage::new(event.from.clone(), content.clone());
-                queue.entry(to.clone()).or_insert_with(Vec::new).push(msg);
+                queue.entry(to.clone()).or_default().push(msg);
             }
         }
     }
@@ -123,7 +123,6 @@ impl EventBus {
         let mut queue = self.message_queue.lock().unwrap();
         queue
             .remove(session_id)
-            .map(|msgs| msgs)
             .unwrap_or_default()
     }
 }
@@ -146,6 +145,8 @@ struct AgentSession {
     project: String,
     last_seen: i64,
     auto_reconnect: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    terminal_path: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -192,9 +193,11 @@ struct ServerState {
     event_subscriptions: Arc<Mutex<std::collections::HashMap<String, String>>>,
     discovery: Arc<EnvironmentDiscovery>,
     tool_registry: Arc<RwLock<ToolRegistry>>,
+    #[allow(dead_code)]
     auto_integrate: Arc<Mutex<Option<AutoIntegrate>>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct ConnectionInfo {
     session_id: String,
@@ -250,7 +253,7 @@ impl ServerState {
         }
     }
 
-    fn load_skills(data_dir: &PathBuf) -> Vec<Skill> {
+    fn load_skills(data_dir: &Path) -> Vec<Skill> {
         let skills_file = data_dir.join("skills.json");
         if let Ok(data) = fs::read_to_string(&skills_file) {
             if let Ok(skills) = serde_json::from_str(&data) {
@@ -260,7 +263,7 @@ impl ServerState {
         Self::default_skills()
     }
 
-    fn load_sessions(data_dir: &PathBuf) -> Vec<AgentSession> {
+    fn load_sessions(data_dir: &Path) -> Vec<AgentSession> {
         let sessions_file = data_dir.join("sessions.json");
         if let Ok(data) = fs::read_to_string(&sessions_file) {
             if let Ok(sessions) = serde_json::from_str(&data) {
@@ -396,7 +399,7 @@ impl ServerState {
         ]
     }
 
-    fn register_session(&self, agent_type: &str, instance: &str, session_id: &str, project: &str) {
+    fn register_session(&self, agent_type: &str, instance: &str, session_id: &str, project: &str, terminal_path: Option<String>) {
         let mut sessions = self.sessions.lock().unwrap();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -410,6 +413,7 @@ impl ServerState {
             project: project.into(),
             last_seen: now,
             auto_reconnect: true,
+            terminal_path,
         });
         drop(sessions);
         self.save_sessions();
@@ -473,11 +477,23 @@ impl ServerState {
     }
 
     fn _send_message(&self, from: &str, to: Option<&str>, content: &str) {
+        // Publish event for general messaging
         let mut event = Event::new("message");
         event.from = Some(from.to_string());
         event.to = to.map(String::from);
         event.content = Some(content.to_string());
         self.publish_event(event);
+
+        // If a specific recipient is specified, try to send to their terminal
+        if let Some(to_session) = to {
+            let sessions = self.sessions.lock().unwrap();
+            if let Some(session) = sessions.iter().find(|s| s.session_id == to_session) {
+                if let Some(ref terminal_path) = session.terminal_path {
+                    // Attempt to send to terminal, but don't fail if it doesn't work
+                    let _ = self.send_to_terminal(terminal_path, content);
+                }
+            }
+        }
     }
 
     fn _broadcast(&self, from: &str, content: &str) {
@@ -485,6 +501,15 @@ impl ServerState {
         event.from = Some(from.to_string());
         event.content = Some(content.to_string());
         self.publish_event(event);
+    }
+
+    fn send_to_terminal(&self, terminal_path: &str, content: &str) -> Result<(), std::io::Error> {
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        let mut file = OpenOptions::new().write(true).open(terminal_path)?;
+        file.write_all(content.as_bytes())?;
+        file.write_all(b"\n")?; // Simulate Enter key
+        Ok(())
     }
 
     fn get_agent_default_skills(&self, agent_type: &str) -> Vec<String> {
@@ -609,6 +634,10 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                 .and_then(|a| a.get("project"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("default");
+            let terminal_path = args
+                .and_then(|a| a.get("terminal_path"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
 
             // Whitelist: only allow identified AI agents
             let allowed = [
@@ -660,7 +689,7 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                         "registered"
                     }),
                 );
-                state.register_session(agent_type, &session_id, &session_id, project);
+                state.register_session(agent_type, &session_id, &session_id, project, terminal_path);
                 state.register_connection(&session_id, agent_type, project);
 
                 let agent_skills = state.get_agent_default_skills(agent_type);
@@ -693,6 +722,10 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                 .and_then(|a| a.get("project"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("default");
+            let terminal_path = args
+                .and_then(|a| a.get("terminal_path"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
 
             if let Some(old_session) = state.find_session(agent_type, project) {
                 let _ = state
@@ -715,7 +748,7 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                     .shared
                     .db
                     .agent_heartbeat(&session_id, Some("new-session"));
-                state.register_session(agent_type, &instance, &session_id, project);
+                state.register_session(agent_type, &instance, &session_id, project, terminal_path);
                 serde_json::json!({"session_id": session_id, "reconnected": false})
             }
         }
@@ -756,6 +789,27 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                     }
                 }
                 None => serde_json::json!({"error": "session_id required"}),
+            }
+        }
+
+        "send_message" => {
+            let args = params.and_then(|p| p.get("arguments"));
+            let from_session = args
+                .and_then(|a| a.get("session_id"))
+                .and_then(|v| v.as_str());
+            let to_session = args
+                .and_then(|a| a.get("to"))
+                .and_then(|v| v.as_str());
+            let content = args
+                .and_then(|a| a.get("content"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            match (from_session, to_session) {
+                (Some(from), Some(to)) => {
+                    state._send_message(from, Some(to), content);
+                    serde_json::json!({"status": "sent"})
+                }
+                _ => serde_json::json!({"error": "session_id and to are required"}),
             }
         }
 

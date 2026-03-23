@@ -56,7 +56,7 @@ fn generate_signature(cli_type: &str, uuid: &str, timestamp: i64) -> String {
 /// Verify HMAC signature
 pub fn verify_signature(cli_type: &str, uuid: &str, timestamp: i64, signature: &str) -> bool {
     let expected = generate_signature(cli_type, uuid, timestamp);
-    signature == &expected
+    signature == expected
 }
 
 impl SessionId {

@@ -15,6 +15,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::core::uuid::Uuid;
+use crate::core::resource_manager::{ResourceManager, AgentLimits};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Agent {
@@ -87,21 +88,60 @@ pub struct Orchestrator {
     tasks: Arc<Mutex<HashMap<String, Task>>>,
     messages: Arc<Mutex<Vec<OrchestratorMessage>>>,
     skills_index: Arc<Mutex<HashMap<String, Vec<String>>>>,
+    resource_manager: Arc<ResourceManager>,
+}
+
+impl Default for Orchestrator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Orchestrator {
     pub fn new() -> Self {
+        let resource_manager = Arc::new(ResourceManager::new());
+        
+        // Set default limits for common agent types
+        resource_manager.set_agent_limits("opencode", AgentLimits {
+            max_concurrent_tasks: 3,
+            max_cpu_percent: 50.0,
+            max_memory_mb: 2048,
+            priority: 8,
+        });
+        
+        resource_manager.set_agent_limits("qwen", AgentLimits {
+            max_concurrent_tasks: 2,
+            max_cpu_percent: 70.0,
+            max_memory_mb: 4096,
+            priority: 7,
+        });
+        
+        resource_manager.set_agent_limits("qwen-code", AgentLimits {
+            max_concurrent_tasks: 2,
+            max_cpu_percent: 60.0,
+            max_memory_mb: 3072,
+            priority: 9,
+        });
+        
         Self {
             agents: Arc::new(Mutex::new(HashMap::new())),
             tasks: Arc::new(Mutex::new(HashMap::new())),
             messages: Arc::new(Mutex::new(Vec::new())),
             skills_index: Arc::new(Mutex::new(HashMap::new())),
+            resource_manager,
         }
     }
 
     pub fn new_with_persistence(data_dir: &Path) -> Self {
         let orch = Self::new();
         orch.load(data_dir);
+        
+        // Try to load resource limits if config file exists
+        let limits_path = data_dir.join("resource_limits.json");
+        if limits_path.exists() {
+            let _ = orch.resource_manager.load_limits(&limits_path);
+        }
+        
         orch
     }
 
@@ -126,7 +166,7 @@ impl Orchestrator {
                     for skill in &agent.skills {
                         index
                             .entry(skill.clone())
-                            .or_insert_with(Vec::new)
+                            .or_default()
                             .push(id.clone());
                     }
                 }
@@ -159,11 +199,14 @@ impl Orchestrator {
 
         self.agents.lock().unwrap().insert(id.clone(), agent);
 
+        // Register agent with resource manager (PID unknown initially)
+        self.resource_manager.register_agent(&id, None);
+
         for skill in &skills {
             let mut index = self.skills_index.lock().unwrap();
             index
                 .entry(skill.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(id.clone());
         }
 
@@ -201,7 +244,7 @@ impl Orchestrator {
             let mut index = self.skills_index.lock().unwrap();
             index
                 .entry(skill.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(agent_id.to_string());
         }
 
@@ -255,7 +298,7 @@ impl Orchestrator {
         let (agent_status, agent_skills) = {
             let agents = self.agents.lock().unwrap();
             match agents.get(agent_id) {
-                Some(a) => (a.status.clone(), a.skills.clone()),
+                Some(a) => (a.status, a.skills.clone()),
                 None => return None,
             }
         };
@@ -270,11 +313,9 @@ impl Orchestrator {
                 .required_skills
                 .iter()
                 .any(|s| agent_skills.contains(s))
-            {
-                if self.assign_task(&task.id, agent_id) {
+                && self.assign_task(&task.id, agent_id) {
                     return Some(task);
                 }
-            }
         }
         None
     }
@@ -341,6 +382,28 @@ impl Orchestrator {
     }
 
     pub fn assign_task(&self, task_id: &str, agent_id: &str) -> bool {
+        // Check resource limits before assigning task
+        let agent_type = {
+            let agents = self.agents.lock().unwrap();
+            agents.get(agent_id).map(|a| a.agent_type.clone()).unwrap_or_default()
+        };
+        
+        if !self.resource_manager.can_accept_task(&agent_type) {
+            // Log throttling event
+            self.log_message(
+                "resource_manager",
+                Some(agent_id),
+                MessageType::Coordination,
+                serde_json::json!({
+                    "action": "task_throttled",
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "reason": "system_resources_exceeded"
+                }),
+            );
+            return false;
+        }
+        
         let task_desc = {
             let mut tasks = self.tasks.lock().unwrap();
             if let Some(task) = tasks.get_mut(task_id) {
@@ -358,6 +421,9 @@ impl Orchestrator {
                 agent.status = AgentStatus::Busy;
                 agent.current_task = Some(task_id.to_string());
                 agent.workload += 1;
+                
+                // Update resource manager with current task count
+                self.resource_manager.update_agent_task_count(agent_id, agent.workload as usize);
             }
             drop(agents);
 
@@ -399,6 +465,9 @@ impl Orchestrator {
                 agent.status = AgentStatus::Idle;
                 agent.current_task = None;
                 agent.workload = agent.workload.saturating_sub(1);
+                
+                // Update resource manager with current task count
+                self.resource_manager.update_agent_task_count(&aid, agent.workload as usize);
             }
         }
     }

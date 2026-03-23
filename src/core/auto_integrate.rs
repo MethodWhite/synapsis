@@ -139,7 +139,7 @@ impl AutoIntegrate {
                         registry,
                         "tool.auto_integrated",
                         &tool.name,
-                        &tool.tool_type.as_str().to_string(),
+                        tool.tool_type.as_str(),
                         serde_json::json!({"worker_config": worker_config}),
                     );
                 }
@@ -195,7 +195,7 @@ impl AutoIntegrate {
             return Err(SynapsisError::new(
                 ErrorKind::Internal,
                 0x0D01,
-                &result.error.unwrap_or_default(),
+                result.error.unwrap_or_default(),
             ));
         }
 

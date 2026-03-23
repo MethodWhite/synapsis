@@ -87,7 +87,7 @@ impl AgentRegistryExt {
         )?;
 
         eprintln!("[Agent] Cleaned up {} stale sessions", modified);
-        Ok(modified as usize)
+        Ok(modified)
     }
 
     /// Get active agents count

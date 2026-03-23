@@ -173,6 +173,7 @@ pub struct Orchestrator {
     decisions: Vec<Decision>,
 }
 
+#[derive(Default)]
 struct OrchMetrics {
     total_tasks: u64,
     completed: u64,
@@ -180,16 +181,6 @@ struct OrchMetrics {
     delegations: u64,
 }
 
-impl Default for OrchMetrics {
-    fn default() -> Self {
-        Self {
-            total_tasks: 0,
-            completed: 0,
-            failed: 0,
-            delegations: 0,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 struct Decision {
@@ -232,7 +223,7 @@ impl Orchestrator {
         let id = task.id.clone();
         self.active_tasks.insert(id.clone(), task);
         self.metrics.total_tasks += 1;
-        self.log(&format!("Task planned"), None, Some(id.clone()));
+        self.log(&"Task planned".to_string(), None, Some(id.clone()));
         id
     }
 

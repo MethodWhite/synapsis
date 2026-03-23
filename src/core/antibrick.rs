@@ -157,7 +157,7 @@ impl AntiBrickEngine {
         };
 
         let response = client
-            .get(&format!("{}/api/tags", self.config.ai_endpoint))
+            .get(format!("{}/api/tags", self.config.ai_endpoint))
             .send()
             .ok();
 
@@ -486,7 +486,7 @@ Justificación breve (1 línea):"#,
 
         let client = reqwest::Client::new();
         let response = client
-            .post(&format!("{}/api/generate", self.config.ai_endpoint))
+            .post(format!("{}/api/generate", self.config.ai_endpoint))
             .json(&serde_json::json!({
                 "model": self.config.ai_model,
                 "prompt": prompt,
@@ -517,19 +517,11 @@ Justificación breve (1 línea):"#,
                 }
                 
                 // JSON parse failed
-                if self.config.auto_block_critical && event.risk_level == RiskLevel::Critical {
-                    false
-                } else {
-                    true
-                }
+                !(self.config.auto_block_critical && event.risk_level == RiskLevel::Critical)
             }
             Err(_) => {
                 // AI unavailable, fall back to auto-block for critical
-                if self.config.auto_block_critical && event.risk_level == RiskLevel::Critical {
-                    false
-                } else {
-                    true
-                }
+                !(self.config.auto_block_critical && event.risk_level == RiskLevel::Critical)
             }
         }
     }

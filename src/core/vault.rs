@@ -9,7 +9,10 @@
 //! - Master key auto-generation
 //! - Key rotation support
 
+use aes_gcm::{Aes256Gcm, Key, KeyInit, aead::{Aead, Nonce, OsRng}};
+use aes_gcm::aead::generic_array::GenericArray;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use getrandom::getrandom;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -161,17 +164,8 @@ impl SecureVault {
 
     fn generate_master_key() -> Result<MasterKey, VaultError> {
         let mut key = vec![0u8; 32];
-
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0);
-
-        for (i, byte) in key.iter_mut().enumerate() {
-            let val = seed.wrapping_mul(i as u64 + 1).wrapping_mul(1103515245);
-            *byte = ((val >> 16) ^ val) as u8;
-        }
+        getrandom::getrandom(&mut key)
+            .map_err(|e| VaultError::EncryptionFailed(format!("random generation failed: {}", e)))?;
 
         let key_id = BASE64.encode(&compute_hash(&key)[..8]);
 
@@ -295,6 +289,8 @@ impl SecureVault {
     /// Almacena un secreto genérico (p. ej. tokens OAuth) en `vault_secrets.json`.
     pub fn store_secret(&self, key: &str, value: &str) -> Result<(), VaultError> {
         self.initialize()?;
+        let encrypted = self.encrypt_data(value.as_bytes())?;
+        let encoded = BASE64.encode(&encrypted);
         let path = self.data_dir.join("vault_secrets.json");
         let mut map: HashMap<String, String> = if path.exists() {
             let data = std::fs::read_to_string(&path)?;
@@ -302,7 +298,7 @@ impl SecureVault {
         } else {
             HashMap::new()
         };
-        map.insert(key.to_string(), value.to_string());
+        map.insert(key.to_string(), encoded);
         std::fs::create_dir_all(&self.data_dir)?;
         std::fs::write(&path, serde_json::to_string_pretty(&map)?)?;
         Ok(())
@@ -317,64 +313,117 @@ impl SecureVault {
         }
         let data = std::fs::read_to_string(&path)?;
         let map: HashMap<String, String> = serde_json::from_str(&data)?;
-        map.get(key)
+        let value = map.get(key)
             .cloned()
-            .ok_or_else(|| VaultError::StorageError(format!("missing secret: {key}")))
+            .ok_or_else(|| VaultError::StorageError(format!("missing secret: {key}")))?;
+        
+        // Try to decode as base64
+        match BASE64.decode(&value) {
+            Ok(encrypted) => {
+                // Successfully decoded base64, now try decryption
+                match self.decrypt_data(&encrypted) {
+                    Ok(decrypted) => {
+                        // Successfully decrypted
+                        String::from_utf8(decrypted)
+                            .map_err(|e| VaultError::StorageError(format!("utf8 decode failed: {}", e)))
+                    }
+                    Err(VaultError::DecryptionFailed) => {
+                        // Decryption failed but is base64 - possibly corrupted or wrong key
+                        // Fall back to plaintext assumption and re-encrypt
+                        self.store_secret(key, &value)?;
+                        Ok(value)
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            Err(_) => {
+                // Not valid base64, assume plaintext (legacy format)
+                // Encrypt and update storage for next time
+                self.store_secret(key, &value)?;
+                Ok(value)
+            }
+        }
     }
 
     fn encrypt_key(&self, key: &[u8]) -> Result<Vec<u8>, VaultError> {
+        self.encrypt_data(key)
+    }
+
+    fn encrypt_data(&self, plaintext: &[u8]) -> Result<Vec<u8>, VaultError> {
         let master_key = self.master_key.read().unwrap();
         let mk = master_key.as_ref().ok_or(VaultError::NotInitialized)?;
-
-        let nonce = generate_nonce(12);
-
-        let mut encrypted = Vec::with_capacity(12 + key.len() + 16);
-        encrypted.extend_from_slice(&nonce);
-
-        for (i, &byte) in key.iter().enumerate() {
-            let key_byte = mk.key[i % 32];
-            let nonce_byte = nonce[i % 12];
-            encrypted.push(byte ^ key_byte ^ nonce_byte);
+        if mk.key.len() != 32 {
+            return Err(VaultError::InvalidKeyLength);
         }
+        let key = Key::<Aes256Gcm>::from_slice(&mk.key);
+        let cipher = Aes256Gcm::new(key);
+        let mut nonce = [0u8; 12];
+        getrandom(&mut nonce).map_err(|e| VaultError::EncryptionFailed(e.to_string()))?;
+        let nonce = Nonce::<Aes256Gcm>::from_slice(&nonce);
+        let ciphertext = cipher.encrypt(nonce, plaintext)
+            .map_err(|e| VaultError::EncryptionFailed(e.to_string()))?;
+        let mut result = nonce.to_vec();
+        result.extend(ciphertext);
+        Ok(result)
+    }
 
-        let mac = compute_hmac(&mk.key, &encrypted);
-        encrypted.extend_from_slice(&mac[..16]);
-
-        Ok(encrypted)
+    fn decrypt_data(&self, ciphertext: &[u8]) -> Result<Vec<u8>, VaultError> {
+        if ciphertext.len() < 12 {
+            return Err(VaultError::DecryptionFailed);
+        }
+        let master_key = self.master_key.read().unwrap();
+        let mk = master_key.as_ref().ok_or(VaultError::NotInitialized)?;
+        if mk.key.len() != 32 {
+            return Err(VaultError::InvalidKeyLength);
+        }
+        let key = Key::<Aes256Gcm>::from_slice(&mk.key);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::<Aes256Gcm>::from_slice(&ciphertext[..12]);
+        let plaintext = cipher.decrypt(nonce, &ciphertext[12..])
+            .map_err(|_| VaultError::DecryptionFailed)?;
+        Ok(plaintext)
     }
 
     fn decrypt_key(&self, encrypted: &[u8]) -> Result<Vec<u8>, VaultError> {
-        if encrypted.len() < 28 {
-            return Err(VaultError::DecryptionFailed);
+        // First try new AES-GCM format
+        match self.decrypt_data(encrypted) {
+            Ok(decrypted) => Ok(decrypted),
+            Err(VaultError::DecryptionFailed) => {
+                // Fall back to legacy XOR+HMAC format
+                if encrypted.len() < 28 {
+                    return Err(VaultError::DecryptionFailed);
+                }
+
+                let nonce = &encrypted[..12];
+                let ciphertext = &encrypted[12..(encrypted.len() - 16)];
+                let stored_mac = &encrypted[(encrypted.len() - 16)..];
+
+                let master_key = self.master_key.read().unwrap();
+                let mk = master_key.as_ref().ok_or(VaultError::NotInitialized)?;
+
+                let to_verify = encrypted[..(encrypted.len() - 16)].to_vec();
+                let computed_mac = compute_hmac(&mk.key, &to_verify);
+
+                let mut diff = 0u8;
+                for (a, b) in stored_mac.iter().zip(computed_mac.iter()) {
+                    diff |= a ^ b;
+                }
+
+                if diff != 0 {
+                    return Err(VaultError::AuthenticationFailed);
+                }
+
+                let mut decrypted = Vec::with_capacity(ciphertext.len());
+                for (i, &byte) in ciphertext.iter().enumerate() {
+                    let key_byte = mk.key[i % 32];
+                    let nonce_byte = nonce[i % 12];
+                    decrypted.push(byte ^ key_byte ^ nonce_byte);
+                }
+
+                Ok(decrypted)
+            }
+            Err(e) => Err(e),
         }
-
-        let nonce = &encrypted[..12];
-        let ciphertext = &encrypted[12..(encrypted.len() - 16)];
-        let stored_mac = &encrypted[(encrypted.len() - 16)..];
-
-        let master_key = self.master_key.read().unwrap();
-        let mk = master_key.as_ref().ok_or(VaultError::NotInitialized)?;
-
-        let to_verify = encrypted[..(encrypted.len() - 16)].to_vec();
-        let computed_mac = compute_hmac(&mk.key, &to_verify);
-
-        let mut diff = 0u8;
-        for (a, b) in stored_mac.iter().zip(computed_mac.iter()) {
-            diff |= a ^ b;
-        }
-
-        if diff != 0 {
-            return Err(VaultError::AuthenticationFailed);
-        }
-
-        let mut decrypted = Vec::with_capacity(ciphertext.len());
-        for (i, &byte) in ciphertext.iter().enumerate() {
-            let key_byte = mk.key[i % 32];
-            let nonce_byte = nonce[i % 12];
-            decrypted.push(byte ^ key_byte ^ nonce_byte);
-        }
-
-        Ok(decrypted)
     }
 
     fn save_entries(&self) -> Result<(), VaultError> {
@@ -387,21 +436,10 @@ impl SecureVault {
 
     fn generate_session_key() -> Result<SessionKey, VaultError> {
         let mut encryption_key = vec![0u8; 32];
-        let mut mac_key = vec![0u8; 32];
-
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0);
-
-        for (i, byte) in encryption_key.iter_mut().enumerate() {
-            let val = seed.wrapping_mul(i as u64 + 1).wrapping_mul(1103515245);
-            *byte = ((val >> 16) ^ val) as u8;
-        }
-
-        mac_key = derive_mac_key(&encryption_key);
-
+        getrandom::getrandom(&mut encryption_key)
+            .map_err(|e| VaultError::EncryptionFailed(format!("random generation failed: {}", e)))?;
+        
+        let mac_key = derive_mac_key(&encryption_key);
         let now = current_timestamp();
 
         Ok(SessionKey {
@@ -441,9 +479,10 @@ impl SecureVault {
 #[derive(Debug, Clone)]
 pub enum VaultError {
     NotInitialized,
-    EncryptionFailed,
+    EncryptionFailed(String),
     DecryptionFailed,
     AuthenticationFailed,
+    InvalidKeyLength,
     StorageError(String),
 }
 
@@ -451,9 +490,10 @@ impl std::fmt::Display for VaultError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             VaultError::NotInitialized => write!(f, "Vault not initialized"),
-            VaultError::EncryptionFailed => write!(f, "Encryption failed"),
+            VaultError::EncryptionFailed(e) => write!(f, "Encryption failed: {}", e),
             VaultError::DecryptionFailed => write!(f, "Decryption failed"),
             VaultError::AuthenticationFailed => write!(f, "Authentication failed"),
+            VaultError::InvalidKeyLength => write!(f, "Invalid key length"),
             VaultError::StorageError(e) => write!(f, "Storage error: {}", e),
         }
     }
@@ -503,8 +543,8 @@ fn compute_hash(data: &[u8]) -> Vec<u8> {
 }
 
 fn compute_hmac(key: &[u8], data: &[u8]) -> Vec<u8> {
-    let mut inner_pad = vec![0x36u8; 64];
-    let mut outer_pad = vec![0x5cu8; 64];
+    let mut inner_pad = [0x36u8; 64];
+    let mut outer_pad = [0x5cu8; 64];
 
     for i in 0..64.min(key.len()) {
         inner_pad[i] ^= key[i];
@@ -528,17 +568,18 @@ fn derive_mac_key(encryption_key: &[u8]) -> Vec<u8> {
 
 fn generate_nonce(len: usize) -> Vec<u8> {
     let mut nonce = vec![0u8; len];
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let seed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0);
-
-    for (i, byte) in nonce.iter_mut().enumerate() {
-        let val = seed.wrapping_mul(i as u64 + 1).wrapping_mul(1103515245);
-        *byte = ((val >> 16) ^ val) as u8;
+    if let Err(e) = getrandom::getrandom(&mut nonce) {
+        // Fallback to weak randomness if getrandom fails (should not happen)
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        for (i, byte) in nonce.iter_mut().enumerate() {
+            let val = seed.wrapping_mul(i as u64 + 1).wrapping_mul(1103515245);
+            *byte = ((val >> 16) ^ val) as u8;
+        }
     }
-
     nonce
 }
 

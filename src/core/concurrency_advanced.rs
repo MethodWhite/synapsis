@@ -26,7 +26,7 @@ impl TimedSpinLock {
         }
     }
     pub fn try_lock(&self, _timeout: Duration) -> Option<LockGuard<'_>> {
-        self.lock.try_lock().ok().map(|g| LockGuard(g))
+        self.lock.try_lock().ok().map(LockGuard)
     }
     pub fn lock(&self) -> LockGuard<'_> {
         LockGuard(self.lock.lock().unwrap())

@@ -204,6 +204,12 @@ pub struct ShellWorker {
     antibrick: Option<Arc<crate::core::antibrick::AntiBrickEngine>>,
 }
 
+impl Default for ShellWorker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ShellWorker {
     pub fn new() -> Self {
         Self {
@@ -332,7 +338,7 @@ impl WorkerAgent for ShellWorker {
             .payload
             .get("timeout")
             .and_then(|v| v.as_u64())
-            .unwrap_or(300) as u64;
+            .unwrap_or(300);
 
         let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
         let result = rt.block_on(self.execute_shell_async(command, timeout));
@@ -357,6 +363,12 @@ pub struct FileWorker {
     max_capacity: usize,
     allowed_dirs: Arc<Mutex<Vec<PathBuf>>>,
     last_heartbeat: Arc<Mutex<Instant>>,
+}
+
+impl Default for FileWorker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FileWorker {
@@ -467,6 +479,12 @@ pub struct CodeWorker {
     skills: Vec<String>,
     max_capacity: usize,
     last_heartbeat: Arc<Mutex<Instant>>,
+}
+
+impl Default for CodeWorker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CodeWorker {
@@ -627,6 +645,12 @@ pub struct SearchWorker {
     last_heartbeat: Arc<Mutex<Instant>>,
 }
 
+impl Default for SearchWorker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SearchWorker {
     pub fn new() -> Self {
         Self {
@@ -759,6 +783,12 @@ pub struct GitWorker {
     skills: Vec<String>,
     max_capacity: usize,
     last_heartbeat: Arc<Mutex<Instant>>,
+}
+
+impl Default for GitWorker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GitWorker {

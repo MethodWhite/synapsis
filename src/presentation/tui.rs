@@ -38,7 +38,9 @@ pub struct TuiState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum AppMode {
+    #[default]
     Timeline,
     AddObservation,
     Search,
@@ -47,11 +49,6 @@ pub enum AppMode {
     ConfirmQuit,
 }
 
-impl Default for AppMode {
-    fn default() -> Self {
-        Self::Timeline
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TuiStats {

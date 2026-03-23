@@ -49,15 +49,12 @@ impl NetworkDiscovery {
 
         tokio::spawn(async move {
             while let Ok(event) = receiver.recv_async().await {
-                match event {
-                    ServiceEvent::ServiceResolved(info) => {
-                        let node_id = info.get_property_val_str("node_id").unwrap_or("unknown");
-                        let ip = info.get_addresses().iter().next().map(|a| a.to_string()).unwrap_or_default();
-                        let mut nodes = nodes.lock().unwrap();
-                        println!("[Mesh] Discovered Node: {} @ {}", node_id, ip);
-                        nodes.insert(node_id.to_string(), ip);
-                    }
-                    _ => {}
+                if let ServiceEvent::ServiceResolved(info) = event {
+                    let node_id = info.get_property_val_str("node_id").unwrap_or("unknown");
+                    let ip = info.get_addresses().iter().next().map(|a| a.to_string()).unwrap_or_default();
+                    let mut nodes = nodes.lock().unwrap();
+                    println!("[Mesh] Discovered Node: {} @ {}", node_id, ip);
+                    nodes.insert(node_id.to_string(), ip);
                 }
             }
         });

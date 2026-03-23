@@ -38,7 +38,7 @@ impl Bridge {
         stream.write_all(b"\n")?;
         stream.flush()?;
 
-        let mut reader = std::io::BufReader::new(stream);
+        let reader = std::io::BufReader::new(stream);
         let mut response = String::new();
         if let Some(Ok(line)) = reader.lines().next() {
             response = line;

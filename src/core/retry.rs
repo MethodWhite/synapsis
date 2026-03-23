@@ -109,7 +109,7 @@ impl Retry {
                     if attempt >= self.max_attempts {
                         return Err(e);
                     }
-                    let delay = self.base_delay * (2u32.pow(attempt - 1)).min(30) as u32;
+                    let delay = self.base_delay * (2u32.pow(attempt - 1)).min(30);
                     thread::sleep(delay.min(self.max_delay));
                 }
             }

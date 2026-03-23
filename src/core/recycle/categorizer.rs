@@ -9,10 +9,12 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum MessageCategory {
     Critical,
     Sensitive,
     Important,
+    #[default]
     Standard,
     Ephemeral,
 }
@@ -23,11 +25,6 @@ impl Hash for MessageCategory {
     }
 }
 
-impl Default for MessageCategory {
-    fn default() -> Self {
-        MessageCategory::Standard
-    }
-}
 
 impl MessageCategory {
     pub fn ttl_seconds(&self) -> Option<i64> {
@@ -352,6 +349,7 @@ impl Default for SmartCategorizer {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct MessageMetadata {
     pub task_id: Option<String>,
     pub agent_type: Option<String>,
@@ -362,19 +360,6 @@ pub struct MessageMetadata {
     pub is_broadcast: bool,
 }
 
-impl Default for MessageMetadata {
-    fn default() -> Self {
-        Self {
-            task_id: None,
-            agent_type: None,
-            session_id: None,
-            project: None,
-            method: None,
-            is_encrypted: false,
-            is_broadcast: false,
-        }
-    }
-}
 
 impl MessageMetadata {
     pub fn from_jsonrpc(content: &str) -> Option<Self> {
