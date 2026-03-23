@@ -14,7 +14,7 @@ echo "✅ TCP Server started (PID: $TCP_PID)"
 sleep 2
 
 # Test connection
-echo '{"jsonrpc":"2.0","method":"agents_active","params":{},"id":1}' | nc -q1 127.0.0.1 7438 > /dev/null 2>&1 && echo "✅ TCP Server responding" || echo "❌ TCP Server not responding"
+echo '{"jsonrpc":"2.0","method":"agents_active","params":{},"id":1}' | nc -w1 127.0.0.1 7438 > /dev/null 2>&1 && echo "✅ TCP Server responding" || echo "❌ TCP Server not responding"
 
 # Show status
 echo ""

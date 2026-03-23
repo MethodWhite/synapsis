@@ -283,7 +283,7 @@ exfil_patterns = [
 ### 1. Start Security Stack
 
 ```bash
-cd /home/methodwhite/Projects/synapsis
+cd synapsis
 
 # Start secure server (includes all security layers)
 ./start-secure-server.sh
@@ -483,7 +483,7 @@ if not allowed:
 ### Contact
 - Security Team: security@synapsis.local
 - Incident Response: Run `python3 audit-agent.py full`
-- Logs: `/home/methodwhite/.local/share/synapsis/synapsis.db` (table: observations)
+- Logs: `~/.local/share/synapsis/synapsis.db` (table: observations)
 
 ---
 

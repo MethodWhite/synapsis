@@ -16,7 +16,7 @@
 ### 2. Initialize Local Git
 
 ```bash
-cd /home/methodwhite/Projects/synapsis
+cd synapsis
 
 # Initialize git
 git init

@@ -258,7 +258,7 @@ pkill -f "engram serve"
 {
   "mcpServers": {
     "synapsis": {
-      "command": "/home/methodwhite/.local/bin/synapsis-mcp-bridge",
+      "command": "synapsis-mcp-bridge",
       "args": []
     }
   }

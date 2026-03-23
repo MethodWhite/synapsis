@@ -59,7 +59,7 @@ install_rust() {
 # Build Synapsis
 build_synapsis() {
     echo "📦 Building Synapsis..."
-    cd /home/methodwhite/Projects/synapsis
+    cd "$(dirname "$(realpath "$0" 2>/dev/null || echo "$0")")"
     cargo build --release
     
     # Install to local bin

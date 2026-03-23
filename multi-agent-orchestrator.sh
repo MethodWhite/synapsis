@@ -306,7 +306,7 @@ def check_auth_implementation() -> Dict:
     }
     
     # Check secure server exists
-    secure_server = "/home/methodwhite/Projects/synapsis/secure_tcp_server.py"
+    secure_server = "secure_tcp_server.py"
     if os.path.exists(secure_server):
         with open(secure_server, 'r') as f:
             content = f.read()
@@ -324,7 +324,7 @@ def check_sql_injection_prevention() -> Dict:
         "input_validation": False,
     }
     
-    secure_server = "/home/methodwhite/Projects/synapsis/secure_tcp_server.py"
+    secure_server = "secure_tcp_server.py"
     if os.path.exists(secure_server):
         with open(secure_server, 'r') as f:
             content = f.read()
@@ -342,7 +342,7 @@ def check_lock_security() -> Dict:
         "session_validation": False,
     }
     
-    secure_server = "/home/methodwhite/Projects/synapsis/secure_tcp_server.py"
+    secure_server = "secure_tcp_server.py"
     if os.path.exists(secure_server):
         with open(secure_server, 'r') as f:
             content = f.read()

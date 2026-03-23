@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "synapsis": {
-      "command": "/home/methodwhite/Projects/synapsis/scripts/synapsis-mcp-bridge.sh",
+      "command": "synapsis-mcp-bridge.sh",
       "args": ["--url", "127.0.0.1:7438"]
     }
   }

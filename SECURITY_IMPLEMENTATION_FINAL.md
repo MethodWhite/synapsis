@@ -202,7 +202,7 @@ System Resources:
 echo "my-super-secret-key-$(hostname)" > ~/.synapsis_api_keys
 
 # 2. Start server
-cd /home/methodwhite/Projects/synapsis
+cd synapsis
 ./start-secure-server.sh
 ```
 

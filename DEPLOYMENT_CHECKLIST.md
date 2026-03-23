@@ -71,7 +71,7 @@
 ### 1. Prepare Repository
 
 ```bash
-cd /home/methodwhite/Projects/synapsis
+cd synapsis
 
 # Create .gitignore if not exists
 cat > .gitignore << 'EOF'

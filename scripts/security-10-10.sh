@@ -10,7 +10,7 @@ echo "╚═══════════════════════�
 
 # Agent 1: SQLCipher Encryption (huihui-qwen-9b)
 echo "[Agent 1/3] Implementing SQLCipher encryption..."
-cat >> /home/methodwhite/Projects/synapsis/src/infrastructure/database/encryption.rs << 'RUST'
+cat >> src/infrastructure/database/encryption.rs << 'RUST'
 //! SQLCipher Encryption for Synapsis DB
 //! Implements: SYNAPSIS-2026-005 mitigation
 
@@ -71,7 +71,7 @@ echo "✅ Agent 1: SQLCipher encryption implemented"
 
 # Agent 2: Rate Limiting (deepseek-r1)
 echo "[Agent 2/3] Implementing rate limiting..."
-cat >> /home/methodwhite/Projects/synapsis/src/core/rate_limiter.rs << 'RUST'
+cat >> src/core/rate_limiter.rs << 'RUST'
 //! Rate Limiter for Synapsis MCP/TCP Server
 //! Implements: SYNAPSIS-2026-006 mitigation
 //! Algorithm: Token Bucket with per-session tracking
@@ -160,7 +160,7 @@ echo "✅ Agent 2: Rate limiting implemented"
 
 # Agent 3: Audit Logging (qwen-2.5)
 echo "[Agent 3/3] Implementing audit logging..."
-cat >> /home/methodwhite/Projects/synapsis/src/core/audit_log.rs << 'RUST'
+cat >> src/core/audit_log.rs << 'RUST'
 //! Audit Logging for Synapsis
 //! Implements: Security monitoring and compliance
 

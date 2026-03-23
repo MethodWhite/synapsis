@@ -19,7 +19,7 @@ Add to `~/.claude/settings.json`:
 {
   "mcpServers": {
     "synapsis": {
-      "command": "/home/methodwhite/Projects/synapsis/target/release/synapsis",
+      "command": "synapsis",
       "args": ["mcp"],
       "env": {
         "SYNAPSIS_PROJECT": "claude-code-project"
