@@ -385,45 +385,7 @@ impl SecureVault {
     }
 
     fn decrypt_key(&self, encrypted: &[u8]) -> Result<Vec<u8>, VaultError> {
-        // First try new AES-GCM format
-        match self.decrypt_data(encrypted) {
-            Ok(decrypted) => Ok(decrypted),
-            Err(VaultError::DecryptionFailed) => {
-                // Fall back to legacy XOR+HMAC format
-                if encrypted.len() < 28 {
-                    return Err(VaultError::DecryptionFailed);
-                }
-
-                let nonce = &encrypted[..12];
-                let ciphertext = &encrypted[12..(encrypted.len() - 16)];
-                let stored_mac = &encrypted[(encrypted.len() - 16)..];
-
-                let master_key = self.master_key.read().unwrap();
-                let mk = master_key.as_ref().ok_or(VaultError::NotInitialized)?;
-
-                let to_verify = encrypted[..(encrypted.len() - 16)].to_vec();
-                let computed_mac = compute_hmac(&mk.key, &to_verify);
-
-                let mut diff = 0u8;
-                for (a, b) in stored_mac.iter().zip(computed_mac.iter()) {
-                    diff |= a ^ b;
-                }
-
-                if diff != 0 {
-                    return Err(VaultError::AuthenticationFailed);
-                }
-
-                let mut decrypted = Vec::with_capacity(ciphertext.len());
-                for (i, &byte) in ciphertext.iter().enumerate() {
-                    let key_byte = mk.key[i % 32];
-                    let nonce_byte = nonce[i % 12];
-                    decrypted.push(byte ^ key_byte ^ nonce_byte);
-                }
-
-                Ok(decrypted)
-            }
-            Err(e) => Err(e),
-        }
+        self.decrypt_data(encrypted)
     }
 
     fn save_entries(&self) -> Result<(), VaultError> {

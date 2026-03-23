@@ -183,6 +183,7 @@ struct ServerState {
     event_bus: Arc<EventBus>,
     active_connections: Arc<Mutex<Vec<ConnectionInfo>>>,
     orchestrator: Arc<Orchestrator>,
+    #[allow(dead_code)]
     classifier: Arc<AgentClassifier>,
     challenge_response: Arc<ChallengeResponse>,
     tpm_mfa: Arc<TpmMfaProvider>,

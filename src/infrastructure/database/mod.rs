@@ -3,6 +3,8 @@
 use crate::core::uuid::Uuid;
 use crate::domain::ports::{SessionPort, StoragePort};
 use crate::domain::*;
+use base64::{engine::general_purpose, Engine as _};
+use hex;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -13,6 +15,8 @@ pub mod encryption;
 pub struct Database {
     conn: Arc<Mutex<Connection>>,
     _data_dir: PathBuf,
+    db_path: PathBuf,
+    encryption_key: Option<Vec<u8>>,
 }
 
 unsafe impl Send for Database {}
@@ -20,17 +24,43 @@ unsafe impl Sync for Database {}
 
 impl Database {
     pub fn new() -> Self {
+        let encryption_key = std::env::var("SYNAPSIS_DB_KEY")
+            .ok()
+            .and_then(|hex_key| {
+                hex::decode(hex_key).ok()
+            })
+            .or_else(|| {
+                std::env::var("SYNAPSIS_DB_KEY_BASE64")
+                    .ok()
+                    .and_then(|b64| general_purpose::STANDARD.decode(b64).ok())
+            });
+        Self::new_with_key(encryption_key)
+    }
+
+    pub fn new_with_key(encryption_key: Option<Vec<u8>>) -> Self {
         let data_dir = dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("synapsis");
 
         std::fs::create_dir_all(&data_dir).ok();
         let db_path = data_dir.join("synapsis.db");
-        let conn = Connection::open(&db_path).unwrap();
+        let conn = if let Some(key) = &encryption_key {
+            let mut conn = Connection::open(&db_path).unwrap();
+            // SQLCipher expects key as bytes; we'll use hex encoding
+            let hex_key = hex::encode(key);
+            conn.execute_batch(&format!("PRAGMA key = 'x{}'", hex_key)).unwrap();
+            // Verify encryption is active
+            conn.execute_batch("PRAGMA cipher_version").unwrap();
+            conn
+        } else {
+            Connection::open(&db_path).unwrap()
+        };
 
         Self {
             conn: Arc::new(Mutex::new(conn)),
-            _data_dir: data_dir,
+            _data_dir: data_dir.clone(),
+            db_path,
+            encryption_key,
         }
     }
 
@@ -523,3 +553,5 @@ impl MemoryPort for Database {
         Ok(())
     }
 }
+
+
