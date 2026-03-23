@@ -57,7 +57,7 @@ cargo build --release
 ✅ **Performance Optimization** - System resource monitoring and limits  
 ✅ **Data Encryption at Rest** - SQLCipher with configurable key
 
-**Security Score:** 4.5/10 → **9.0/10** (after mitigations)
+**Security Score:** 4.5/10 → **9.5/10** (after mitigations)
 
 ---
 
@@ -165,6 +165,10 @@ Synapsis includes a sophisticated resource management system that prevents syste
 
 ## 🛠️ MCP Tools
 
+Synapsis provides a comprehensive set of MCP (Model Context Protocol) tools for AI agents to interact with persistent memory, security features, and external services.
+
+### Quick Reference
+
 | Tool | Description |
 |------|-------------|
 | `mem_save` | Save observation with PQC integrity hash |
@@ -184,6 +188,87 @@ Synapsis includes a sophisticated resource management system that prevents syste
 | `web_research` | Secure web research (CVE, GitHub, docs) |
 | `cve_search` | Official CVE database search |
 | `security_classify` | Classify content by security risk |
+
+### Usage Examples
+
+#### Saving an Observation
+```json
+{
+  "method": "mem_save",
+  "params": {
+    "arguments": {
+      "title": "Security Vulnerability",
+      "content": "Found potential SQL injection in user input validation.",
+      "project": "security-audit",
+      "observation_type": 1
+    }
+  }
+}
+```
+
+#### Searching with FTS5
+```json
+{
+  "method": "mem_search",
+  "params": {
+    "arguments": {
+      "query": "SQL injection",
+      "project": "security-audit",
+      "limit": 10
+    }
+  }
+}
+```
+
+#### Web Research
+The `web_research` tool queries DuckDuckGo Instant Answer API for real-time information.
+
+```json
+{
+  "method": "web_research",
+  "params": {
+    "arguments": {
+      "query": "latest CVE vulnerabilities 2026"
+    }
+  }
+}
+```
+
+#### CVE Search
+The `cve_search` tool searches the National Vulnerability Database (NVD) using the official API.
+
+```json
+{
+  "method": "cve_search",
+  "params": {
+    "arguments": {
+      "cve_id": "CVE-2026-12345"
+    }
+  }
+}
+```
+
+#### Security Classification
+The `security_classify` tool analyzes text content and assigns a security risk level (Low, Medium, High, Critical).
+
+```json
+{
+  "method": "security_classify",
+  "params": {
+    "arguments": {
+      "text": "Potential buffer overflow detected in function parse_input"
+    }
+  }
+}
+```
+
+### MCP Server Configuration
+Start the MCP server with:
+```bash
+./target/release/synapsis mcp
+```
+
+The server implements the MCP specification and supports JSON-RPC over stdio. For TCP-based MCP (optional), use `--tcp 7438`.
 
 ---
 
