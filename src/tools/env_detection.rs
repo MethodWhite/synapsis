@@ -17,7 +17,11 @@ const KNOWN_CLIS: &[(&str, &str, Option<&str>)] = &[
     ("gemini", "gemini-cli", Some(".gemini")),
     ("gemini-cli", "gemini-cli", Some(".gemini")),
     ("cline", "cline", Some(".config/rooveterinaryinc.roo-cline")),
-    ("roo-cline", "roo-cline", Some(".config/rooveterinaryinc.roo-cline")),
+    (
+        "roo-cline",
+        "roo-cline",
+        Some(".config/rooveterinaryinc.roo-cline"),
+    ),
     ("kilo", "kilo-code", Some(".config/kilocode.kilo-code")),
     ("kilo-code", "kilo-code", Some(".config/kilocode.kilo-code")),
     ("cursor", "cursor", Some(".config/Cursor")),
@@ -100,7 +104,11 @@ const KNOWN_IDES: &[(&str, &str, Option<&str>)] = &[
     ("vscodium", "codium", Some(".config/VSCodium")),
     // JetBrains
     ("idea", "idea", Some(".config/JetBrains")),
-    ("intellij", "intellij-idea-ultimate", Some(".config/JetBrains")),
+    (
+        "intellij",
+        "intellij-idea-ultimate",
+        Some(".config/JetBrains"),
+    ),
     ("pycharm", "pycharm", Some(".config/JetBrains")),
     ("webstorm", "webstorm", Some(".config/JetBrains")),
     ("goland", "goland", Some(".config/JetBrains")),
@@ -112,7 +120,11 @@ const KNOWN_IDES: &[(&str, &str, Option<&str>)] = &[
     ("appcode", "appcode", Some(".config/JetBrains")),
     ("macron", "macron", Some(".config/JetBrains")),
     ("rider", "rider", Some(".config/JetBrains")),
-    ("gateway", "jetbrains-gateway", Some(".config/jetbrains-gateway")),
+    (
+        "gateway",
+        "jetbrains-gateway",
+        Some(".config/jetbrains-gateway"),
+    ),
     // Modern Editors
     ("zed", "zed", Some(".config/zed")),
     ("helix", "hx", Some(".config/helix")),
@@ -160,14 +172,14 @@ fn detect_cli(name: &str, binary: &str) -> Option<HashMap<String, serde_json::Va
         info.insert("name".to_string(), json!(name));
         info.insert("binary".to_string(), json!(binary));
         info.insert("type".to_string(), json!("cli"));
-        
-        if let Ok version = Command::new(binary).arg("--version").output() {
-            if version.status.success() {
-                let version_str = String::from_utf8_lossy(&version.stdout).trim().to_string();
+
+        if let Ok(output) = Command::new(binary).arg("--version").output() {
+            if output.status.success() {
+                let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 info.insert("version".to_string(), json!(version_str));
             }
         }
-        
+
         return Some(info);
     }
     None
@@ -179,14 +191,14 @@ fn detect_tui(name: &str, binary: &str) -> Option<HashMap<String, serde_json::Va
         info.insert("name".to_string(), json!(name));
         info.insert("binary".to_string(), json!(binary));
         info.insert("type".to_string(), json!("tui"));
-        
-        if let Ok version = Command::new(binary).arg("--version").output() {
-            if version.status.success() {
-                let version_str = String::from_utf8_lossy(&version.stdout).trim().to_string();
+
+        if let Ok(output) = Command::new(binary).arg("--version").output() {
+            if output.status.success() {
+                let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 info.insert("version".to_string(), json!(version_str));
             }
         }
-        
+
         return Some(info);
     }
     None
@@ -198,18 +210,18 @@ fn detect_ide(name: &str, binary: &str) -> Option<HashMap<String, serde_json::Va
         info.insert("name".to_string(), json!(name));
         info.insert("binary".to_string(), json!(binary));
         info.insert("type".to_string(), json!("ide"));
-        
+
         // Try to get version
-        if let Ok version = Command::new(binary).arg("--version").output() {
-            if version.status.success() {
-                let version_str = String::from_utf8_lossy(&version.stdout).trim().to_string();
+        if let Ok(output) = Command::new(binary).arg("--version").output() {
+            if output.status.success() {
+                let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 info.insert("version".to_string(), json!(version_str));
             }
         }
-        
+
         return Some(info);
     }
-    
+
     // Check common IDE paths
     let home = get_home_dir();
     let ide_paths = vec![
@@ -217,17 +229,20 @@ fn detect_ide(name: &str, binary: &str) -> Option<HashMap<String, serde_json::Va
         home.join(format!(".vscode-oss/{}", binary)),
         home.join(format!(".config/{}", binary)),
     ];
-    
+
     for path in ide_paths {
         if path.exists() {
             let mut info = HashMap::new();
             info.insert("name".to_string(), json!(name));
             info.insert("type".to_string(), json!("ide"));
-            info.insert("path".to_string(), json!(path.to_string_lossy().to_string()));
+            info.insert(
+                "path".to_string(),
+                json!(path.to_string_lossy().to_string()),
+            );
             return Some(info);
         }
     }
-    
+
     None
 }
 
@@ -235,28 +250,28 @@ pub fn detect_environment() -> Result<serde_json::Value> {
     let mut clis = Vec::new();
     let mut tais = Vec::new();
     let mut ides = Vec::new();
-    
+
     // Detect CLIs
     for (name, binary, _) in KNOWN_CLIS {
         if let Some(info) = detect_cli(name, binary) {
             clis.push(info);
         }
     }
-    
+
     // Detect TUIs
     for (name, binary) in KNOWN_TUIS {
         if let Some(info) = detect_tui(name, binary) {
             tais.push(info);
         }
     }
-    
+
     // Detect IDEs
     for (name, binary, _) in KNOWN_IDES {
         if let Some(info) = detect_ide(name, binary) {
             ides.push(info);
         }
     }
-    
+
     Ok(json!({
         "status": "success",
         "clis": clis,
@@ -268,26 +283,26 @@ pub fn detect_environment() -> Result<serde_json::Value> {
 
 pub fn detect_mcp_compatible() -> Result<serde_json::Value> {
     let mut mcp_compatible = Vec::new();
-    
+
     // Check which detected CLIs support MCP
     for (name, binary, config_dir) in KNOWN_CLIS {
         if check_command_exists(binary) {
             // Check if CLI has MCP support or config
             let home = get_home_dir();
-            
+
             // Build config paths based on known config directories
             let mut mcp_configs: Vec<PathBuf> = vec![
                 home.join(format!(".config/{}/mcp.json", name)),
                 home.join(format!(".{}/mcp.json", name)),
                 home.join(format!(".config/{}/mcp-settings.json", name)),
             ];
-            
+
             // Add known config directories from the tuple
             if let Some(dir) = config_dir {
                 mcp_configs.push(home.join(format!("{}/mcp.json", dir)));
                 mcp_configs.push(home.join(format!("{}/mcp_settings.json", dir)));
             }
-            
+
             for config_path in mcp_configs {
                 if config_path.exists() {
                     if let Ok(content) = std::fs::read_to_string(&config_path) {
@@ -295,7 +310,10 @@ pub fn detect_mcp_compatible() -> Result<serde_json::Value> {
                             let mut info = HashMap::new();
                             info.insert("name".to_string(), json!(name));
                             info.insert("binary".to_string(), json!(binary));
-                            info.insert("config_path".to_string(), json!(config_path.to_string_lossy().to_string()));
+                            info.insert(
+                                "config_path".to_string(),
+                                json!(config_path.to_string_lossy().to_string()),
+                            );
                             info.insert("mcp_configured".to_string(), json!(true));
                             mcp_compatible.push(info);
                             break;
@@ -305,7 +323,7 @@ pub fn detect_mcp_compatible() -> Result<serde_json::Value> {
             }
         }
     }
-    
+
     Ok(json!({
         "status": "success",
         "mcp_compatible": mcp_compatible,
@@ -316,7 +334,7 @@ pub fn detect_mcp_compatible() -> Result<serde_json::Value> {
 pub fn get_auto_connect_config() -> Result<serde_json::Value> {
     let mut configs = Vec::new();
     let home = get_home_dir();
-    
+
     // Generate MCP config for each detected CLI that supports MCP
     for (name, binary, config_dir) in KNOWN_CLIS {
         if check_command_exists(binary) {
@@ -353,7 +371,7 @@ pub fn get_auto_connect_config() -> Result<serde_json::Value> {
             configs.push(config);
         }
     }
-    
+
     Ok(json!({
         "status": "success",
         "configs": configs,

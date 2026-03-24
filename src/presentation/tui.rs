@@ -3,6 +3,7 @@
 use crate::SynapsisError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use synapsis_core::core::orchestrator::Orchestrator;
 use synapsis_core::domain::{
     entities::{Observation, SearchParams, SessionSummary},
     ports::{SessionPort, StoragePort},
@@ -21,6 +22,7 @@ pub enum TuiCommand {
 pub struct Tui {
     pub storage: Arc<dyn StoragePort>,
     pub sessions: Arc<dyn SessionPort>,
+    pub orchestrator: Option<Arc<Orchestrator>>,
     pub state: TuiState,
 }
 
@@ -89,10 +91,15 @@ pub struct TaskInfo {
 }
 
 impl Tui {
-    pub fn new(storage: Arc<dyn StoragePort>, sessions: Arc<dyn SessionPort>) -> Self {
+    pub fn new(
+        storage: Arc<dyn StoragePort>,
+        sessions: Arc<dyn SessionPort>,
+        orchestrator: Option<Arc<Orchestrator>>,
+    ) -> Self {
         Self {
             storage,
             sessions,
+            orchestrator,
             state: TuiState::default(),
         }
     }
@@ -146,6 +153,71 @@ impl Tui {
             active_agents: agents,
             pending_tasks: tasks,
         };
+    }
+
+    pub fn refresh_agents_from_orchestrator(&mut self) {
+        if let Some(orch) = &self.orchestrator {
+            let status = orch.get_system_status();
+            if let Some(agents_array) = status.get("agents").and_then(|a| a.as_array()) {
+                self.state.agents = agents_array
+                    .iter()
+                    .filter_map(|a| {
+                        Some(AgentInfo {
+                            agent_type: a.get("agent_type")?.as_str()?.to_string(),
+                            session_id: a.get("id")?.as_str()?.to_string(),
+                            project: a
+                                .get("project")
+                                .and_then(|p| p.as_str())
+                                .unwrap_or("unknown")
+                                .to_string(),
+                            status: format!(
+                                "{:?}",
+                                a.get("status")
+                                    .and_then(|s| s.get("Idle"))
+                                    .unwrap_or(&serde_json::json!("Idle"))
+                            ),
+                            last_heartbeat: a.get("last_heartbeat")?.as_i64()?,
+                        })
+                    })
+                    .collect();
+            }
+        }
+        self.state.selected_index = 0;
+    }
+
+    pub fn refresh_tasks_from_orchestrator(&mut self) {
+        if let Some(orch) = &self.orchestrator {
+            let pending = orch.get_pending_tasks();
+            self.state.tasks = pending
+                .into_iter()
+                .map(|t| TaskInfo {
+                    id: t.id,
+                    title: t.description,
+                    assigned_to: t.assigned_to,
+                    status: format!("{:?}", t.status),
+                    created_at: t.created_at,
+                })
+                .collect();
+        }
+        self.state.selected_index = 0;
+    }
+
+    pub fn update_connection_from_orchestrator(&mut self) {
+        if let Some(orch) = &self.orchestrator {
+            let status = orch.get_system_status();
+            let active_agents = status
+                .get("active_agents")
+                .and_then(|a| a.as_u64())
+                .unwrap_or(0) as usize;
+            let pending_tasks = orch.get_pending_tasks().len();
+
+            self.state.connection_status = ConnectionStatus {
+                mcp_connected: true,
+                tcp_connected: true,
+                active_agents,
+                pending_tasks,
+            };
+        }
     }
 
     pub fn refresh_agents(&mut self, agents: Vec<AgentInfo>) {
@@ -368,9 +440,44 @@ mod tui_impl {
                                     }
                                 }
                                 KeyCode::Char('r') => {
-                                    // Refresh agents - would call orchestrator
+                                    self.refresh_agents_from_orchestrator();
+                                    self.state.message = Some(format!(
+                                        "Refreshed {} agents",
+                                        self.state.agents.len()
+                                    ));
+                                }
+                                _ => {}
+                            },
+                            AppMode::Tasks => match key.code {
+                                KeyCode::Char('q') | KeyCode::Esc => {
+                                    self.state.mode = AppMode::Timeline;
+                                }
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    if self.state.selected_index > 0 {
+                                        self.state.selected_index -= 1;
+                                    }
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    let max = self.state.tasks.len().saturating_sub(1);
+                                    if self.state.selected_index < max {
+                                        self.state.selected_index += 1;
+                                    }
+                                }
+                                KeyCode::Char('r') => {
+                                    self.refresh_tasks_from_orchestrator();
                                     self.state.message =
-                                        Some("Agent refresh not implemented yet".to_string());
+                                        Some(format!("Refreshed {} tasks", self.state.tasks.len()));
+                                }
+                                _ => {}
+                            },
+                            AppMode::Connection => match key.code {
+                                KeyCode::Char('q') | KeyCode::Esc => {
+                                    self.state.mode = AppMode::Timeline;
+                                }
+                                KeyCode::Char('r') => {
+                                    self.update_connection_from_orchestrator();
+                                    self.state.message =
+                                        Some("Connection status refreshed".to_string());
                                 }
                                 _ => {}
                             },
