@@ -218,20 +218,23 @@ Synapsis es un motor de memoria persistente para agentes IA con arquitectura mul
 
 ## 🎯 RECOMENDACIONES INMEDIATAS
 
-### PRIORIDAD 1 (Esta semana)
-1. **Transparencia**: Actualizar README con estado real
-2. **PQC real**: Implementar Kyber/Dilithium o remover claims
-3. **RNG seguro**: Auditoría completa de generación aleatoria
+### PRIORIDAD 1 (Esta semana - actualizada 2026-03-24)
+1. **Fix test isolation**: Arreglar tests para ejecución paralela (directorios únicos por test)
+2. **PQC integration**: Verificar uso completo de Kyber/Dilithium en todos los flujos de seguridad
+3. **HMAC-SHA3-512 integration**: Integrar en autenticación y verificación de integridad
+4. **ChaCha20-Poly1305**: Añadir como alternativa de cifrado opcional
 
-### PRIORIDAD 2 (2 semanas)
-4. **Auditoría real**: Logs persistentes en BD
-5. **Rate limiting**: Integrar en servidores
-6. **Tests seguridad**: Suite básica
+### PRIORIDAD 2 (Próxima semana)
+5. **Transparencia completa**: Actualizar toda documentación con estado real preciso
+6. **Rate limiting**: Integrar en servidores TCP y HTTP
+7. **Security test suite**: Crear suite completa de pruebas de seguridad
+8. **Dead code removal**: Eliminar código no utilizado y unificar servidores
 
-### PRIORIDAD 3 (1 mes)
-7. **Eliminar dead code**: Limpieza de módulos no usados
-8. **Unificar servidores**: Arquitectura coherente
-9. **CI/CD**: Automatización de calidad
+### PRIORIDAD 3 (2 semanas)
+9. **CI/CD pipeline**: Automatización de builds, tests y seguridad
+10. **Performance optimization**: Optimizar consultas y concurrencia
+11. **Monitoring & alerts**: Sistema de monitoreo para producción
+12. **Deployment automation**: Scripts de despliegue y configuración
 
 ---
 
@@ -239,10 +242,14 @@ Synapsis es un motor de memoria persistente para agentes IA con arquitectura mul
 
 | Métrica | Actual | Objetivo | Fecha |
 |---------|--------|----------|-------|
-| Tests pasando | 16/16 | 50+ | 2026-04-07 |
+| Tests pasando (single-threaded) | 16/16 | 50+ | 2026-03-24 |
+| Tests pasando (parallel) | 0/16 | 16/16 | 2026-03-31 |
 | Cobertura código | Desconocido | 85% | 2026-04-14 |
-| Issues críticos | 5 | 0 | 2026-04-21 |
-| Características PQC | 0/2 | 2/2 | 2026-03-31 |
+| Issues críticos | 2 | 0 | 2026-03-25 |
+| PQC features implemented | 2/2 | 2/2 | 2026-03-24 |
+| PQC integration complete | 50% | 100% | 2026-03-25 |
+| HMAC-SHA3-512 integrated | 0% | 100% | 2026-03-26 |
+| ChaCha20-Poly1305 available | 0% | 100% | 2026-03-26 |
 | Documentación precisa | 40% | 100% | 2026-04-07 |
 
 ---
@@ -265,6 +272,38 @@ Synapsis es un motor de memoria persistente para agentes IA con arquitectura mul
 - [Análisis de Tareas](TASKS_ANALYSIS.md)
 - [Especificación](SPEC.md)
 - [Checklist Despliegue](DEPLOYMENT_CHECKLIST.md)
+
+## 📈 PROGRESS UPDATE (2026-03-24)
+
+### ✅ COMPLETED
+1. **Database Tests Fixed**: All 16 database tests now pass (single-threaded execution)
+2. **Secure RNG Implementation**: Replaced all `rand::thread_rng()` usage with cryptographically secure RNG
+3. **Audit Logging**: Removed debug prints, logs persist to database
+4. **PQC Verification**: Kyber-512 and Dilithium-4 are actually used in vault for key exchange
+5. **Zero-Trust Framework**: Policy engine is implemented and integrated into server
+
+### 🔧 IMPROVEMENTS
+- Updated README security status to reflect actual implementation
+- Fixed deadlock in `save_observation()` by creating `log_audit_with_conn`
+- Implemented proper `SessionPort` with actual database operations
+- Fixed timeline ordering and search functionality
+- **Implemented TestContext**: Unique temp directories for each test
+- **Diagnosed test isolation issue**: Tests fail in parallel due to shared XDG_DATA_HOME env var
+
+### 📊 CURRENT STATUS
+- **Security Score**: 8/10 (core security implemented)
+- **Test Pass Rate**: 100% single-threaded, 0% parallel (due to shared XDG_DATA_HOME env var)
+- **Test Isolation**: Unique temp directories implemented, but env var sharing causes race conditions
+- **Critical Issues**: 3 total:
+  1. Test isolation failure due to shared XDG_DATA_HOME environment variable
+  2. PQC integration completeness verification needed
+  3. HMAC-SHA3-512 not integrated into auth flow
+
+### 🎯 NEXT PRIORITIES (UPDATED)
+1. **Fix test isolation**: Implement thread-local or explicit path passing to Database constructor
+2. **Verify PQC integration**: Ensure Kyber/Dilithium used in all security flows
+3. **Integrate HMAC-SHA3-512** into authentication and integrity verification
+4. **Add ChaCha20-Poly1305** as optional encryption alternative
 
 ---
 

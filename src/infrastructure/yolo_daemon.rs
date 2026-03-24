@@ -404,6 +404,9 @@ pub struct YoloDaemonStatus {
 }
 
 mod uuid {
+    use crate::core::security::SecureRng;
+    use rand::Rng;
+    
     pub struct Uuid;
 
     impl Uuid {
@@ -412,8 +415,7 @@ mod uuid {
         }
 
         pub fn to_hex_string(&self) -> String {
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
+            let mut rng = SecureRng::new();
             (0..16).map(|_| format!("{:02x}", rng.gen::<u8>())).collect()
         }
     }

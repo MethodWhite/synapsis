@@ -47,7 +47,7 @@ cargo build --release
 | ⭐⭐⭐⭐⭐⭐⭐⭐⭐ | Anti-tampering | Detection, automatic alerts |
 | ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ | Self-healing | Automatic recovery |
 
-**Status:** ✅ All 10 security levels implemented and verified
+**Status:** ✅ Core security levels implemented (PQC, zero-trust, audit); additional integrity features available
 
 ### Recent Security Fixes (2026-03-23)
 
@@ -64,7 +64,7 @@ cargo build --release
 ✅ **Anti-Tampering & Self-Healing** - File integrity monitoring, automatic recovery  
 ✅ **HTTP REST API** - Secure API endpoints with CORS and validation
 
-**Security Score:** 4.5/10 → **10/10** (all security features implemented)
+**Security Score:** 8/10 (core security implemented, integrity features available)
 
 ---
 

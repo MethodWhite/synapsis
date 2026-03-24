@@ -273,12 +273,13 @@ mod database_tests {
         assert_eq!(timeline[0].observation.title, "Third", "Most recent first");
         assert_eq!(timeline[2].observation.title, "First", "Oldest last");
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_timeline_limit() {
-        let ctx = TestContext::new();
-        let db = ctx.db();
+        cleanup_test_dir();
+        let db = test_db();
 
         for i in 0..10 {
             let obs = Observation::new(
@@ -293,12 +294,13 @@ mod database_tests {
         let timeline = db.get_timeline(5).unwrap();
         assert_eq!(timeline.len(), 5, "Should limit to 5 entries");
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_session_create_and_list() {
-        let ctx = TestContext::new();
-        let db = ctx.db();
+        cleanup_test_dir();
+        let db = test_db();
 
         let session_id = db
             .start_session("test-project", "/tmp")
@@ -311,12 +313,13 @@ mod database_tests {
         assert_eq!(sessions[0].project, "test-project");
         assert!(sessions[0].ended_at.is_none(), "Session should be active");
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_session_end() {
-        let ctx = TestContext::new();
-        let db = ctx.db();
+        cleanup_test_dir();
+        let db = test_db();
 
         let session_id = db
             .start_session("test-project", "/tmp")
@@ -330,12 +333,13 @@ mod database_tests {
         assert!(sessions[0].ended_at.is_some(), "Session should be ended");
         assert_eq!(sessions[0].summary.as_deref(), Some("Test summary"));
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_stats_accuracy() {
-        let ctx = TestContext::new();
-        let db = ctx.db();
+        cleanup_test_dir();
+        let db = test_db();
 
         db.start_session("project1", "/tmp").ok();
         db.start_session("project2", "/tmp").ok();
@@ -361,12 +365,13 @@ mod database_tests {
         assert_eq!(stats["agent_sessions"].as_i64().unwrap(), 2);
         assert_eq!(stats["active_agents"].as_i64().unwrap(), 2);
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_search_case_insensitive() {
-        let ctx = TestContext::new();
-        let db = ctx.db();
+        cleanup_test_dir();
+        let db = test_db();
 
         let obs = Observation::new(
             SessionId::new("test"),
@@ -384,12 +389,13 @@ mod database_tests {
         assert_eq!(results_upper.len(), results_mixed.len());
         assert_eq!(results_lower.len(), 1, "Search should be case-insensitive");
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_search_empty_query_returns_all() {
-        let ctx = TestContext::new();
-        let db = ctx.db();
+        cleanup_test_dir();
+        let db = test_db();
 
         for i in 0..3 {
             let obs = Observation::new(
@@ -404,12 +410,13 @@ mod database_tests {
         let results = db.search_fts("", None, 10).unwrap();
         assert_eq!(results.len(), 3, "Empty query should return all");
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_concurrent_save_observations() {
-        let ctx = TestContext::new();
-        let db = ctx.db();
+        cleanup_test_dir();
+        let db = test_db();
         let db_clone = db.clone();
 
         let handle1 = std::thread::spawn(move || {
@@ -446,16 +453,15 @@ mod database_tests {
             "Should have 20 observations from both threads"
         );
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_persistence_across_instances() {
-        let ctx = TestContext::new();
-        println!("[TEST] XDG_DATA_HOME = {:?}", std::env::var("XDG_DATA_HOME"));
-        
+        cleanup_test_dir();
+
         {
-            let db1 = Database::new();
-            db1.init().unwrap();
+            let db1 = test_db();
             let obs = Observation::new(
                 SessionId::new("test"),
                 ObservationType::Manual,
@@ -466,25 +472,21 @@ mod database_tests {
         }
 
         {
-            let db2 = Database::new();
-            db2.init().unwrap();
+            let db2 = test_db();
             let timeline = db2.get_timeline(10).unwrap();
-            println!("[TEST] Timeline length: {}", timeline.len());
-            for entry in &timeline {
-                println!("[TEST] Entry title: {}", entry.observation.title);
-            }
             assert!(
                 timeline.iter().any(|e| e.observation.title == "Persisted"),
                 "Observation should persist across instances"
             );
         }
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_search_with_special_characters() {
-        let ctx = TestContext::new();
-        let db = ctx.db();
+        cleanup_test_dir();
+        let db = test_db();
 
         let obs = Observation::new(
             SessionId::new("test"),
@@ -497,12 +499,13 @@ mod database_tests {
         let results = db.search_fts("quotes", None, 10).unwrap();
         assert_eq!(results.len(), 1, "Should find with special chars");
 
+        cleanup_test_dir();
     }
 
     #[test]
     fn test_search_with_unicode() {
-        let ctx = TestContext::new();
-        let db = ctx.db();
+        cleanup_test_dir();
+        let db = test_db();
 
         let obs = Observation::new(
             SessionId::new("test"),
@@ -515,5 +518,6 @@ mod database_tests {
         let results = db.search_fts("测试", None, 10).unwrap();
         assert_eq!(results.len(), 1, "Should find unicode content");
 
+        cleanup_test_dir();
     }
 }

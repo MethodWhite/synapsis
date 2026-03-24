@@ -630,7 +630,6 @@ impl Database {
 
     /// Log an audit entry (internal version that takes an existing connection)
     fn log_audit_with_conn(&self, conn: &Connection, observation_id: Option<i64>, action: &str, agent_id: &str, old_value: Option<&str>, new_value: Option<&str>, reason: Option<&str>) -> Result<()> {
-        eprintln!("[DEBUG] log_audit_with_conn called, action: {}", action);
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -640,15 +639,12 @@ impl Database {
             "INSERT INTO audit_log (observation_id, action, agent_id, old_value, new_value, reason, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
             params![observation_id, action, agent_id, old_value, new_value, reason, timestamp],
         )?;
-        eprintln!("[DEBUG] log_audit_with_conn: audit logged");
         Ok(())
     }
 
     /// Log an audit entry
     pub fn log_audit(&self, observation_id: Option<i64>, action: &str, agent_id: &str, old_value: Option<&str>, new_value: Option<&str>, reason: Option<&str>) -> Result<()> {
-        eprintln!("[DEBUG] log_audit called, action: {}", action);
         let conn = self.get_conn();
-        eprintln!("[DEBUG] log_audit: lock acquired");
         self.log_audit_with_conn(&conn, observation_id, action, agent_id, old_value, new_value, reason)
     }
 

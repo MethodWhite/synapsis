@@ -171,6 +171,17 @@ impl SessionManager {
         SessionContextManager::new(self.db.clone())
     }
 
+    /// Clean up stale sessions (without ended_at) older than timeout_secs
+    pub fn cleanup_stale_sessions(&self, timeout_secs: i64) -> Result<()> {
+        let conn = self.db.get_conn();
+        let threshold = self.current_timestamp() - timeout_secs;
+        conn.execute(
+            "UPDATE sessions SET ended_at = ?1 WHERE ended_at IS NULL AND started_at < ?2",
+            [threshold, threshold],
+        )?;
+        Ok(())
+    }
+
     fn current_timestamp(&self) -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

@@ -20,11 +20,13 @@ use synapsis::core::auth::tpm::TpmMfaProvider;
 use synapsis::core::auto_integrate::AutoIntegrate;
 use synapsis::core::discovery::EnvironmentDiscovery;
 use synapsis::core::orchestrator::{AgentStatus, Orchestrator};
+use synapsis::core::rate_limiter::RateLimiter;
 use synapsis::core::recycle::bin::RecycleBin;
+use synapsis::core::session_manager::SessionManager;
 use synapsis::core::tool_registry::ToolRegistry;
 use synapsis::core::uuid::Uuid;
-use synapsis::core::rate_limiter::RateLimiter;
 use synapsis::core::vault::SecureVault;
+use synapsis::infrastructure::database::Database;
 use synapsis::infrastructure::shared_state::SharedState;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -122,9 +124,7 @@ impl EventBus {
 
     fn get_pending_messages(&self, session_id: &str) -> Vec<PendingMessage> {
         let mut queue = self.message_queue.lock().unwrap();
-        queue
-            .remove(session_id)
-            .unwrap_or_default()
+        queue.remove(session_id).unwrap_or_default()
     }
 }
 
@@ -220,6 +220,13 @@ impl ServerState {
         let sessions = Self::load_sessions(&data_dir);
 
         let orchestrator = Orchestrator::new_with_persistence(&data_dir);
+        // Clean up stale agents from previous sessions on startup
+        orchestrator.cleanup_stale_agents(300); // 5 minutes
+
+        // Clean up stale sessions from database
+        let db = Database::new();
+        let session_manager = SessionManager::new(Arc::new(db));
+        session_manager.cleanup_stale_sessions(300).ok(); // 5 minutes
 
         let classifier = Arc::new(AgentClassifier::new());
         let challenge_response = Arc::new(ChallengeResponse::new());
@@ -400,7 +407,14 @@ impl ServerState {
         ]
     }
 
-    fn register_session(&self, agent_type: &str, instance: &str, session_id: &str, project: &str, terminal_path: Option<String>) {
+    fn register_session(
+        &self,
+        agent_type: &str,
+        instance: &str,
+        session_id: &str,
+        project: &str,
+        terminal_path: Option<String>,
+    ) {
         let mut sessions = self.sessions.lock().unwrap();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -693,7 +707,13 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                         "registered"
                     }),
                 );
-                state.register_session(agent_type, &session_id, &session_id, project, terminal_path);
+                state.register_session(
+                    agent_type,
+                    &session_id,
+                    &session_id,
+                    project,
+                    terminal_path,
+                );
                 state.register_connection(&session_id, agent_type, project);
 
                 let agent_skills = state.get_agent_default_skills(agent_type);
@@ -801,9 +821,7 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
             let from_session = args
                 .and_then(|a| a.get("session_id"))
                 .and_then(|v| v.as_str());
-            let to_session = args
-                .and_then(|a| a.get("to"))
-                .and_then(|v| v.as_str());
+            let to_session = args.and_then(|a| a.get("to")).and_then(|v| v.as_str());
             let content = args
                 .and_then(|a| a.get("content"))
                 .and_then(|v| v.as_str())
@@ -958,7 +976,11 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
 
-            match state.shared.db.create_task(project, task_type, payload, priority) {
+            match state
+                .shared
+                .db
+                .create_task(project, task_type, payload, priority)
+            {
                 Ok(task_id) => serde_json::json!({"task_id": task_id}),
                 Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
             }
@@ -1054,12 +1076,8 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                 .and_then(|a| a.get("task_id"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let result = args
-                .and_then(|a| a.get("result"))
-                .and_then(|v| v.as_str());
-            let error = args
-                .and_then(|a| a.get("error"))
-                .and_then(|v| v.as_str());
+            let result = args.and_then(|a| a.get("result")).and_then(|v| v.as_str());
+            let error = args.and_then(|a| a.get("error")).and_then(|v| v.as_str());
 
             match state.shared.db.complete_task(task_id, result, error) {
                 Ok(_) => serde_json::json!({"completed": true, "task_id": task_id}),
@@ -1085,25 +1103,25 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                 .and_then(|a| a.get("audit_notes"))
                 .and_then(|v| v.as_str());
 
-            match state.shared.db.audit_task(task_id, auditor_session_id, audit_status, audit_notes) {
+            match state
+                .shared
+                .db
+                .audit_task(task_id, auditor_session_id, audit_status, audit_notes)
+            {
                 Ok(_) => serde_json::json!({"audited": true, "task_id": task_id}),
                 Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
             }
         }
 
-        "db_check_integrity" => {
-            match state.shared.db.check_integrity() {
-                Ok(result) => serde_json::json!({"integrity": result}),
-                Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
-            }
-        }
+        "db_check_integrity" => match state.shared.db.check_integrity() {
+            Ok(result) => serde_json::json!({"integrity": result}),
+            Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
+        },
 
-        "db_health" => {
-            match state.shared.db.get_database_health() {
-                Ok(health) => serde_json::json!({"health": health}),
-                Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
-            }
-        }
+        "db_health" => match state.shared.db.get_database_health() {
+            Ok(health) => serde_json::json!({"health": health}),
+            Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
+        },
 
         "task_delegate" => {
             let args = params.and_then(|p| p.get("arguments"));
@@ -1133,21 +1151,21 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
 
         "task_list" => {
             let args = params.and_then(|p| p.get("arguments"));
-            let project = args
-                .and_then(|a| a.get("project"))
-                .and_then(|v| v.as_str());
+            let project = args.and_then(|a| a.get("project")).and_then(|v| v.as_str());
             let task_type = args
                 .and_then(|a| a.get("task_type"))
                 .and_then(|v| v.as_str());
-            let status = args
-                .and_then(|a| a.get("status"))
-                .and_then(|v| v.as_str());
+            let status = args.and_then(|a| a.get("status")).and_then(|v| v.as_str());
             let limit = args
                 .and_then(|a| a.get("limit"))
                 .and_then(|v| v.as_i64())
                 .map(|l| l as i32);
 
-            match state.shared.db.list_tasks(project, task_type, status, limit) {
+            match state
+                .shared
+                .db
+                .list_tasks(project, task_type, status, limit)
+            {
                 Ok(tasks) => serde_json::json!({"tasks": tasks}),
                 Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
             }
@@ -1195,7 +1213,10 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
     });
 
     serde_json::to_string(&response).unwrap_or_else(|e| {
-        format!("{{\"jsonrpc\":\"2.0\",\"error\":{{\"message\":\"{}\"}},\"id\":null}}", e)
+        format!(
+            "{{\"jsonrpc\":\"2.0\",\"error\":{{\"message\":\"{}\"}},\"id\":null}}",
+            e
+        )
     })
 }
 
@@ -1203,13 +1224,13 @@ fn main() {
     println!("Synapsis v{} - YOLO Mode Active", env!("CARGO_PKG_VERSION"));
     println!("TCP Server: 127.0.0.1:7438");
     println!("Ready for autonomous multi-agent operations");
-    
+
     let state = Arc::new(ServerState::new());
-    
+
     let addr = format!("127.0.0.1:{}", 7438);
     let listener = std::net::TcpListener::bind(&addr).unwrap();
     println!("[TCP] Listening on {}", addr);
-    
+
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {

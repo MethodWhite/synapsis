@@ -15,6 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use rand::RngCore;
+use synapsis::core::security::SecureRng;
 
 use synapsis::core::rate_limiter::RateLimiter;
 use synapsis::core::uuid::Uuid;
@@ -49,7 +50,7 @@ struct SessionInfo {
 /// Generate a random challenge (32 bytes, hex encoded)
 fn generate_challenge() -> String {
     let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    SecureRng::fill_random(&mut bytes);
     hex::encode(bytes)
 }
 

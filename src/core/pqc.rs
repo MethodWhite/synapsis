@@ -14,13 +14,15 @@ use pqcrypto_traits::kem::{PublicKey, SecretKey, Ciphertext, SharedSecret};
 use pqcrypto_traits::sign::{PublicKey as SignPublicKey, SecretKey as SignSecretKey, DetachedSignature};
 use rand::RngCore;
 
+use super::security::SecureRng;
+
 /// Encrypt data with AES-256-GCM
 pub fn encrypt(plaintext: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
     let cipher = Aes256Gcm::new_from_slice(key)
         .map_err(|e| format!("Key error: {}", e))?;
     
     let mut nonce_bytes = [0u8; 12];
-    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    SecureRng::fill_random(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
     
     let ciphertext = cipher
@@ -58,7 +60,7 @@ pub fn decrypt(ciphertext: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
 /// Generate a random key
 pub fn generate_key() -> [u8; 32] {
     let mut key = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut key);
+    SecureRng::fill_random(&mut key);
     key
 }
 

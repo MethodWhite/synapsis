@@ -21,6 +21,8 @@ use std::io::{self, Read, Write};
 use std::fs;
 
 use ctrlc;
+use rand::Rng;
+use super::security::SecureRng;
 
 // Port ranges according to IANA
 const WELL_KNOWN_PORTS: std::ops::Range<u16> = 0..1024;
@@ -323,8 +325,7 @@ impl ServerProtection {
     
     /// Select a random port within range
     fn select_random_port(min: u16, max: u16) -> u16 {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = SecureRng::new();
         rng.gen_range(min..=max)
     }
     
@@ -512,8 +513,7 @@ impl ProcessIdentityManager {
     
     /// Generate random session ID
     fn generate_session_id() -> String {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = SecureRng::new();
         format!("{:x}", rng.gen::<u64>())
     }
     
@@ -538,8 +538,7 @@ impl ProcessIdentityManager {
         }
         
         // Fallback: add random suffix
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = SecureRng::new();
         candidate = format!("{}-{:x}", base, rng.gen::<u32>());
         candidate
     }
