@@ -47,6 +47,7 @@ pub mod session_id;
 pub mod task_cleanup;
 pub mod terminal_writer;
 pub mod session_manager;
+pub mod session_context;
 pub mod audit_log;
 pub mod timeline_manager;
 pub mod chunk_query;

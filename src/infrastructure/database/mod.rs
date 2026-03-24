@@ -38,13 +38,16 @@ impl Database {
     }
 
     pub fn new_with_key(encryption_key: Option<Vec<u8>>) -> Self {
+        eprintln!("[DEBUG] Database::new_with_key started");
         let data_dir = dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("synapsis");
 
         std::fs::create_dir_all(&data_dir).ok();
         let db_path = data_dir.join("synapsis.db");
+        eprintln!("[DEBUG] Database path: {:?}", db_path);
         let conn = if let Some(key) = &encryption_key {
+            eprintln!("[DEBUG] Using encryption key");
             let mut conn = Connection::open(&db_path).unwrap();
             // SQLCipher expects key as bytes; we'll use hex encoding
             let hex_key = hex::encode(key);
@@ -55,14 +58,17 @@ impl Database {
             conn.execute_batch("PRAGMA cipher_page_size = 4096").unwrap();
             conn
         } else {
+            eprintln!("[DEBUG] Opening unencrypted connection");
             Connection::open(&db_path).unwrap()
         };
+        eprintln!("[DEBUG] Connection opened");
 
         // Common performance optimizations for SQLite/SQLCipher
         conn.execute_batch("PRAGMA journal_mode = WAL").unwrap();
         conn.execute_batch("PRAGMA synchronous = NORMAL").unwrap();
         conn.execute_batch("PRAGMA cache_size = -2000").unwrap();
         conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        eprintln!("[DEBUG] PRAGMAs set");
 
         Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -462,10 +468,12 @@ impl Database {
     }
 
     pub fn get_stats(&self) -> Result<serde_json::Value> {
+        eprintln!("[DEBUG] get_stats called");
         let conn = self.get_conn();
         let obs: i64 = conn.query_row("SELECT COUNT(*) FROM observations WHERE deleted_at IS NULL", [], |r| r.get(0)).unwrap_or(0);
-        let agents: i64 = conn.query_row("SELECT COUNT(*) FROM agent_sessions", [], |r| r.get(0)).unwrap_or(0);
-        let active: i64 = conn.query_row("SELECT COUNT(*) FROM agent_sessions WHERE is_active = 1", [], |r| r.get(0)).unwrap_or(0);
+        eprintln!("[DEBUG] get_stats: observations count = {}", obs);
+        let agents: i64 = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0)).unwrap_or(0);
+        let active: i64 = conn.query_row("SELECT COUNT(*) FROM sessions WHERE ended_at IS NULL", [], |r| r.get(0)).unwrap_or(0);
         let tasks: i64 = conn.query_row("SELECT COUNT(*) FROM task_queue WHERE status = 'pending'", [], |r| r.get(0)).unwrap_or(0);
 
         Ok(serde_json::json!({
@@ -592,25 +600,37 @@ impl Database {
     }
 
     pub fn search_fts(&self, query: &str, project: Option<&str>, limit: i32) -> Result<Vec<serde_json::Value>> {
+        eprintln!("[DEBUG] search_fts called, query: {}, project: {:?}", query, project);
         let conn = self.get_conn();
         let sql = "SELECT title, content, project FROM observations WHERE deleted_at IS NULL AND (?1 IS NULL OR project = ?1) AND (title LIKE ?2 OR content LIKE ?2) LIMIT ?3";
         let search_term = format!("%{}%", query);
+        eprintln!("[DEBUG] search_fts: search_term = {}", search_term);
 
+        // Debug: count matches
+        let debug_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM observations WHERE deleted_at IS NULL AND (?1 IS NULL OR project = ?1) AND (title LIKE ?2 OR content LIKE ?2)",
+            params![project, search_term],
+            |row| row.get(0)
+        ).unwrap_or(0);
+        eprintln!("[DEBUG] search_fts: debug count = {}", debug_count);
+        
         let mut stmt = conn.prepare(sql)?;
         let rows = stmt.query_map(params![project, search_term, limit], |row| {
             Ok(serde_json::json!({
                 "title": row.get::<_, String>(0)?,
                 "content": row.get::<_, String>(1)?,
-                "project": row.get::<_, String>(2)?,
+                "project": row.get::<_, Option<String>>(2)?,
             }))
         })?;
-
-        Ok(rows.filter_map(|r| r.ok()).collect())
+        
+        let results: Vec<_> = rows.filter_map(|r| r.ok()).collect();
+        eprintln!("[DEBUG] search_fts: found {} results", results.len());
+        Ok(results)
     }
 
-    /// Log an audit entry
-    pub fn log_audit(&self, observation_id: Option<i64>, action: &str, agent_id: &str, old_value: Option<&str>, new_value: Option<&str>, reason: Option<&str>) -> Result<()> {
-        let conn = self.get_conn();
+    /// Log an audit entry (internal version that takes an existing connection)
+    fn log_audit_with_conn(&self, conn: &Connection, observation_id: Option<i64>, action: &str, agent_id: &str, old_value: Option<&str>, new_value: Option<&str>, reason: Option<&str>) -> Result<()> {
+        eprintln!("[DEBUG] log_audit_with_conn called, action: {}", action);
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -620,7 +640,16 @@ impl Database {
             "INSERT INTO audit_log (observation_id, action, agent_id, old_value, new_value, reason, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
             params![observation_id, action, agent_id, old_value, new_value, reason, timestamp],
         )?;
+        eprintln!("[DEBUG] log_audit_with_conn: audit logged");
         Ok(())
+    }
+
+    /// Log an audit entry
+    pub fn log_audit(&self, observation_id: Option<i64>, action: &str, agent_id: &str, old_value: Option<&str>, new_value: Option<&str>, reason: Option<&str>) -> Result<()> {
+        eprintln!("[DEBUG] log_audit called, action: {}", action);
+        let conn = self.get_conn();
+        eprintln!("[DEBUG] log_audit: lock acquired");
+        self.log_audit_with_conn(&conn, observation_id, action, agent_id, old_value, new_value, reason)
     }
 
     /// Get audit trail for an observation
@@ -669,7 +698,8 @@ impl Database {
         )?;
         
         // Log audit entry
-        self.log_audit(
+        self.log_audit_with_conn(
+            &conn,
             Some(observation_id.0),
             "update",
             agent_id,
@@ -708,7 +738,8 @@ impl Database {
         )?;
         
         // Log audit entry
-        self.log_audit(
+        self.log_audit_with_conn(
+            &conn,
             Some(observation_id.0),
             "delete",
             agent_id,
@@ -747,7 +778,8 @@ impl Database {
         )?;
         
         // Log audit entry
-        self.log_audit(
+        self.log_audit_with_conn(
+            &conn,
             Some(observation_id.0),
             "restore",
             agent_id,
@@ -768,8 +800,10 @@ impl Default for Database {
 
 impl StoragePort for Database {
     fn init(&self) -> Result<()> {
+        eprintln!("[DEBUG] Database::init called");
         let conn = self.get_conn();
         self.create_tables(&conn)?;
+        eprintln!("[DEBUG] Tables created successfully");
         Ok(())
     }
 
@@ -839,7 +873,9 @@ impl StoragePort for Database {
     }
 
     fn save_observation(&self, obs: &Observation) -> Result<ObservationId> {
+        eprintln!("[DEBUG] save_observation called, title: {}", obs.title);
         let conn = self.get_conn();
+        eprintln!("[DEBUG] save_observation: lock acquired");
         
         // Convert enums to integers
         let observation_type_int = match obs.observation_type {
@@ -872,14 +908,16 @@ impl StoragePort for Database {
         };
         
         // Check if observation with same sync_id exists
-        eprintln!("[DEBUG] Checking sync_id: {}", obs.sync_id.0);
+        eprintln!("[DEBUG] save_observation: checking for existing observation with sync_id {}", obs.sync_id.0);
         let existing_id: Option<i64> = conn.query_row(
             "SELECT id FROM observations WHERE sync_id = ? AND deleted_at IS NULL",
             [obs.sync_id.0.as_str()],
             |row| row.get(0)
-        ).optional()?; eprintln!("[DEBUG] existing_id: {:?}", existing_id);
+        ).optional()?;
+        eprintln!("[DEBUG] save_observation: existing_id = {:?}", existing_id);
         
         if let Some(existing_id) = existing_id {
+            eprintln!("[DEBUG] save_observation: updating existing observation id {}", existing_id);
             // Update existing observation
             conn.execute(
                 "UPDATE observations SET 
@@ -909,7 +947,8 @@ impl StoragePort for Database {
             )?;
             
             // Log audit for update (agent_id placeholder "system" for now)
-            self.log_audit(
+            self.log_audit_with_conn(
+                &conn,
                 Some(existing_id),
                 "update",
                 "system",
@@ -920,7 +959,9 @@ impl StoragePort for Database {
             
             Ok(ObservationId(existing_id))
         } else {
+            eprintln!("[DEBUG] save_observation: inserting new observation");
             // Insert new observation
+            eprintln!("[DEBUG] save_observation: executing INSERT");
             conn.execute(
                 "INSERT INTO observations (
                  sync_id, session_id, observation_type, title, content, 
@@ -949,12 +990,13 @@ impl StoragePort for Database {
                     classification_int,
                 ],
             )?;
+            eprintln!("[DEBUG] save_observation: INSERT executed successfully");
             
             let id = conn.last_insert_rowid();
-            eprintln!("[DEBUG] Inserted observation id: {}", id);
             
             // Log audit for create
-            self.log_audit(
+            self.log_audit_with_conn(
+                &conn,
                 Some(id),
                 "create",
                 "system",
@@ -1101,24 +1143,129 @@ impl StoragePort for Database {
         Ok(results)
     }
 
-    fn get_timeline(&self, _limit: i32) -> Result<Vec<TimelineEntry>> {
-        // TODO: Implement proper timeline retrieval
-        // For now, return empty vector to satisfy interface
-        Ok(vec![])
+    fn get_timeline(&self, limit: i32) -> Result<Vec<TimelineEntry>> {
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, sync_id, session_id, observation_type, title, content, tool_name, project, scope, topic_key, content_hash, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at, integrity_hash, classification
+             FROM observations
+             WHERE deleted_at IS NULL
+             ORDER BY id DESC
+             LIMIT ?"
+        )?;
+        
+        let rows = stmt.query_map([limit], |row| {
+            let observation_type_int: i64 = row.get(3)?;
+            let scope_int: i64 = row.get(8)?;
+            let classification_int: i64 = row.get(18)?;
+            
+            let observation = Observation {
+                id: ObservationId(row.get(0)?),
+                sync_id: SyncId(row.get(1)?),
+                session_id: SessionId(row.get(2)?),
+                observation_type: match observation_type_int {
+                    0 => ObservationType::Manual,
+                    1 => ObservationType::ToolUse,
+                    2 => ObservationType::FileChange,
+                    3 => ObservationType::Command,
+                    4 => ObservationType::FileRead,
+                    5 => ObservationType::Search,
+                    6 => ObservationType::Decision,
+                    7 => ObservationType::Architecture,
+                    8 => ObservationType::Bugfix,
+                    9 => ObservationType::Pattern,
+                    10 => ObservationType::Config,
+                    11 => ObservationType::Discovery,
+                    12 => ObservationType::Learning,
+                    _ => ObservationType::Manual,
+                },
+                title: row.get(4)?,
+                content: row.get(5)?,
+                tool_name: row.get(6)?,
+                project: row.get(7)?,
+                scope: match scope_int {
+                    0 => Scope::Project,
+                    1 => Scope::Personal,
+                    _ => Scope::Project,
+                },
+                topic_key: row.get(9)?,
+                content_hash: ContentHash(row.get::<_, [u8; 32]>(10)?),
+                revision_count: row.get(11)?,
+                duplicate_count: row.get(12)?,
+                last_seen_at: row.get::<_, Option<i64>>(13)?.map(Timestamp),
+                created_at: Timestamp(row.get(14)?),
+                updated_at: Timestamp(row.get(15)?),
+                deleted_at: row.get::<_, Option<i64>>(16)?.map(Timestamp),
+                integrity_hash: row.get(17)?,
+                classification: match classification_int {
+                    0 => Classification::Public,
+                    1 => Classification::Internal,
+                    2 => Classification::Confidential,
+                    3 => Classification::Secret,
+                    4 => Classification::TopSecret,
+                    _ => Classification::Public,
+                },
+            };
+            Ok(TimelineEntry {
+                observation,
+                is_focus: false,
+            })
+        })?;
+        
+        Ok(rows.filter_map(|r| r.ok()).collect())
     }
 }
 
 impl SessionPort for Database {
-    fn start_session(&self, project: &str, _directory: &str) -> Result<SessionId> {
-        Ok(SessionId::new(project))
+    fn start_session(&self, project: &str, directory: &str) -> Result<SessionId> {
+        let conn = self.get_conn();
+        let id = format!("{}-{}", project, std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis());
+        let started_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        
+        conn.execute(
+            "INSERT INTO sessions (id, project_key, directory, started_at, observation_count) VALUES (?, ?, ?, ?, 0)",
+            params![&id, project, directory, started_at],
+        )?;
+        
+        Ok(SessionId(id))
     }
 
-    fn end_session(&self, _id: &SessionId, _summary: Option<String>) -> Result<()> {
+    fn end_session(&self, id: &SessionId, summary: Option<String>) -> Result<()> {
+        let conn = self.get_conn();
+        let ended_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        
+        conn.execute(
+            "UPDATE sessions SET ended_at = ?, summary = ? WHERE id = ? AND ended_at IS NULL",
+            params![ended_at, summary, &id.0],
+        )?;
+        
         Ok(())
     }
 
     fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
-        Ok(vec![])
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare("SELECT id, project_key, started_at, ended_at, summary, observation_count FROM sessions ORDER BY started_at DESC")?;
+        
+        let sessions = stmt.query_map([], |row| {
+            Ok(SessionSummary {
+                id: SessionId(row.get(0)?),
+                project: row.get(1)?,
+                started_at: Timestamp(row.get::<_, i64>(2)?),
+                ended_at: row.get::<_, Option<i64>>(3)?.map(Timestamp),
+                summary: row.get(4)?,
+                observation_count: row.get(5)?,
+            })
+        })?;
+        
+        Ok(sessions.filter_map(|r| r.ok()).collect())
     }
 }
 

@@ -14,7 +14,7 @@ fn test_db() -> Database {
     env::set_var("XDG_DATA_HOME", "/tmp/synapsis-fuzz-test");
     std::fs::create_dir_all("/tmp/synapsis-fuzz-test/synapsis").ok();
     let db = Database::new();
-
+    db.init().unwrap();
     db
 }
 

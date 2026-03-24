@@ -4,6 +4,7 @@
 //! search functionality, timeline ordering, and session management.
 
 use std::env;
+use std::io::Write;
 use synapsis::domain::entities::*;
 use synapsis::domain::types::*;
 use synapsis::infrastructure::database::Database;
@@ -11,15 +12,27 @@ use synapsis::domain::ports::StoragePort;
 use synapsis::domain::ports::SessionPort;
 
 fn test_db() -> Database {
+    println!("[TEST_DB] Setting XDG_DATA_HOME to /tmp/synapsis-test");
+    let _ = std::io::stdout().flush();
     env::set_var("XDG_DATA_HOME", "/tmp/synapsis-test");
     std::fs::create_dir_all("/tmp/synapsis-test/synapsis").ok();
+    println!("[TEST_DB] Creating Database instance");
+    let _ = std::io::stdout().flush();
     let db = Database::new();
-    db.init().ok();
+    println!("[TEST_DB] Calling init");
+    let _ = std::io::stdout().flush();
+    db.init().unwrap();
+    println!("[TEST_DB] Returning db");
+    let _ = std::io::stdout().flush();
     db
 }
 
 fn cleanup_test_dir() {
+    println!("[CLEANUP] Removing /tmp/synapsis-test");
+    let _ = std::io::stdout().flush();
     std::fs::remove_dir_all("/tmp/synapsis-test").ok();
+    println!("[CLEANUP] Done");
+    let _ = std::io::stdout().flush();
 }
 
 mod database_tests {
@@ -27,6 +40,7 @@ mod database_tests {
 
     #[test]
     fn test_add_and_retrieve_observation() {
+        eprintln!("[TEST] Starting test_add_and_retrieve_observation");
         cleanup_test_dir();
         let db = test_db();
 

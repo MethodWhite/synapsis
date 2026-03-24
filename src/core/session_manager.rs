@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::session_context::SessionContextManager;
+
 /// Session Manager for Synapsis
 pub struct SessionManager {
     db: Arc<Database>,
@@ -39,7 +41,12 @@ impl SessionManager {
         conn.execute(
             "INSERT INTO sessions (id, project, directory, started_at, observation_count)
              VALUES (?1, ?2, ?3, ?4, 0)",
-            [&session_id, project, directory, &self.current_timestamp().to_string()],
+            [
+                &session_id,
+                project,
+                directory,
+                &self.current_timestamp().to_string(),
+            ],
         )?;
 
         eprintln!("[Session] Started: {} (project: {})", session_id, project);
@@ -54,7 +61,11 @@ impl SessionManager {
             "UPDATE sessions
              SET ended_at = ?1, summary = ?2
              WHERE id = ?3",
-            [self.current_timestamp().to_string(), summary.unwrap_or("").to_string(), session_id.to_string()],
+            [
+                self.current_timestamp().to_string(),
+                summary.unwrap_or("").to_string(),
+                session_id.to_string(),
+            ],
         )?;
 
         eprintln!("[Session] Ended: {} with summary", session_id);
@@ -107,22 +118,24 @@ impl SessionManager {
     pub fn get_session(&self, session_id: &str) -> Result<Option<SessionInfo>> {
         let conn = self.db.get_conn();
 
-        let session = conn.query_row(
-            "SELECT id, project, directory, started_at, ended_at, summary, observation_count
+        let session = conn
+            .query_row(
+                "SELECT id, project, directory, started_at, ended_at, summary, observation_count
              FROM sessions WHERE id = ?1",
-            [session_id],
-            |row: &rusqlite::Row| {
-                Ok(SessionInfo {
-                    session_id: row.get(0)?,
-                    project: row.get(1)?,
-                    directory: row.get(2)?,
-                    started_at: row.get(3)?,
-                    ended_at: row.get(4)?,
-                    summary: row.get(5)?,
-                    observation_count: row.get(6)?,
-                })
-            },
-        ).optional()?;
+                [session_id],
+                |row: &rusqlite::Row| {
+                    Ok(SessionInfo {
+                        session_id: row.get(0)?,
+                        project: row.get(1)?,
+                        directory: row.get(2)?,
+                        started_at: row.get(3)?,
+                        ended_at: row.get(4)?,
+                        summary: row.get(5)?,
+                        observation_count: row.get(6)?,
+                    })
+                },
+            )
+            .optional()?;
 
         Ok(session)
     }
@@ -148,7 +161,14 @@ impl SessionManager {
             })
         })?;
 
-        Ok(sessions.filter_map(|r: Result<SessionInfo, rusqlite::Error>| r.ok()).collect())
+        Ok(sessions
+            .filter_map(|r: Result<SessionInfo, rusqlite::Error>| r.ok())
+            .collect())
+    }
+
+    /// Get a SessionContextManager for persisting conversation context
+    pub fn context_manager(&self) -> SessionContextManager {
+        SessionContextManager::new(self.db.clone())
     }
 
     fn current_timestamp(&self) -> i64 {
