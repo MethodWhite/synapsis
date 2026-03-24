@@ -1316,7 +1316,16 @@ impl McpServer {
             }
             "env_detection" => {
                 let mode = args["mode"].as_str();
-                let result = handle_env_detection(mode);
+                let result = match handle_env_detection(mode) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": { "code": -32603, "message": e.to_string() }
+                        }));
+                    }
+                };
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
