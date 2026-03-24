@@ -200,7 +200,7 @@ fn perform_kyber_handshake(
         .map_err(|e| format!("Clone stream for write: {}", e))?;
     let response = format!(
         "{} {}\n",
-        base64::encode(&server_pk),
+        general_purpose::STANDARD.encode(&server_pk),
         general_purpose::STANDARD.encode(&ciphertext)
     );
     writer
