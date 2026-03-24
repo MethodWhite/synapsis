@@ -1,30 +1,31 @@
 //! Synapsis MCP Server Implementation
 use anyhow::Result;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
-use synapsis_core::domain::*;
-use synapsis_core::infrastructure::database::Database;
+use crate::tools::browser_navigation::mcp_tools as browser_navigation_tools;
+use crate::tools::cve_search::mcp_tools as cve_search_tools;
+use crate::tools::env_detection::handle_env_detection;
+use crate::tools::security_classify::mcp_tools as security_classify_tools;
+use crate::tools::web_research::mcp_tools as web_research_tools;
+use synapsis_core::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
+use synapsis_core::core::orchestrator::{AgentStatus, Orchestrator};
+use synapsis_core::core::watchdog::FilesystemWatchdog;
+use synapsis_core::core::PqcryptoProvider;
+use synapsis_core::domain::crypto::{CryptoProvider, PqcAlgorithm};
 use synapsis_core::domain::entities::SearchParams;
+use synapsis_core::domain::*;
 use synapsis_core::infrastructure::agents::AgentRegistry;
+use synapsis_core::infrastructure::database::Database;
 use synapsis_core::infrastructure::plugin::PluginManager;
 use synapsis_core::infrastructure::skills::SkillRegistry;
-use synapsis_core::core::orchestrator::{Orchestrator, AgentStatus};
-use synapsis_core::core::antibrick::{AntiBrickEngine, AntiBrickConfig};
-use synapsis_core::core::watchdog::FilesystemWatchdog;
-use crate::tools::web_research::mcp_tools as web_research_tools;
-use crate::tools::cve_search::mcp_tools as cve_search_tools;
-use crate::tools::security_classify::mcp_tools as security_classify_tools;
-use crate::tools::browser_navigation::mcp_tools as browser_navigation_tools;
-use synapsis_core::domain::crypto::{CryptoProvider, PqcAlgorithm};
-use synapsis_core::core::PqcryptoProvider;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Event {
     event_type: String,
@@ -165,7 +166,7 @@ impl McpServer {
                 d
             })
             .unwrap_or_else(|| PathBuf::from("./synapsis_plugins"));
-        
+
         Self {
             db,
             skills: Arc::new(SkillRegistry::new()),
@@ -190,7 +191,10 @@ impl McpServer {
 
     fn get_agent_id(&self) -> String {
         let client_name_lock = self.client_name.read().unwrap();
-        client_name_lock.as_deref().unwrap_or("mcp-session").to_string()
+        client_name_lock
+            .as_deref()
+            .unwrap_or("mcp-session")
+            .to_string()
     }
 
     fn get_session_id(&self) -> types::SessionId {
@@ -222,10 +226,15 @@ impl McpServer {
     pub fn handle_message(&self, message: &str) -> Option<String> {
         let request: Value = match serde_json::from_str(message) {
             Ok(v) => v,
-            Err(_) => return Some(json!({
-                "jsonrpc": "2.0",
-                "error": { "code": -32700, "message": "Invalid JSON" }
-            }).to_string()),
+            Err(_) => {
+                return Some(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "error": { "code": -32700, "message": "Invalid JSON" }
+                    })
+                    .to_string(),
+                )
+            }
         };
         match self.handle_request(request) {
             Ok(response) => serde_json::to_string(&response).ok(),
@@ -245,8 +254,13 @@ impl McpServer {
 
         match method {
             "initialize" => {
-                let client_protocol = request["params"]["protocolVersion"].as_str().unwrap_or("2024-11-05");
-                let client_name = request["params"]["clientInfo"]["name"].as_str().unwrap_or("mcp-client").to_string();
+                let client_protocol = request["params"]["protocolVersion"]
+                    .as_str()
+                    .unwrap_or("2024-11-05");
+                let client_name = request["params"]["clientInfo"]["name"]
+                    .as_str()
+                    .unwrap_or("mcp-client")
+                    .to_string();
                 {
                     let mut client_name_lock = self.client_name.write().unwrap();
                     *client_name_lock = Some(client_name.clone());
@@ -254,14 +268,17 @@ impl McpServer {
                 // Track connection
                 let connection_id = client_name.clone();
                 let mut connections = self.connections.lock().unwrap();
-                connections.insert(connection_id, ConnectionInfo {
-                    client_name: client_name.clone(),
-                    client_type: "unknown".to_string(),
-                    connected_at: Instant::now(),
-                    last_activity: Instant::now(),
-                    protocol: "mcp-stdin".to_string(),
-                    status: ConnectionStatus::Connected,
-                });
+                connections.insert(
+                    connection_id,
+                    ConnectionInfo {
+                        client_name: client_name.clone(),
+                        client_type: "unknown".to_string(),
+                        connected_at: Instant::now(),
+                        last_activity: Instant::now(),
+                        protocol: "mcp-stdin".to_string(),
+                        status: ConnectionStatus::Connected,
+                    },
+                );
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -281,24 +298,20 @@ impl McpServer {
             }
             "tools/list" => self.list_tools(id),
             "tools/call" => self.call_tool(id, &request["params"]),
-            "resources/list" => {
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "resources": [
-                        { "uri": "synapsis://memory", "name": "Memory" },
-                        { "uri": "synapsis://skills", "name": "Skills" },
-                        { "uri": "synapsis://agents", "name": "Agents" }
-                    ] }
-                }))
-            }
-            "prompts/list" => {
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "prompts": [{ "name": "memory_context" }] }
-                }))
-            }
+            "resources/list" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "resources": [
+                    { "uri": "synapsis://memory", "name": "Memory" },
+                    { "uri": "synapsis://skills", "name": "Skills" },
+                    { "uri": "synapsis://agents", "name": "Agents" }
+                ] }
+            })),
+            "prompts/list" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "prompts": [{ "name": "memory_context" }] }
+            })),
             "agents_active" => {
                 let params = &request["params"];
                 let project = params.get("project").and_then(|v| v.as_str());
@@ -318,10 +331,22 @@ impl McpServer {
             "task_create" => {
                 let params = &request["params"];
                 let args = params.get("arguments").and_then(|v| v.as_object());
-                let project = args.and_then(|a| a.get("project")).and_then(|v| v.as_str()).unwrap_or("default");
-                let task_type = args.and_then(|a| a.get("task_type")).and_then(|v| v.as_str()).unwrap_or("");
-                let payload = args.and_then(|a| a.get("payload")).and_then(|v| v.as_str()).unwrap_or("");
-                let priority = args.and_then(|a| a.get("priority")).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                let project = args
+                    .and_then(|a| a.get("project"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("default");
+                let task_type = args
+                    .and_then(|a| a.get("task_type"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let payload = args
+                    .and_then(|a| a.get("payload"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let priority = args
+                    .and_then(|a| a.get("priority"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0) as i32;
                 // Use the multi_agent module to create task
                 match self.db.create_task(project, task_type, payload, priority) {
                     Ok(task_id) => Ok(json!({
@@ -339,10 +364,19 @@ impl McpServer {
             "session_register" => {
                 let params = &request["params"];
                 let args = params.get("arguments").and_then(|v| v.as_object());
-                let agent_type = args.and_then(|a| a.get("agent_type")).and_then(|v| v.as_str()).unwrap_or("");
-                let project = args.and_then(|a| a.get("project")).and_then(|v| v.as_str()).unwrap_or("default");
+                let agent_type = args
+                    .and_then(|a| a.get("agent_type"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let project = args
+                    .and_then(|a| a.get("project"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("default");
                 let agent_instance = "unknown"; // default instance
-                match self.db.register_agent_session(agent_type, agent_instance, project, None) {
+                match self
+                    .db
+                    .register_agent_session(agent_type, agent_instance, project, None)
+                {
                     Ok(session_id) => Ok(json!({
                         "jsonrpc": "2.0",
                         "id": id,
@@ -685,6 +719,20 @@ impl McpServer {
                         }
                     },
                     {
+                        "name": "env_detection",
+                        "description": "Auto-detect installed CLIs, TUIs, and IDEs. Modes: 'all' (default), 'mcp_compatible', 'auto_config'",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "mode": {
+                                    "type": "string",
+                                    "enum": ["all", "mcp_compatible", "auto_config"],
+                                    "default": "all"
+                                }
+                            }
+                        }
+                    },
+                    {
                         "name": "agent_heartbeat",
                         "description": "Update agent heartbeat and status",
                         "inputSchema": {
@@ -931,15 +979,15 @@ impl McpServer {
                 let title = args["title"].as_str().unwrap_or("Untitled");
                 let content = args["content"].as_str().unwrap_or("");
                 let project = args["project"].as_str().map(|s| s.to_string());
-                
+
                 let mut obs = entities::Observation::new(
                     self.get_session_id(),
                     types::ObservationType::Manual,
                     title.to_string(),
-                    content.to_string()
+                    content.to_string(),
                 );
                 obs.project = project;
-                
+
                 let obs_id = self.db.save_observation(&obs)?;
                 Ok(json!({
                     "jsonrpc": "2.0",
@@ -954,7 +1002,12 @@ impl McpServer {
                 let new_content = args["new_content"].as_str().unwrap_or("");
                 let reason = args["reason"].as_str();
                 // Use client-provided agent_id
-                self.db.update_observation(types::ObservationId(observation_id), new_content, &self.get_agent_id(), reason)?;
+                self.db.update_observation(
+                    types::ObservationId(observation_id),
+                    new_content,
+                    &self.get_agent_id(),
+                    reason,
+                )?;
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -966,7 +1019,11 @@ impl McpServer {
             "memory_delete" => {
                 let observation_id = args["observation_id"].as_i64().unwrap_or(0);
                 let reason = args["reason"].as_str();
-                self.db.delete_observation(types::ObservationId(observation_id), &self.get_agent_id(), reason)?;
+                self.db.delete_observation(
+                    types::ObservationId(observation_id),
+                    &self.get_agent_id(),
+                    reason,
+                )?;
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -975,48 +1032,38 @@ impl McpServer {
                     }
                 }))
             }
-            "memory_timeline" => {
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "content": [{ "type": "text", "text": "Timeline: No observations found." }] }
-                }))
-            }
-            "memory_stats" => {
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "content": [{ "type": "text", "text": "Observations: 0" }] }
-                }))
-            }
-            "agent_register" | "agent_list" => {
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "content": [{ "type": "text", "text": "Registered agent" }] }
-                }))
-            }
-            "skill_register" | "skill_list" => {
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "content": [{ "type": "text", "text": "Registered skill" }] }
-                }))
-            }
-            "task_create" | "task_list" => {
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "content": [{ "type": "text", "text": "Task created" }] }
-                }))
-            }
+            "memory_timeline" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "content": [{ "type": "text", "text": "Timeline: No observations found." }] }
+            })),
+            "memory_stats" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "content": [{ "type": "text", "text": "Observations: 0" }] }
+            })),
+            "agent_register" | "agent_list" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "content": [{ "type": "text", "text": "Registered agent" }] }
+            })),
+            "skill_register" | "skill_list" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "content": [{ "type": "text", "text": "Registered skill" }] }
+            })),
+            "task_create" | "task_list" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "content": [{ "type": "text", "text": "Task created" }] }
+            })),
             "ghost_audit" => {
                 let path = args["path"].as_str().unwrap_or(".");
                 let task_id = self.orchestrator.create_task(
                     &format!("External audit request for {}", path),
                     vec!["code_analysis".into()],
                     5,
-                    None
+                    None,
                 );
                 Ok(json!({
                     "jsonrpc": "2.0",
@@ -1028,11 +1075,15 @@ impl McpServer {
             }
             "pqc_encrypt" => {
                 let plaintext = args["plaintext"].as_str().unwrap_or("");
-                let key_bytes = self.crypto_provider.random_bytes(32)
+                let key_bytes = self
+                    .crypto_provider
+                    .random_bytes(32)
                     .map_err(|e| anyhow::anyhow!("Failed to generate key: {}", e))?;
                 let mut key = [0u8; 32];
                 key.copy_from_slice(&key_bytes);
-                let ciphertext = self.crypto_provider.encrypt(&key, plaintext.as_bytes(), PqcAlgorithm::Aes256Gcm)
+                let ciphertext = self
+                    .crypto_provider
+                    .encrypt(&key, plaintext.as_bytes(), PqcAlgorithm::Aes256Gcm)
                     .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
                 Ok(json!({
                     "jsonrpc": "2.0",
@@ -1042,28 +1093,31 @@ impl McpServer {
                     }
                 }))
             }
-            "wasm_run" => {
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": "WASM execution scheduled via orchestrator." }]
-                    }
-                }))
-            }
+            "wasm_run" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "content": [{ "type": "text", "text": "WASM execution scheduled via orchestrator." }]
+                }
+            })),
             "antibrick_scan" => {
                 let command = args["command"].as_str().unwrap_or("");
                 let args_vec: Vec<String> = args["args"]
                     .as_array()
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(String::from)
+                            .collect()
+                    })
                     .unwrap_or_default();
-                
+
                 let result = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_scan(
                     &self.antibrick,
                     command,
                     args_vec,
                 );
-                
+
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1073,7 +1127,9 @@ impl McpServer {
                 }))
             }
             "antibrick_stats" => {
-                let stats = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_stats(&self.antibrick);
+                let stats = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_stats(
+                    &self.antibrick,
+                );
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1084,7 +1140,10 @@ impl McpServer {
             }
             "antibrick_enable" => {
                 let enable = args["enable"].as_bool().unwrap_or(true);
-                let result = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_enable(&self.antibrick, enable);
+                let result = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_enable(
+                    &self.antibrick,
+                    enable,
+                );
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1094,7 +1153,8 @@ impl McpServer {
                 }))
             }
             "watchdog_stats" => {
-                let stats = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_stats(&self.watchdog);
+                let stats =
+                    synapsis_core::core::watchdog::mcp_tools::handle_watchdog_stats(&self.watchdog);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1104,7 +1164,9 @@ impl McpServer {
                 }))
             }
             "watchdog_verify" => {
-                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_verify(&self.watchdog);
+                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_verify(
+                    &self.watchdog,
+                );
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1115,7 +1177,10 @@ impl McpServer {
             }
             "watchdog_snapshot" => {
                 let path = args["path"].as_str().unwrap_or("/").to_string();
-                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_snapshot(&self.watchdog, path);
+                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_snapshot(
+                    &self.watchdog,
+                    path,
+                );
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1126,7 +1191,10 @@ impl McpServer {
             }
             "watchdog_events" => {
                 let limit = args["limit"].as_u64().unwrap_or(20) as usize;
-                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_events(&self.watchdog, limit);
+                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_events(
+                    &self.watchdog,
+                    limit,
+                );
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1137,7 +1205,10 @@ impl McpServer {
             }
             "watchdog_check_path" => {
                 let path = args["path"].as_str().unwrap_or("/").to_string();
-                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_check_path(&self.watchdog, path);
+                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_check_path(
+                    &self.watchdog,
+                    path,
+                );
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1145,7 +1216,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": result.to_string() }]
                     }
                 }))
-            },
+            }
             "web_research" => {
                 let query = args["query"].as_str().unwrap_or("");
                 let limit = args["limit"].as_u64().unwrap_or(5) as usize;
@@ -1157,7 +1228,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": result.to_string() }]
                     }
                 }))
-            },
+            }
             "cve_search" => {
                 let cve_id = args["cve_id"].as_str();
                 let keyword = args["keyword"].as_str();
@@ -1170,7 +1241,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": result.to_string() }]
                     }
                 }))
-            },
+            }
             "security_classify" => {
                 let text = args["text"].as_str().unwrap_or("");
                 let context = args["context"].as_str().unwrap_or("general");
@@ -1182,7 +1253,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": result.to_string() }]
                     }
                 }))
-            },
+            }
             "browser_navigate" => {
                 let url = args["url"].as_str().unwrap_or("");
                 let result = browser_navigation_tools::handle_navigate_to_url(url);
@@ -1193,7 +1264,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": result.to_string() }]
                     }
                 }))
-            },
+            }
             "browser_extract_text" => {
                 let url = args["url"].as_str().unwrap_or("");
                 let selector = args["selector"].as_str().unwrap_or("");
@@ -1205,7 +1276,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": result.to_string() }]
                     }
                 }))
-            },
+            }
             "browser_click" => {
                 let url = args["url"].as_str().unwrap_or("");
                 let selector = args["selector"].as_str().unwrap_or("");
@@ -1217,7 +1288,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": result.to_string() }]
                     }
                 }))
-            },
+            }
             "browser_fill_form" => {
                 let url = args["url"].as_str().unwrap_or("");
                 let selector = args["selector"].as_str().unwrap_or("");
@@ -1230,7 +1301,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": result.to_string() }]
                     }
                 }))
-            },
+            }
             "browser_screenshot" => {
                 let url = args["url"].as_str().unwrap_or("");
                 let output_path = args["output_path"].as_str().unwrap_or("");
@@ -1242,7 +1313,18 @@ impl McpServer {
                         "content": [{ "type": "text", "text": result.to_string() }]
                     }
                 }))
-            },
+            }
+            "env_detection" => {
+                let mode = args["mode"].as_str();
+                let result = handle_env_detection(mode);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            }
             "agent_heartbeat" => {
                 let session_id = args["session_id"].as_str().unwrap_or("");
                 let status_str = args["status"].as_str().unwrap_or("idle");
@@ -1274,7 +1356,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": "Heartbeat updated" }]
                     }
                 }))
-            },
+            }
             "agent_details" => {
                 let session_id = args["session_id"].as_str().unwrap_or("");
                 match self.db.get_agent_details(session_id) {
@@ -1291,7 +1373,7 @@ impl McpServer {
                         "error": { "code": -32603, "message": format!("{:?}", e) }
                     })),
                 }
-            },
+            }
             "send_message" => {
                 let session_id = args["session_id"].as_str().unwrap_or("");
                 let to = args["to"].as_str().unwrap_or("");
@@ -1319,7 +1401,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": "Message sent" }]
                     }
                 }))
-            },
+            }
             "agents_active" => {
                 let project = args["project"].as_str();
                 match self.db.get_active_agents(project) {
@@ -1336,7 +1418,7 @@ impl McpServer {
                         "error": { "code": -32603, "message": format!("{:?}", e) }
                     })),
                 }
-            },
+            }
             "task_delegate" => {
                 let task_id = args["task_id"].as_str().unwrap_or("");
                 let to_agent = args["to_agent"].as_str().unwrap_or("");
@@ -1355,7 +1437,7 @@ impl McpServer {
                         "error": { "code": -32603, "message": "Failed to delegate task" }
                     }))
                 }
-            },
+            }
             "task_claim" => {
                 let session_id = args["session_id"].as_str().unwrap_or("");
                 match self.db.claim_task(session_id, None) {
@@ -1372,12 +1454,17 @@ impl McpServer {
                         "error": { "code": -32603, "message": format!("{:?}", e) }
                     })),
                 }
-            },
+            }
             "task_request" => {
                 let session_id = args["session_id"].as_str().unwrap_or("");
                 let skills: Vec<String> = args["skills"]
                     .as_array()
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(String::from)
+                            .collect()
+                    })
                     .unwrap_or_default();
                 match self.orchestrator.find_best_agent(&skills) {
                     Some(agent_id) => Ok(json!({
@@ -1395,7 +1482,7 @@ impl McpServer {
                         }
                     })),
                 }
-            },
+            }
             "task_complete" => {
                 let task_id = args["task_id"].as_str().unwrap_or("");
                 let success = args["success"].as_bool().unwrap_or(true);
@@ -1411,13 +1498,16 @@ impl McpServer {
                         "content": [{ "type": "text", "text": format!("Task {} completed", task_id) }]
                     }
                 }))
-            },
+            }
             "task_audit" => {
                 let task_id = args["task_id"].as_str().unwrap_or("");
                 let auditor_session_id = args["auditor_session_id"].as_str().unwrap_or("");
                 let audit_status = args["audit_status"].as_str().unwrap_or("approved");
                 let audit_notes = args["audit_notes"].as_str();
-                match self.db.audit_task(task_id, auditor_session_id, audit_status, audit_notes) {
+                match self
+                    .db
+                    .audit_task(task_id, auditor_session_id, audit_status, audit_notes)
+                {
                     Ok(_) => Ok(json!({
                         "jsonrpc": "2.0",
                         "id": id,
@@ -1431,7 +1521,7 @@ impl McpServer {
                         "error": { "code": -32603, "message": format!("{:?}", e) }
                     })),
                 }
-            },
+            }
             "event_poll" => {
                 let since = args["since"].as_i64().unwrap_or(0);
                 let events = self.event_bus.poll(since);
@@ -1442,7 +1532,7 @@ impl McpServer {
                         "content": [{ "type": "text", "text": format!("{:?}", events) }]
                     }
                 }))
-            },
+            }
             "get_pending_messages" => {
                 let session_id = args["session_id"].as_str().unwrap_or("");
                 let messages = self.event_bus.get_pending_messages(session_id);
@@ -1628,8 +1718,10 @@ impl McpServer {
                         ConnectionStatus::Disconnected => "🔴 Disconnected",
                     };
                     let duration = elapsed.as_secs();
-                    status_list.push(format!("{} ({}): {} - {}s ago via {}", 
-                        conn.client_name, id, status_str, duration, conn.protocol));
+                    status_list.push(format!(
+                        "{} ({}): {} - {}s ago via {}",
+                        conn.client_name, id, status_str, duration, conn.protocol
+                    ));
                 }
                 let output = if status_list.is_empty() {
                     "No active connections".to_string()
