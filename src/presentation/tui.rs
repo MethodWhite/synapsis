@@ -1,12 +1,12 @@
 //! Synapsis TUI - Minimal terminal UI
 
+use crate::SynapsisError;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use synapsis_core::domain::{
     entities::{Observation, SearchParams, SessionSummary},
     ports::{SessionPort, StoragePort},
 };
-use crate::SynapsisError;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TuiCommand {
@@ -32,13 +32,24 @@ pub struct TuiState {
     pub search_query: String,
     pub search_results: Vec<Observation>,
     pub selected_index: usize,
+    pub scroll_offset: usize,
     pub input_buffer: String,
     pub message: Option<String>,
     pub stats: Option<TuiStats>,
+    pub agents: Vec<AgentInfo>,
+    pub tasks: Vec<TaskInfo>,
+    pub connection_status: ConnectionStatus,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
+pub struct ConnectionStatus {
+    pub mcp_connected: bool,
+    pub tcp_connected: bool,
+    pub active_agents: usize,
+    pub pending_tasks: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum AppMode {
     #[default]
     Timeline,
@@ -46,15 +57,35 @@ pub enum AppMode {
     Search,
     Sessions,
     Stats,
+    Agents,
+    Tasks,
+    Connection,
     ConfirmQuit,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TuiStats {
     pub total_observations: usize,
     pub total_sessions: usize,
     pub storage_size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentInfo {
+    pub agent_type: String,
+    pub session_id: String,
+    pub project: String,
+    pub status: String,
+    pub last_heartbeat: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskInfo {
+    pub id: String,
+    pub title: String,
+    pub assigned_to: Option<String>,
+    pub status: String,
+    pub created_at: i64,
 }
 
 impl Tui {
@@ -106,6 +137,25 @@ impl Tui {
         });
 
         Ok(())
+    }
+
+    pub fn update_connection_status(&mut self, mcp: bool, tcp: bool, agents: usize, tasks: usize) {
+        self.state.connection_status = ConnectionStatus {
+            mcp_connected: mcp,
+            tcp_connected: tcp,
+            active_agents: agents,
+            pending_tasks: tasks,
+        };
+    }
+
+    pub fn refresh_agents(&mut self, agents: Vec<AgentInfo>) {
+        self.state.agents = agents;
+        self.state.selected_index = 0;
+    }
+
+    pub fn refresh_tasks(&mut self, tasks: Vec<TaskInfo>) {
+        self.state.tasks = tasks;
+        self.state.selected_index = 0;
     }
 }
 
@@ -186,6 +236,33 @@ mod tui_impl {
                                 KeyCode::Char('S') => {
                                     self.state.mode = AppMode::Stats;
                                     self.calculate_stats().ok();
+                                }
+                                KeyCode::Char('g') => {
+                                    self.state.mode = AppMode::Agents;
+                                }
+                                KeyCode::Char('T') => {
+                                    self.state.mode = AppMode::Tasks;
+                                }
+                                KeyCode::Char('c') => {
+                                    self.state.mode = AppMode::Connection;
+                                }
+                                KeyCode::Char('G') => {
+                                    if !self.state.observations.is_empty() {
+                                        self.state.selected_index =
+                                            self.state.observations.len() - 1;
+                                    }
+                                }
+                                KeyCode::Char('0') => {
+                                    self.state.selected_index = 0;
+                                }
+                                KeyCode::Ctrl('d') => {
+                                    let max = self.state.observations.len().saturating_sub(1);
+                                    self.state.selected_index =
+                                        (self.state.selected_index + 10).min(max);
+                                }
+                                KeyCode::Ctrl('u') => {
+                                    self.state.selected_index =
+                                        self.state.selected_index.saturating_sub(10);
                                 }
                                 KeyCode::Up | KeyCode::Char('k') => {
                                     if self.state.selected_index > 0 {
@@ -275,6 +352,59 @@ mod tui_impl {
                                 }
                                 _ => {}
                             },
+                            AppMode::Agents => match key.code {
+                                KeyCode::Char('q') | KeyCode::Esc => {
+                                    self.state.mode = AppMode::Timeline;
+                                }
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    if self.state.selected_index > 0 {
+                                        self.state.selected_index -= 1;
+                                    }
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    let max = self.state.agents.len().saturating_sub(1);
+                                    if self.state.selected_index < max {
+                                        self.state.selected_index += 1;
+                                    }
+                                }
+                                KeyCode::Char('r') => {
+                                    // Refresh agents - would call orchestrator
+                                    self.state.message =
+                                        Some("Agent refresh not implemented yet".to_string());
+                                }
+                                _ => {}
+                            },
+                            AppMode::Tasks => match key.code {
+                                KeyCode::Char('q') | KeyCode::Esc => {
+                                    self.state.mode = AppMode::Timeline;
+                                }
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    if self.state.selected_index > 0 {
+                                        self.state.selected_index -= 1;
+                                    }
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    let max = self.state.tasks.len().saturating_sub(1);
+                                    if self.state.selected_index < max {
+                                        self.state.selected_index += 1;
+                                    }
+                                }
+                                KeyCode::Char('r') => {
+                                    self.state.message =
+                                        Some("Task refresh not implemented yet".to_string());
+                                }
+                                _ => {}
+                            },
+                            AppMode::Connection => match key.code {
+                                KeyCode::Char('q') | KeyCode::Esc => {
+                                    self.state.mode = AppMode::Timeline;
+                                }
+                                KeyCode::Char('r') => {
+                                    self.state.message =
+                                        Some("Connection refresh not implemented yet".to_string());
+                                }
+                                _ => {}
+                            },
                             AppMode::ConfirmQuit => {
                                 if let KeyCode::Char('y') | KeyCode::Enter = key.code {
                                     break;
@@ -308,6 +438,9 @@ mod tui_impl {
                 AppMode::Search => self.render_search(f, chunks[1]),
                 AppMode::Sessions => self.render_sessions(f, chunks[1]),
                 AppMode::Stats => self.render_stats(f, chunks[1]),
+                AppMode::Agents => self.render_agents(f, chunks[1]),
+                AppMode::Tasks => self.render_tasks(f, chunks[1]),
+                AppMode::Connection => self.render_connection(f, chunks[1]),
                 AppMode::ConfirmQuit => self.render_confirm_quit(f, chunks[1]),
             }
 
@@ -321,17 +454,23 @@ mod tui_impl {
                 AppMode::Search => "Synapsis - Search",
                 AppMode::Sessions => "Synapsis - Sessions",
                 AppMode::Stats => "Synapsis - Statistics",
+                AppMode::Agents => "Synapsis - Active Agents",
+                AppMode::Tasks => "Synapsis - Tasks",
+                AppMode::Connection => "Synapsis - Connection Status",
                 AppMode::ConfirmQuit => "Synapsis - Confirm Quit",
             };
 
             let help_text = match self.state.mode {
                 AppMode::Timeline => {
-                    "[a]dd  [s]earch  [l]ist sessions  [S]tats  [t]refresh  [q]uit"
+                    "[a]dd  [s]earch  [l]essions  [S]tats  [g]ents  [T]asks  [c]onn  [t]refresh  [q]uit"
                 }
                 AppMode::AddObservation => "[Enter] save  [Esc] cancel",
                 AppMode::Search => "[Enter] search  [Esc] cancel",
                 AppMode::Sessions => "[k/j] navigate  [r] refresh  [q/Esc] back",
                 AppMode::Stats => "[r] refresh  [q/Esc] back",
+                AppMode::Agents => "[r] refresh  [q/Esc] back",
+                AppMode::Tasks => "[r] refresh  [q/Esc] back",
+                AppMode::Connection => "[r] refresh  [q/Esc] back",
                 AppMode::ConfirmQuit => "[y] yes  [n] no",
             };
 
@@ -519,9 +658,15 @@ mod tui_impl {
 
         fn render_stats(&self, f: &mut Frame, area: Rect) {
             if let Some(stats) = &self.state.stats {
-                let obs_count = stats["total_observations"].as_i64().unwrap_or(0).to_string();
+                let obs_count = stats["total_observations"]
+                    .as_i64()
+                    .unwrap_or(0)
+                    .to_string();
                 let sess_count = stats["total_sessions"].as_i64().unwrap_or(0).to_string();
-                let storage_size = format!("{} bytes", stats["storage_size_bytes"].as_i64().unwrap_or(0));
+                let storage_size = format!(
+                    "{} bytes",
+                    stats["storage_size_bytes"].as_i64().unwrap_or(0)
+                );
 
                 let rows = [
                     Row::new(["Total Observations", obs_count.as_str()]),
@@ -542,6 +687,130 @@ mod tui_impl {
                     .style(Style::new().fg(Color::Gray));
                 f.render_widget(text, area);
             }
+        }
+
+        fn render_agents(&self, f: &mut Frame, area: Rect) {
+            if self.state.agents.is_empty() {
+                let text = Paragraph::new(
+                    "No active agents. Press 'r' to refresh or use MCP to connect agents.",
+                )
+                .style(Style::new().fg(Color::Gray));
+                f.render_widget(text, area);
+                return;
+            }
+
+            let items: Vec<ListItem> = self
+                .state
+                .agents
+                .iter()
+                .map(|agent| {
+                    let status_color = if agent.status == "busy" {
+                        "🔴"
+                    } else {
+                        "🟢"
+                    };
+                    let content = format!(
+                        "{} [{}] {} | {} | {}",
+                        status_color,
+                        agent.agent_type,
+                        agent.session_id.split('-').next().unwrap_or("?"),
+                        agent.project,
+                        agent.last_heartbeat
+                    );
+                    ListItem::new(content)
+                })
+                .collect();
+
+            let mut list_state = ListState::default();
+            list_state.select(Some(self.state.selected_index));
+
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .title(" Active Agents ")
+                        .borders(Borders::ALL),
+                )
+                .highlight_style(Style::new().bg(Color::Blue).fg(Color::White))
+                .highlight_symbol(">> ");
+
+            f.render_stateful_widget(list, area, &mut list_state);
+        }
+
+        fn render_tasks(&self, f: &mut Frame, area: Rect) {
+            if self.state.tasks.is_empty() {
+                let text = Paragraph::new("No pending tasks. Press 'r' to refresh.")
+                    .style(Style::new().fg(Color::Gray));
+                f.render_widget(text, area);
+                return;
+            }
+
+            let items: Vec<ListItem> = self
+                .state
+                .tasks
+                .iter()
+                .map(|task| {
+                    let status_symbol = match task.status.as_str() {
+                        "pending" => "⏳",
+                        "in_progress" => "🔄",
+                        "completed" => "✅",
+                        "failed" => "❌",
+                        _ => "❓",
+                    };
+                    let content = format!(
+                        "{} [{}] {} | {}",
+                        status_symbol,
+                        task.status,
+                        task.title,
+                        task.assigned_to.as_deref().unwrap_or("unassigned")
+                    );
+                    ListItem::new(content)
+                })
+                .collect();
+
+            let mut list_state = ListState::default();
+            list_state.select(Some(self.state.selected_index));
+
+            let list = List::new(items)
+                .block(Block::default().title(" Tasks ").borders(Borders::ALL))
+                .highlight_style(Style::new().bg(Color::Blue).fg(Color::White))
+                .highlight_symbol(">> ");
+
+            f.render_stateful_widget(list, area, &mut list_state);
+        }
+
+        fn render_connection(&self, f: &mut Frame, area: Rect) {
+            let status = &self.state.connection_status;
+
+            let mcp_status = if status.mcp_connected {
+                "🟢 Connected"
+            } else {
+                "🔴 Disconnected"
+            };
+            let tcp_status = if status.tcp_connected {
+                "🟢 Connected"
+            } else {
+                "🔴 Disconnected"
+            };
+
+            let rows = [
+                Row::new(["MCP Server", mcp_status]),
+                Row::new(["TCP Server", tcp_status]),
+                Row::new(["Active Agents", &status.active_agents.to_string()]),
+                Row::new(["Pending Tasks", &status.pending_tasks.to_string()]),
+            ];
+
+            let table = Table::new(
+                rows,
+                &[Constraint::Percentage(40), Constraint::Percentage(60)],
+            )
+            .block(
+                Block::default()
+                    .title(" Connection Status ")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::new().fg(Color::White));
+
+            f.render_widget(table, area);
         }
 
         fn render_confirm_quit(&self, f: &mut Frame, area: Rect) {
