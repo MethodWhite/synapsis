@@ -155,6 +155,7 @@ impl MerkleTree {
             hasher.update(&combined);
             let result = hasher.finalize();
             current.copy_from_slice(&result);
+            // idx is updated for conceptual clarity (moving up the tree)
             idx /= 2;
         }
         

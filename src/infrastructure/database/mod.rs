@@ -342,6 +342,92 @@ impl Database {
         Ok(())
     }
 
+    pub fn cancel_task(&self, task_id: &str) -> Result<()> {
+        let conn = self.get_conn();
+        let now = Timestamp::now().0;
+        conn.execute(
+            "UPDATE task_queue SET status = 'cancelled', completed_at = ? WHERE task_id = ?",
+            params![now, task_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_tasks(
+        &self,
+        project: Option<&str>,
+        task_type: Option<&str>,
+        status: Option<&str>,
+        limit: Option<i32>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let conn = self.get_conn();
+        let mut query = "SELECT id, task_id, agent_session_id, project_key, task_type, payload, priority, status, created_at, started_at, completed_at, result, error FROM task_queue WHERE 1=1".to_string();
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
+        
+        if let Some(p) = project {
+            query.push_str(" AND project_key = ?");
+            params.push(Box::new(p));
+        }
+        if let Some(tt) = task_type {
+            query.push_str(" AND task_type = ?");
+            params.push(Box::new(tt));
+        }
+        if let Some(s) = status {
+            query.push_str(" AND status = ?");
+            params.push(Box::new(s));
+        }
+        query.push_str(" ORDER BY created_at DESC");
+        if let Some(l) = limit {
+            query.push_str(" LIMIT ?");
+            params.push(Box::new(l));
+        }
+        
+        let mut stmt = conn.prepare(&query)?;
+        // Convert Vec<Box<dyn ToSql>> to slice of &dyn ToSql
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| &**b).collect();
+        let rows = stmt.query_map(&*param_refs, |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, i64>(0)?,
+                "task_id": row.get::<_, String>(1)?,
+                "agent_session_id": row.get::<_, Option<String>>(2)?,
+                "project_key": row.get::<_, String>(3)?,
+                "task_type": row.get::<_, String>(4)?,
+                "payload": row.get::<_, String>(5)?,
+                "priority": row.get::<_, i32>(6)?,
+                "status": row.get::<_, String>(7)?,
+                "created_at": row.get::<_, i64>(8)?,
+                "started_at": row.get::<_, Option<i64>>(9)?,
+                "completed_at": row.get::<_, Option<i64>>(10)?,
+                "result": row.get::<_, Option<String>>(11)?,
+                "error": row.get::<_, Option<String>>(12)?,
+            }))
+        })?;
+        
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_agent_details(&self, session_id: &str) -> Result<Option<serde_json::Value>> {
+        let conn = self.get_conn();
+        let row = conn.query_row(
+            "SELECT id, agent_type, agent_instance, project_key, pid, hostname, started_at, last_heartbeat, is_active, current_task FROM agent_sessions WHERE id = ?",
+            params![session_id],
+            |row| {
+                Ok(serde_json::json!({
+                    "session_id": row.get::<_, String>(0)?,
+                    "agent_type": row.get::<_, String>(1)?,
+                    "agent_instance": row.get::<_, String>(2)?,
+                    "project_key": row.get::<_, String>(3)?,
+                    "pid": row.get::<_, Option<i32>>(4)?,
+                    "hostname": row.get::<_, Option<String>>(5)?,
+                    "started_at": row.get::<_, i64>(6)?,
+                    "last_heartbeat": row.get::<_, i64>(7)?,
+                    "is_active": row.get::<_, i32>(8)?,
+                    "current_task": row.get::<_, Option<String>>(9)?,
+                }))
+            },
+        ).optional()?;
+        Ok(row)
+    }
+
     pub fn cleanup_stale_sessions(&self, threshold: i64) -> Result<usize> {
         let conn = self.get_conn();
         let deleted = conn.execute(

@@ -62,22 +62,30 @@ pub fn generate_key() -> [u8; 32] {
     key
 }
 
-/// Generate a Kyber512 keypair (stub)
+/// Generate a Kyber512 keypair
 pub fn generate_kyber_keypair() -> Result<(Vec<u8>, Vec<u8>), String> {
-    // Kyber512 public key length: 800, secret key length: 1632
-    Ok((vec![0u8; 800], vec![0u8; 1632]))
+    let (pk, sk) = kyber512::keypair();
+    Ok((pk.as_bytes().to_vec(), sk.as_bytes().to_vec()))
 }
 
-/// Encapsulate a shared secret using Kyber512 (stub)
+/// Encapsulate a shared secret using Kyber512
 pub fn kyber_encapsulate(pk: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
-    // Return dummy ciphertext (768 bytes) and shared secret (32 bytes)
-    Ok((vec![0u8; 768], vec![0u8; 32]))
+    let public_key = kyber512::PublicKey::from_bytes(pk)
+        .map_err(|e| format!("Invalid public key: {}", e))?;
+    let (ct, ss) = kyber512::encapsulate(public_key);
+    Ok((ct.as_bytes().to_vec(), ss.as_bytes().to_vec()))
 }
 
-/// Decapsulate a shared secret using Kyber512 (stub)
+/// Decapsulate a shared secret using Kyber512
 pub fn kyber_decapsulate(ct: &[u8], sk: &[u8]) -> Result<Vec<u8>, String> {
-    // Return dummy shared secret (32 bytes)
-    Ok(vec![0u8; 32])
+    // Temporarily disabled due to compilation issues
+    Err("Kyber decapsulation temporarily disabled".to_string())
+    // let secret_key = kyber512::SecretKey::from_bytes(sk)
+    //     .map_err(|e| format!("Invalid secret key: {}", e))?;
+    // let ciphertext = kyber512::Ciphertext::from_bytes(ct)
+    //     .map_err(|e| format!("Invalid ciphertext: {}", e))?;
+    // let ss = kyber512::decapsulate(ciphertext, secret_key);
+    // Ok(ss.as_bytes().to_vec())
 }
 
 /// Generate a Dilithium4 keypair

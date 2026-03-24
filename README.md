@@ -380,7 +380,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## 📬 Contact
 
 - **Author:** MethodWhite
-- **Email:** methodwhite101@gmail.com
+- **Email:** methodwhite@proton.me (primary) · methodwhite.developer@gmail.com (enterprise)
 - **Project:** [GitHub Repository](https://github.com/methodwhite/synapsis)
 
 ---

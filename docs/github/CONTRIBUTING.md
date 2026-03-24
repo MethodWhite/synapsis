@@ -98,7 +98,7 @@ cargo tarpaulin --out Html
 
 ## 📬 Questions?
 
-Open an issue or email methodwhite101@gmail.com
+Open an issue or email methodwhite@proton.me (primary) · methodwhite.developer@gmail.com (enterprise)
 
 ---
 

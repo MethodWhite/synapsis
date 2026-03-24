@@ -6,7 +6,7 @@ labels: security
 assignees: ''
 ---
 
-**⚠️ IMPORTANT:** If this is a critical security issue, please email methodwhite101@gmail.com directly.
+**⚠️ IMPORTANT:** If this is a critical security issue, please email methodwhite@proton.me (primary) · methodwhite.developer@gmail.com (enterprise) directly.
 
 **Describe the vulnerability**
 A clear and concise description of the security vulnerability.

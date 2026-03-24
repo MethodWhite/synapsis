@@ -14,9 +14,23 @@ use aes_gcm::aead::generic_array::GenericArray;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use getrandom::getrandom;
 use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use super::pqc;
+
+const PQC_PASSPHRASE_ENV: &str = "SYNAPSIS_PQC_PASSPHRASE";
+
+fn derive_key_from_passphrase(passphrase: &str, salt: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(passphrase.as_bytes());
+    hasher.update(salt);
+    let result = hasher.finalize();
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&result[..32]);
+    key
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionKey {
@@ -49,6 +63,8 @@ pub struct VaultEntry {
 pub struct SecureVault {
     entries: Arc<RwLock<HashMap<String, VaultEntry>>>,
     master_key: Arc<RwLock<Option<MasterKey>>>,
+    pq_public_key: Arc<RwLock<Option<Vec<u8>>>>,
+    pq_secret_key: Arc<RwLock<Option<Vec<u8>>>>,
     use_tpm: bool,
     data_dir: PathBuf,
 }
@@ -57,6 +73,15 @@ pub struct MasterKey {
     pub key: Vec<u8>,
     pub created_at: i64,
     pub key_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PqcEncryptedMasterKey {
+    pub version: u8,
+    pub public_key: Vec<u8>,
+    pub encrypted_secret_key: Vec<u8>,
+    pub encrypted_master_key: Vec<u8>,
+    pub nonce: Vec<u8>,
 }
 
 impl serde::Serialize for MasterKey {
@@ -109,6 +134,8 @@ impl SecureVault {
         Self {
             entries: Arc::new(RwLock::new(HashMap::new())),
             master_key: Arc::new(RwLock::new(None)),
+            pq_public_key: Arc::new(RwLock::new(None)),
+            pq_secret_key: Arc::new(RwLock::new(None)),
             use_tpm: Self::check_tpm_availability(),
             data_dir,
         }
@@ -446,6 +473,7 @@ pub enum VaultError {
     AuthenticationFailed,
     InvalidKeyLength,
     StorageError(String),
+    PqcError(String),
 }
 
 impl std::fmt::Display for VaultError {
@@ -457,6 +485,7 @@ impl std::fmt::Display for VaultError {
             VaultError::AuthenticationFailed => write!(f, "Authentication failed"),
             VaultError::InvalidKeyLength => write!(f, "Invalid key length"),
             VaultError::StorageError(e) => write!(f, "Storage error: {}", e),
+            VaultError::PqcError(e) => write!(f, "PQC error: {}", e),
         }
     }
 }

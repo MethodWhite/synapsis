@@ -3,6 +3,7 @@ use anyhow::Result;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use crate::domain::*;
 use crate::infrastructure::database::Database;
@@ -15,6 +16,7 @@ use crate::core::watchdog::FilesystemWatchdog;
 use crate::tools::web_research::mcp_tools as web_research_tools;
 use crate::tools::cve_search::mcp_tools as cve_search_tools;
 use crate::tools::security_classify::mcp_tools as security_classify_tools;
+use crate::tools::browser_navigation::mcp_tools as browser_navigation_tools;
 
 pub struct McpServer {
     db: Arc<Database>,
@@ -23,6 +25,7 @@ pub struct McpServer {
     orchestrator: Arc<Orchestrator>,
     antibrick: Arc<AntiBrickEngine>,
     watchdog: Arc<FilesystemWatchdog>,
+    client_name: Arc<RwLock<Option<String>>>,
 }
 
 impl McpServer {
@@ -34,6 +37,7 @@ impl McpServer {
             orchestrator,
             antibrick: Arc::new(AntiBrickEngine::new(AntiBrickConfig::default())),
             watchdog: Arc::new(FilesystemWatchdog::new(Default::default())),
+            client_name: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -42,6 +46,17 @@ impl McpServer {
         self.agents.init().ok();
         self.watchdog.start_monitoring();
         eprintln!("[MCP] Rust Server Initialized (watchdog started)");
+    }
+
+    fn get_agent_id(&self) -> String {
+        let client_name_lock = self.client_name.read().unwrap();
+        client_name_lock.as_deref().unwrap_or("mcp-session").to_string()
+    }
+
+    fn get_session_id(&self) -> types::SessionId {
+        let client_name_lock = self.client_name.read().unwrap();
+        let cli_type = client_name_lock.as_deref().unwrap_or("mcp-session");
+        types::SessionId::new(cli_type)
     }
 
     pub fn run(&self) -> Result<()> {
@@ -91,6 +106,11 @@ impl McpServer {
         match method {
             "initialize" => {
                 let client_protocol = request["params"]["protocolVersion"].as_str().unwrap_or("2024-11-05");
+                let client_name = request["params"]["clientInfo"]["name"].as_str().unwrap_or("mcp-client").to_string();
+                {
+                    let mut client_name_lock = self.client_name.write().unwrap();
+                    *client_name_lock = Some(client_name.clone());
+                }
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -165,6 +185,31 @@ impl McpServer {
                                 "project": { "type": "string" }
                             },
                             "required": ["title", "content"]
+                        }
+                    },
+                    {
+                        "name": "memory_update",
+                        "description": "Update observation with audit trail",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "observation_id": { "type": "integer" },
+                                "new_content": { "type": "string" },
+                                "reason": { "type": "string" }
+                            },
+                            "required": ["observation_id", "new_content"]
+                        }
+                    },
+                    {
+                        "name": "memory_delete",
+                        "description": "Soft delete observation with audit trail",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "observation_id": { "type": "integer" },
+                                "reason": { "type": "string" }
+                            },
+                            "required": ["observation_id"]
                         }
                     },
                     {
@@ -371,6 +416,66 @@ impl McpServer {
                             },
                             "required": ["text"]
                         }
+                    },
+                    {
+                        "name": "browser_navigate",
+                        "description": "Navigate to a URL and return page HTML",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "url": { "type": "string" }
+                            },
+                            "required": ["url"]
+                        }
+                    },
+                    {
+                        "name": "browser_extract_text",
+                        "description": "Extract text from elements matching CSS selector",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "url": { "type": "string" },
+                                "selector": { "type": "string" }
+                            },
+                            "required": ["url", "selector"]
+                        }
+                    },
+                    {
+                        "name": "browser_click",
+                        "description": "Click an element matching CSS selector",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "url": { "type": "string" },
+                                "selector": { "type": "string" }
+                            },
+                            "required": ["url", "selector"]
+                        }
+                    },
+                    {
+                        "name": "browser_fill_form",
+                        "description": "Fill a form field with a value",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "url": { "type": "string" },
+                                "selector": { "type": "string" },
+                                "value": { "type": "string" }
+                            },
+                            "required": ["url", "selector", "value"]
+                        }
+                    },
+                    {
+                        "name": "browser_screenshot",
+                        "description": "Take screenshot of page",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "url": { "type": "string" },
+                                "output_path": { "type": "string" }
+                            },
+                            "required": ["url", "output_path"]
+                        }
                     }
                 ]
             }
@@ -400,7 +505,7 @@ impl McpServer {
                 let project = args["project"].as_str().map(|s| s.to_string());
                 
                 let mut obs = entities::Observation::new(
-                    types::SessionId::new("mcp-session"),
+                    self.get_session_id(),
                     types::ObservationType::Manual,
                     title.to_string(),
                     content.to_string()
@@ -413,6 +518,32 @@ impl McpServer {
                     "id": id,
                     "result": {
                         "content": [{ "type": "text", "text": format!("Added observation {}", obs_id) }]
+                    }
+                }))
+            }
+            "memory_update" => {
+                let observation_id = args["observation_id"].as_i64().unwrap_or(0);
+                let new_content = args["new_content"].as_str().unwrap_or("");
+                let reason = args["reason"].as_str();
+                // Use client-provided agent_id
+                self.db.update_observation(types::ObservationId(observation_id), new_content, &self.get_agent_id(), reason)?;
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": format!("Updated observation {}", observation_id) }]
+                    }
+                }))
+            }
+            "memory_delete" => {
+                let observation_id = args["observation_id"].as_i64().unwrap_or(0);
+                let reason = args["reason"].as_str();
+                self.db.delete_observation(types::ObservationId(observation_id), &self.get_agent_id(), reason)?;
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": format!("Soft-deleted observation {}", observation_id) }]
                     }
                 }))
             }
@@ -616,6 +747,66 @@ impl McpServer {
                 let text = args["text"].as_str().unwrap_or("");
                 let context = args["context"].as_str().unwrap_or("general");
                 let result = security_classify_tools::handle_security_classify(text, context);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            },
+            "browser_navigate" => {
+                let url = args["url"].as_str().unwrap_or("");
+                let result = browser_navigation_tools::handle_navigate_to_url(url);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            },
+            "browser_extract_text" => {
+                let url = args["url"].as_str().unwrap_or("");
+                let selector = args["selector"].as_str().unwrap_or("");
+                let result = browser_navigation_tools::handle_extract_text(url, selector);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            },
+            "browser_click" => {
+                let url = args["url"].as_str().unwrap_or("");
+                let selector = args["selector"].as_str().unwrap_or("");
+                let result = browser_navigation_tools::handle_click_element(url, selector);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            },
+            "browser_fill_form" => {
+                let url = args["url"].as_str().unwrap_or("");
+                let selector = args["selector"].as_str().unwrap_or("");
+                let value = args["value"].as_str().unwrap_or("");
+                let result = browser_navigation_tools::handle_fill_form(url, selector, value);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            },
+            "browser_screenshot" => {
+                let url = args["url"].as_str().unwrap_or("");
+                let output_path = args["output_path"].as_str().unwrap_or("");
+                let result = browser_navigation_tools::handle_screenshot(url, output_path);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,

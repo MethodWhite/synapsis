@@ -939,6 +939,31 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
             }
         }
 
+        "task_create_db" => {
+            let args = params.and_then(|p| p.get("arguments"));
+            let project = args
+                .and_then(|a| a.get("project"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("default");
+            let task_type = args
+                .and_then(|a| a.get("task_type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("general");
+            let payload = args
+                .and_then(|a| a.get("payload"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let priority = args
+                .and_then(|a| a.get("priority"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+
+            match state.shared.db.create_task(project, task_type, payload, priority) {
+                Ok(task_id) => serde_json::json!({"task_id": task_id}),
+                Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
+            }
+        }
+
         "task_claim" => {
             let args = params.and_then(|p| p.get("arguments"));
             let session_id = args
@@ -1023,6 +1048,25 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
             serde_json::json!({"completed": true, "task_id": task_id})
         }
 
+        "task_complete_db" => {
+            let args = params.and_then(|p| p.get("arguments"));
+            let task_id = args
+                .and_then(|a| a.get("task_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let result = args
+                .and_then(|a| a.get("result"))
+                .and_then(|v| v.as_str());
+            let error = args
+                .and_then(|a| a.get("error"))
+                .and_then(|v| v.as_str());
+
+            match state.shared.db.complete_task(task_id, result, error) {
+                Ok(_) => serde_json::json!({"completed": true, "task_id": task_id}),
+                Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
+            }
+        }
+
         "task_delegate" => {
             let args = params.and_then(|p| p.get("arguments"));
             let task_id = args
@@ -1046,6 +1090,55 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                     "task_id": task_id,
                     "reason": "No suitable agent found"
                 })
+            }
+        }
+
+        "task_list" => {
+            let args = params.and_then(|p| p.get("arguments"));
+            let project = args
+                .and_then(|a| a.get("project"))
+                .and_then(|v| v.as_str());
+            let task_type = args
+                .and_then(|a| a.get("task_type"))
+                .and_then(|v| v.as_str());
+            let status = args
+                .and_then(|a| a.get("status"))
+                .and_then(|v| v.as_str());
+            let limit = args
+                .and_then(|a| a.get("limit"))
+                .and_then(|v| v.as_i64())
+                .map(|l| l as i32);
+
+            match state.shared.db.list_tasks(project, task_type, status, limit) {
+                Ok(tasks) => serde_json::json!({"tasks": tasks}),
+                Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
+            }
+        }
+
+        "task_cancel" => {
+            let args = params.and_then(|p| p.get("arguments"));
+            let task_id = args
+                .and_then(|a| a.get("task_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            match state.shared.db.cancel_task(task_id) {
+                Ok(_) => serde_json::json!({"cancelled": true, "task_id": task_id}),
+                Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
+            }
+        }
+
+        "agent_details" => {
+            let args = params.and_then(|p| p.get("arguments"));
+            let session_id = args
+                .and_then(|a| a.get("session_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            match state.shared.db.get_agent_details(session_id) {
+                Ok(Some(agent)) => serde_json::json!({"agent": agent}),
+                Ok(None) => serde_json::json!({"error": "Agent not found"}),
+                Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
             }
         }
 

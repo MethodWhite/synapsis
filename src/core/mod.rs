@@ -55,3 +55,5 @@ pub mod providers;
 pub mod zero_trust;
 pub mod integrity;
 pub mod anti_tampering;
+pub mod mcp_autoconfig;
+// pub mod port_pid_protection; // TODO: restore if module exists

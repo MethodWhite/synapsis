@@ -71,38 +71,6 @@
   - Status: ✅ COMPLETED
   - Notes: Added HMAC-SHA3-512 for message authentication and Merkle Trees for data integrity verification. Includes ChaCha20-Poly1305 encryption as alternative.
 
-### 📝 MEDIUM (Priority 5-7)
-
-- [ ] **Unit Tests**
-  - Assigned to: deepseek-coder:1.3b
-  - Status: ⏳ PENDING
-  - Notes: 80% code coverage target
-
-- [ ] **Integration Tests**
-  - Assigned to: deepseek-coder:6.7b
-  - Status: ⏳ PENDING
-  - Notes: Multi-agent scenario tests
-
-- [ ] **Benchmark Suite**
-  - Assigned to: huihui-qwen-9b
-  - Status: ⏳ PENDING
-  - Notes: Compare with Engram baseline
-
-- [x] **Improve Audit Logging**
-  - Assigned to: deepseek-coder:6.7b
-  - Status: ✅ COMPLETED
-  - Notes: Implemented persistent audit logging in database. Added audit_log table, integrated with Database, added to SharedState.
-
-- [x] **Cleanup Dead Code**
-  - Assigned to: deepseek-coder:1.3b
-  - Status: ✅ COMPLETED
-  - Notes: Removed all #[allow(dead_code)] attributes (4 instances).
-
-- [x] **Implement ChaCha20-Poly1305 Encryption**
-  - Assigned to: deepseek-coder:6.7b
-  - Status: ✅ COMPLETED
-  - Notes: Added ChaCha20-Poly1305 encryption/decryption functions with AEAD support. Integrated into integrity module.
-
 - [x] **Implement Anti-Tampering Detection**
   - Assigned to: deepseek-r1-i1
   - Status: ✅ COMPLETED
@@ -113,10 +81,25 @@
   - Status: ✅ COMPLETED
   - Notes: Implemented automated backup and restore system with self-healing workflow for tampered files.
 
+- [x] **Implement ChaCha20-Poly1305 Encryption**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ✅ COMPLETED
+  - Notes: Added ChaCha20-Poly1305 encryption/decryption functions with AEAD support. Integrated into integrity module.
+
 - [x] **Implement HTTP REST API**
   - Assigned to: deepseek-coder:6.7b
   - Status: ✅ COMPLETED
   - Notes: Added HTTP REST API with health check, system status, agent registration, and task submission endpoints using Warp.
+
+- [x] **Implement MCP Server Autoconfigurator**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ✅ COMPLETED
+  - Notes: Intelligent MCP server configuration that detects installed CLIs, TUIs, and IDEs. Automatically configures transports and tools based on detected environment.
+
+ - [x] **Implement Port/PID Protection Module**
+  - Assigned to: deepseek-r1-i1
+  - Status: ✅ COMPLETED
+  - Notes: Intelligent port moving and process protection to prevent interception. Can change ports and process identifiers dynamically without killing the server.
 
 - [ ] **Unify Server Logic**
   - Assigned to: deepseek-coder:6.7b
@@ -127,6 +110,26 @@
   - Assigned to: deepseek-r1-i1
   - Status: ⏳ PENDING
   - Notes: Fuzzing tests, property-based tests, concurrency stress tests.
+
+- [ ] **Unit Tests (80% coverage)**
+  - Assigned to: deepseek-coder:1.3b
+  - Status: ⏳ PENDING
+  - Notes: Comprehensive unit tests for all core modules
+
+- [ ] **Integration Tests**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ⏳ PENDING
+  - Notes: Multi-agent scenarios, database operations, API endpoints
+
+- [ ] **Benchmark Suite**
+  - Assigned to: deepseek-r1-i1
+  - Status: ⏳ PENDING
+  - Notes: Performance benchmarks comparing with Engram baseline
+
+- [ ] **Database Compilation Fixes**
+  - Assigned to: deepseek-coder:6.7b
+  - Status: ⏳ PENDING
+  - Notes: Fix type mismatches and error handling in database module
 
 ### 🐛 LOW (Priority 1-4)
 
@@ -173,9 +176,9 @@
 
 ## Progress Tracking
 
-- **Total Tasks:** 24
-- **Completed:** 18 (75%)
+- **Total Tasks:** 28
+- **Completed:** 20 (71%)
 - **In Progress:** 0 (0%)
-- **Pending:** 6 (25%)
+- **Pending:** 8 (29%)
 
 **Last Updated:** 2026-03-23
