@@ -340,7 +340,7 @@ impl TaskQueue {
         let tasks_to_requeue: Vec<Task> = {
             let mut agents = self.agents.write().unwrap();
             if let Some(agent) = agents.remove(agent_id) {
-                agent.current_load;
+
                 Vec::new()
             } else {
                 Vec::new()

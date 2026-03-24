@@ -294,6 +294,7 @@ impl Orchestrator {
         }
     }
 
+    #[allow(clippy::manual_find)]
     pub fn proactive_assign_to(&self, agent_id: &str) -> Option<Task> {
         let (agent_status, agent_skills) = {
             let agents = self.agents.lock().unwrap();

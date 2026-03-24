@@ -21,6 +21,8 @@ use std::sync::{Arc, RwLock};
 use super::pqc;
 
 const PQC_PASSPHRASE_ENV: &str = "SYNAPSIS_PQC_PASSPHRASE";
+const PQC_KEYPAIR_FILE: &str = "vault_pqc.json";
+const PQC_ENCRYPTED_MASTER_KEY_FILE: &str = "vault_master.pqc";
 
 fn derive_key_from_passphrase(passphrase: &str, salt: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -30,6 +32,13 @@ fn derive_key_from_passphrase(passphrase: &str, salt: &[u8]) -> [u8; 32] {
     let mut key = [0u8; 32];
     key.copy_from_slice(&result[..32]);
     key
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PqcKeyPair {
+    public_key: Vec<u8>,
+    encrypted_secret_key: Vec<u8>,
+    salt: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,23 +168,9 @@ impl SecureVault {
     }
 
     pub fn initialize(&self) -> Result<(), VaultError> {
-        let master_key_path = self.data_dir.join("vault_master.key");
-
-        if master_key_path.exists() {
-            let data = std::fs::read(&master_key_path)?;
-            if let Ok(master) = serde_json::from_slice::<MasterKey>(&data) {
-                let mut mk = self.master_key.write().unwrap();
-                *mk = Some(master);
-            }
-        } else {
-            let master = Self::generate_master_key()?;
-            let data = serde_json::to_vec(&master)?;
-            std::fs::create_dir_all(&self.data_dir)?;
-            std::fs::write(&master_key_path, data)?;
-
-            let mut mk = self.master_key.write().unwrap();
-            *mk = Some(master);
-        }
+        // Master key loading is now handled by initialize_pqc
+        // Ensure data directory exists for entries
+        std::fs::create_dir_all(&self.data_dir)?;
 
         let entries_path = self.data_dir.join("vault_entries.json");
         if entries_path.exists() {
@@ -186,7 +181,142 @@ impl SecureVault {
             }
         }
 
+        self.initialize_pqc()?;
+
         Ok(())
+    }
+
+    fn initialize_pqc(&self) -> Result<(), VaultError> {
+        let keypair_path = self.data_dir.join(PQC_KEYPAIR_FILE);
+        let encrypted_master_key_path = self.data_dir.join(PQC_ENCRYPTED_MASTER_KEY_FILE);
+
+        // Load or generate PQC keypair
+        if keypair_path.exists() {
+            let data = std::fs::read(&keypair_path)?;
+            let keypair: PqcKeyPair = serde_json::from_slice(&data)?;
+            
+            let passphrase = std::env::var(PQC_PASSPHRASE_ENV)
+                .map_err(|_| VaultError::PqcError("PQC passphrase not set".to_string()))?;
+            
+            // Decrypt secret key using passphrase
+            let key = derive_key_from_passphrase(&passphrase, &keypair.salt);
+            let decrypted_sk = super::pqc::decrypt(&keypair.encrypted_secret_key, &key)
+                .map_err(|e| VaultError::PqcError(format!("Failed to decrypt PQC secret key: {}", e)))?;
+            
+            let mut pk = self.pq_public_key.write().unwrap();
+            *pk = Some(keypair.public_key);
+            let mut sk = self.pq_secret_key.write().unwrap();
+            *sk = Some(decrypted_sk);
+        } else {
+            // Generate new PQC keypair
+            let (public_key, secret_key) = super::pqc::generate_kyber_keypair()
+                .map_err(|e| VaultError::PqcError(format!("Failed to generate PQC keypair: {}", e)))?;
+            
+            // Encrypt secret key with passphrase
+            let passphrase = std::env::var(PQC_PASSPHRASE_ENV)
+                .map_err(|_| VaultError::PqcError("PQC passphrase not set".to_string()))?;
+            let salt = generate_nonce(16);
+            let key = derive_key_from_passphrase(&passphrase, &salt);
+            let encrypted_secret_key = super::pqc::encrypt(&secret_key, &key)
+                .map_err(|e| VaultError::PqcError(format!("Failed to encrypt PQC secret key: {}", e)))?;
+            
+            let keypair = PqcKeyPair {
+                public_key,
+                encrypted_secret_key,
+                salt,
+            };
+            
+            let data = serde_json::to_vec(&keypair)?;
+            std::fs::write(&keypair_path, data)?;
+            
+            let mut pk = self.pq_public_key.write().unwrap();
+            *pk = Some(keypair.public_key);
+            let mut sk = self.pq_secret_key.write().unwrap();
+            *sk = Some(secret_key);
+        }
+
+        // Load or generate master key with PQC encryption
+        let master_key_path = self.data_dir.join("vault_master.key");
+        if encrypted_master_key_path.exists() {
+            // Load and decrypt PQC encrypted master key
+            let data = std::fs::read(&encrypted_master_key_path)?;
+            let enc_master_key: PqcEncryptedMasterKey = serde_json::from_slice(&data)?;
+            let master_key_bytes = self.decrypt_master_key_with_pqc(&enc_master_key)?;
+            let key_id = BASE64.encode(&compute_hash(&master_key_bytes)[..8]);
+            let master_key = MasterKey {
+                key: master_key_bytes,
+                created_at: current_timestamp(),
+                key_id,
+            };
+            let mut mk = self.master_key.write().unwrap();
+            *mk = Some(master_key);
+        } else if master_key_path.exists() {
+            // Migration: plain master key exists, encrypt with PQC and store encrypted
+            let data = std::fs::read(&master_key_path)?;
+            let master_key = serde_json::from_slice::<MasterKey>(&data)?;
+            let enc_master_key = self.encrypt_master_key_with_pqc(&master_key.key)?;
+            let enc_data = serde_json::to_vec(&enc_master_key)?;
+            std::fs::write(&encrypted_master_key_path, enc_data)?;
+            // Optionally delete plain master key file
+            let _ = std::fs::remove_file(&master_key_path);
+            // Set master key in memory
+            let mut mk = self.master_key.write().unwrap();
+            *mk = Some(master_key);
+        } else {
+            // Generate new master key and encrypt with PQC
+            let master_key = Self::generate_master_key()?;
+            let enc_master_key = self.encrypt_master_key_with_pqc(&master_key.key)?;
+            let enc_data = serde_json::to_vec(&enc_master_key)?;
+            std::fs::write(&encrypted_master_key_path, enc_data)?;
+            // Set master key in memory
+            let mut mk = self.master_key.write().unwrap();
+            *mk = Some(master_key);
+        }
+
+        Ok(())
+    }
+
+    fn encrypt_master_key_with_pqc(&self, master_key: &[u8]) -> Result<PqcEncryptedMasterKey, VaultError> {
+        let pk = self.pq_public_key.read().unwrap();
+        let public_key = pk.as_ref().ok_or(VaultError::PqcError("PQC public key not initialized".to_string()))?;
+        
+        let (ciphertext, shared_secret) = super::pqc::kyber_encapsulate(public_key)
+            .map_err(|e| VaultError::PqcError(format!("Kyber encapsulation failed: {}", e)))?;
+        
+        // Ensure shared_secret is 32 bytes
+        if shared_secret.len() != 32 {
+            return Err(VaultError::PqcError(format!("Invalid shared secret length: {}", shared_secret.len())));
+        }
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&shared_secret);
+        
+        let encrypted_master_key = super::pqc::encrypt(master_key, &key)
+            .map_err(|e| VaultError::PqcError(format!("AES encryption failed: {}", e)))?;
+        
+        Ok(PqcEncryptedMasterKey {
+            version: 1,
+            public_key: public_key.clone(),
+            encrypted_secret_key: ciphertext,
+            encrypted_master_key,
+            nonce: Vec::new(), // nonce is already prepended in encrypted_master_key
+        })
+    }
+
+    fn decrypt_master_key_with_pqc(&self, enc: &PqcEncryptedMasterKey) -> Result<Vec<u8>, VaultError> {
+        let sk = self.pq_secret_key.read().unwrap();
+        let secret_key = sk.as_ref().ok_or(VaultError::PqcError("PQC secret key not initialized".to_string()))?;
+        
+        let shared_secret = super::pqc::kyber_decapsulate(&enc.encrypted_secret_key, secret_key)
+            .map_err(|e| VaultError::PqcError(format!("Kyber decapsulation failed: {}", e)))?;
+        
+        if shared_secret.len() != 32 {
+            return Err(VaultError::PqcError(format!("Invalid shared secret length: {}", shared_secret.len())));
+        }
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&shared_secret);
+        
+        super::pqc::decrypt(&enc.encrypted_master_key, &key)
+            .map_err(|e| VaultError::PqcError(format!("AES decryption failed: {}", e)))
     }
 
     fn generate_master_key() -> Result<MasterKey, VaultError> {
@@ -588,6 +718,8 @@ mod tests {
 
     #[test]
     fn test_vault_init() {
+        // Set PQC passphrase for testing
+        std::env::set_var("SYNAPSIS_PQC_PASSPHRASE", "test_passphrase_123");
         let vault = SecureVault::new(temp_dir().join("synapsis_test_vault"));
         vault.initialize().unwrap();
 
@@ -596,6 +728,8 @@ mod tests {
 
     #[test]
     fn test_store_and_retrieve_key() {
+        // Set PQC passphrase for testing
+        std::env::set_var("SYNAPSIS_PQC_PASSPHRASE", "test_passphrase_123");
         let vault = SecureVault::new(temp_dir().join("synapsis_test_vault2"));
         vault.initialize().unwrap();
 
@@ -623,6 +757,8 @@ mod tests {
 
     #[test]
     fn test_rotate_key() {
+        // Set PQC passphrase for testing
+        std::env::set_var("SYNAPSIS_PQC_PASSPHRASE", "test_passphrase_123");
         let vault = SecureVault::new(temp_dir().join("synapsis_test_vault3"));
         vault.initialize().unwrap();
 
@@ -644,6 +780,8 @@ mod tests {
 
     #[test]
     fn test_close_session() {
+        // Set PQC passphrase for testing
+        std::env::set_var("SYNAPSIS_PQC_PASSPHRASE", "test_passphrase_123");
         let vault = SecureVault::new(temp_dir().join("synapsis_test_vault4"));
         vault.initialize().unwrap();
 

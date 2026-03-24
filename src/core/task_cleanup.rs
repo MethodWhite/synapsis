@@ -54,19 +54,12 @@ impl TaskCleanupManager {
 
     /// Run cleanup on all projects
     pub fn run_cleanup(&self) -> Result<CleanupReport> {
-        let mut report = CleanupReport::default();
-
-        // Remove stale pending tasks
-        report.removed_stale = self.remove_stale_pending_tasks()?;
-
-        // Remove old failed tasks
-        report.removed_failed = self.remove_old_failed_tasks()?;
-
-        // Archive old completed tasks
-        report.archived_completed = self.archive_old_completed_tasks()?;
-
-        // Compact database
-        report.vacuumed = self.vacuum_database()?;
+        let report = CleanupReport {
+            removed_stale: self.remove_stale_pending_tasks()?,
+            removed_failed: self.remove_old_failed_tasks()?,
+            archived_completed: self.archive_old_completed_tasks()?,
+            vacuumed: self.vacuum_database()?,
+        };
 
         Ok(report)
     }

@@ -432,9 +432,9 @@ fn sha256_simple(data: &[u8]) -> Vec<u8> {
 
     let mut w = [0u32; 64];
 
-    for i in 0..16 {
+    for (i, elem) in w.iter_mut().enumerate().take(16) {
         let offset = i * 4;
-        w[i] = u32::from_be_bytes([
+        *elem = u32::from_be_bytes([
             data[offset],
             data[offset + 1],
             data[offset + 2],
@@ -442,6 +442,7 @@ fn sha256_simple(data: &[u8]) -> Vec<u8> {
         ]);
     }
 
+    #[allow(clippy::needless_range_loop)]
     for i in 16..64 {
         let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
         let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
@@ -460,6 +461,7 @@ fn sha256_simple(data: &[u8]) -> Vec<u8> {
     let mut g = h[6];
     let mut hh = h[7];
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..64 {
         let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
         let ch = (e & f) ^ ((!e) & g);

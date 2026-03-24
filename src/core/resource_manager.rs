@@ -193,7 +193,7 @@ impl ResourceManager {
         if let Some(limits) = agent_limits.get(agent_type) {
             if let Some(stats) = agent_stats.values().find(|s| {
                 // Find agents of this type
-                agent_type.starts_with(&s.pid.map(|_| "").unwrap_or(""))
+                agent_type.starts_with(s.pid.map(|_| "").unwrap_or(""))
             }) {
                 if stats.task_count >= limits.max_concurrent_tasks {
                     return false;
@@ -223,8 +223,7 @@ impl ResourceManager {
         if max_factor > 1.0 {
             // Exponential backoff when overloaded
             let excess = max_factor - 1.0;
-            let delay = (100.0 * excess.powi(2)).min(5000.0) as u64; // Max 5 seconds
-            delay
+            (100.0 * excess.powi(2)).min(5000.0) as u64 // Max 5 seconds
         } else if max_factor > 0.8 {
             // Gradual slowdown when approaching limits
             100

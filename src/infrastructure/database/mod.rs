@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 pub mod multi_agent;
 
+#[derive(Clone)]
 pub struct Database {
     conn: Arc<Mutex<Connection>>,
     _data_dir: PathBuf,
@@ -152,16 +153,21 @@ impl Database {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT NOT NULL UNIQUE,
                 agent_session_id TEXT,
+                auditor_session_id TEXT,
                 project_key TEXT NOT NULL,
                 task_type TEXT NOT NULL,
                 payload TEXT NOT NULL,
                 priority INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'pending',
+                audit_status TEXT NOT NULL DEFAULT 'pending',
+                requires_audit BOOLEAN NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL,
                 started_at INTEGER,
                 completed_at INTEGER,
+                audit_completed_at INTEGER,
                 result TEXT,
-                error TEXT
+                error TEXT,
+                audit_notes TEXT
             );
             CREATE TABLE IF NOT EXISTS global_context (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -334,10 +340,23 @@ impl Database {
         let conn = self.get_conn();
         let now = Timestamp::now().0;
         let status = if error.is_some() { "failed" } else { "completed" };
+        let audit_status = if error.is_some() { "failed" } else { "pending" };
+        let requires_audit = if error.is_some() { 0 } else { 1 };
 
         conn.execute(
-            "UPDATE task_queue SET status = ?, completed_at = ?, result = ?, error = ? WHERE task_id = ?",
-            params![status, now, result, error, task_id],
+            "UPDATE task_queue SET status = ?, completed_at = ?, result = ?, error = ?, audit_status = ?, requires_audit = ? WHERE task_id = ?",
+            params![status, now, result, error, audit_status, requires_audit, task_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn audit_task(&self, task_id: &str, auditor_session_id: &str, audit_status: &str, audit_notes: Option<&str>) -> Result<()> {
+        let conn = self.get_conn();
+        let now = Timestamp::now().0;
+        let requires_audit = 0;
+        conn.execute(
+            "UPDATE task_queue SET auditor_session_id = ?, audit_status = ?, audit_completed_at = ?, audit_notes = ?, requires_audit = ? WHERE task_id = ?",
+            params![auditor_session_id, audit_status, now, audit_notes, requires_audit, task_id],
         )?;
         Ok(())
     }
@@ -360,7 +379,7 @@ impl Database {
         limit: Option<i32>,
     ) -> Result<Vec<serde_json::Value>> {
         let conn = self.get_conn();
-        let mut query = "SELECT id, task_id, agent_session_id, project_key, task_type, payload, priority, status, created_at, started_at, completed_at, result, error FROM task_queue WHERE 1=1".to_string();
+        let mut query = "SELECT id, task_id, agent_session_id, auditor_session_id, project_key, task_type, payload, priority, status, audit_status, requires_audit, created_at, started_at, completed_at, audit_completed_at, result, error, audit_notes FROM task_queue WHERE 1=1".to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
         
         if let Some(p) = project {
@@ -389,16 +408,21 @@ impl Database {
                 "id": row.get::<_, i64>(0)?,
                 "task_id": row.get::<_, String>(1)?,
                 "agent_session_id": row.get::<_, Option<String>>(2)?,
-                "project_key": row.get::<_, String>(3)?,
-                "task_type": row.get::<_, String>(4)?,
-                "payload": row.get::<_, String>(5)?,
-                "priority": row.get::<_, i32>(6)?,
-                "status": row.get::<_, String>(7)?,
-                "created_at": row.get::<_, i64>(8)?,
-                "started_at": row.get::<_, Option<i64>>(9)?,
-                "completed_at": row.get::<_, Option<i64>>(10)?,
-                "result": row.get::<_, Option<String>>(11)?,
-                "error": row.get::<_, Option<String>>(12)?,
+                "auditor_session_id": row.get::<_, Option<String>>(3)?,
+                "project_key": row.get::<_, String>(4)?,
+                "task_type": row.get::<_, String>(5)?,
+                "payload": row.get::<_, String>(6)?,
+                "priority": row.get::<_, i32>(7)?,
+                "status": row.get::<_, String>(8)?,
+                "audit_status": row.get::<_, String>(9)?,
+                "requires_audit": row.get::<_, i32>(10)?,
+                "created_at": row.get::<_, i64>(11)?,
+                "started_at": row.get::<_, Option<i64>>(12)?,
+                "completed_at": row.get::<_, Option<i64>>(13)?,
+                "audit_completed_at": row.get::<_, Option<i64>>(14)?,
+                "result": row.get::<_, Option<String>>(15)?,
+                "error": row.get::<_, Option<String>>(16)?,
+                "audit_notes": row.get::<_, Option<String>>(17)?,
             }))
         })?;
         
@@ -449,6 +473,36 @@ impl Database {
             "agent_sessions": agents,
             "active_agents": active,
             "pending_tasks": tasks,
+        }))
+    }
+
+    pub fn check_integrity(&self) -> Result<serde_json::Value> {
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare("PRAGMA integrity_check")?;
+        let result: String = stmt.query_row([], |row| row.get(0))?;
+        Ok(serde_json::json!({ "integrity_check": result }))
+    }
+
+    pub fn get_database_health(&self) -> Result<serde_json::Value> {
+        let conn = self.get_conn();
+        // Table sizes
+        let tables = ["observations", "agent_sessions", "task_queue", "chunks", "memories", "audit_log"];
+        let mut table_counts = serde_json::Map::new();
+        for table in tables.iter() {
+            let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {}", table), [], |r| r.get(0)).unwrap_or(0);
+            table_counts.insert(table.to_string(), serde_json::Value::Number(count.into()));
+        }
+        // Database size
+        let page_count: i64 = conn.query_row("PRAGMA page_count", [], |r| r.get(0)).unwrap_or(0);
+        let page_size: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0)).unwrap_or(0);
+        let db_size = page_count * page_size;
+        // Integrity check (quick)
+        let integrity: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0)).unwrap_or_else(|_| "error".to_string());
+        Ok(serde_json::json!({
+            "table_counts": table_counts,
+            "database_size_bytes": db_size,
+            "integrity": integrity,
+            "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
         }))
     }
 
@@ -818,11 +872,12 @@ impl StoragePort for Database {
         };
         
         // Check if observation with same sync_id exists
+        eprintln!("[DEBUG] Checking sync_id: {}", obs.sync_id.0);
         let existing_id: Option<i64> = conn.query_row(
             "SELECT id FROM observations WHERE sync_id = ? AND deleted_at IS NULL",
             [obs.sync_id.0.as_str()],
             |row| row.get(0)
-        ).optional()?;
+        ).optional()?; eprintln!("[DEBUG] existing_id: {:?}", existing_id);
         
         if let Some(existing_id) = existing_id {
             // Update existing observation
@@ -896,6 +951,7 @@ impl StoragePort for Database {
             )?;
             
             let id = conn.last_insert_rowid();
+            eprintln!("[DEBUG] Inserted observation id: {}", id);
             
             // Log audit for create
             self.log_audit(

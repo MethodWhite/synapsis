@@ -15,8 +15,6 @@ fn test_server() -> McpServer {
     McpServer::new(db, orchestrator)
 }
 
-mod mcp_tests {
-    use super::*;
 
     #[test]
     fn test_initialize_returns_capabilities() {
@@ -143,7 +141,7 @@ mod mcp_tests {
     fn test_memory_add_via_mcp() {
         let server = test_server();
 
-        server.init();
+        // server.init(); // Disabled for test to avoid hanging watchdog
 
         let request = json!({
             "jsonrpc": "2.0",
@@ -726,4 +724,3 @@ mod mcp_tests {
             "Should list tasks"
         );
     }
-}

@@ -25,6 +25,7 @@ use synapsis::core::tool_registry::ToolRegistry;
 use synapsis::core::uuid::Uuid;
 use synapsis::core::rate_limiter::RateLimiter;
 use synapsis::core::vault::SecureVault;
+use synapsis::core::json_rpc::{JsonRpcRequest, JsonRpcResponse, error_codes};
 use synapsis::infrastructure::shared_state::SharedState;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -492,9 +493,9 @@ impl ServerState {
                 if let Some(ref terminal_path) = session.terminal_path {
                     // Attempt to send to terminal, but don't fail if it doesn't work
                     let _ = self.send_to_terminal(terminal_path, content);
-                }
-            }
         }
+    }
+}
     }
 
     fn _broadcast(&self, from: &str, content: &str) {
@@ -613,18 +614,31 @@ fn _handle_tcp_client(
 }
 
 fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
-    let json: serde_json::Value = match serde_json::from_str(line) {
-        Ok(v) => v,
-        Err(_) => return r#"{"error":"Invalid JSON","id":null}"#.to_string(),
+    use synapsis::core::json_rpc::handle_request as jsonrpc_handle_request;
+    jsonrpc_handle_request(line, |req| handle_jsonrpc_request(req, state))
+}
+
+fn handle_jsonrpc_request(req: JsonRpcRequest, state: &Arc<ServerState>) -> JsonRpcResponse {
+    use serde_json::{json, Value};
+    use crate::core::json_rpc::{get_string_param, get_optional_string_param, get_i64_param, get_bool_param};
+    
+    let method = req.method();
+    let params = req.params();
+    let id = req.id().cloned();
+    
+    // Helper to create error response
+    let error = |code: i32, message: &str| {
+        JsonRpcResponse::error(id.clone(), code, message, None)
     };
-
-    let id = json.get("id");
-    let method = json.get("method").and_then(|m| m.as_str()).unwrap_or("");
-    let params = json.get("params");
-
-    let result = match method {
-        "ping" => serde_json::json!({"status": "ok"}),
-
+    
+    // Helper to create success response
+    let success = |result: Value| {
+        JsonRpcResponse::success(id.clone(), result)
+    };
+    
+    match method {
+        "ping" => success(json!({"status": "ok"})),
+        
         "session_register" => {
             let args = params.and_then(|p| p.get("arguments"));
             let agent_type = args
@@ -658,10 +672,66 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                 .iter()
                 .any(|&a| agent_type == a || agent_type.starts_with(a))
             {
-                return serde_json::json!({
-                    "error": format!("Unauthorized agent: {}. Only identified AI agents allowed.", agent_type)
-                }).to_string();
+                return error(-32000, &format!("Unauthorized agent: {}. Only identified AI agents allowed.", agent_type));
             }
+
+            // Auto-reconnect: find existing session for this agent_type
+            let (session_id, reconnected) =
+                if let Some(existing) = state.find_session(agent_type, project) {
+                    (existing, true)
+                } else {
+                    let instance = Uuid::new_v4().to_hex_string();
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    (format!("{}-{}-{}", agent_type, instance, ts), false)
+                };
+
+            let instance_id = session_id.split('-').nth(1).unwrap_or("x");
+            if let Err(e) =
+                state
+                    .shared
+                    .db
+                    .register_agent_session(agent_type, instance_id, project, None)
+            {
+                return error(-32603, &format!("Database error: {:?}", e));
+            }
+
+            let _ = state.shared.db.agent_heartbeat(
+                &session_id,
+                Some(if reconnected {
+                    "reconnected"
+                } else {
+                    "registered"
+                }),
+            );
+            state.register_session(agent_type, &session_id, &session_id, project, terminal_path);
+            state.register_connection(&session_id, agent_type, project);
+
+            let agent_skills = state.get_agent_default_skills(agent_type);
+            state
+                .orchestrator
+                .register_agent_with_id(&session_id, agent_type, agent_skills);
+
+            // PROACTIVE: When agent registers, immediately check for pending tasks
+            if let Some(_task) = state.orchestrator.proactive_assign_to(&session_id) {
+                state.orchestrator.save(&state.data_dir);
+            }
+
+            // Get pending messages for this session
+            let pending = state.event_bus.get_pending_messages(&session_id);
+            success(json!({
+                "session_id": session_id,
+                "reconnected": reconnected,
+                "pending_messages": pending
+            }))
+        }
+
+        _ => error(-32601, &format!("Method not found: {}", method)),
+    }
+}
+
 
             // Auto-reconnect: find existing session for this agent_type
             let (session_id, reconnected) =
@@ -1087,20 +1157,6 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
 
             match state.shared.db.audit_task(task_id, auditor_session_id, audit_status, audit_notes) {
                 Ok(_) => serde_json::json!({"audited": true, "task_id": task_id}),
-                Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
-            }
-        }
-
-        "db_check_integrity" => {
-            match state.shared.db.check_integrity() {
-                Ok(result) => serde_json::json!({"integrity": result}),
-                Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
-            }
-        }
-
-        "db_health" => {
-            match state.shared.db.get_database_health() {
-                Ok(health) => serde_json::json!({"health": health}),
                 Err(e) => serde_json::json!({"error": format!("{:?}", e)}),
             }
         }

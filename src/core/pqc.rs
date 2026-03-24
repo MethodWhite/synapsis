@@ -9,7 +9,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use pqcrypto_kyber::kyber512;
-use pqcrypto_dilithium::dilithium4;
+use pqcrypto_dilithium::dilithium5;
 use pqcrypto_traits::kem::{PublicKey, SecretKey, Ciphertext, SharedSecret};
 use pqcrypto_traits::sign::{PublicKey as SignPublicKey, SecretKey as SignSecretKey, DetachedSignature};
 use rand::RngCore;
@@ -72,47 +72,45 @@ pub fn generate_kyber_keypair() -> Result<(Vec<u8>, Vec<u8>), String> {
 pub fn kyber_encapsulate(pk: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
     let public_key = kyber512::PublicKey::from_bytes(pk)
         .map_err(|e| format!("Invalid public key: {}", e))?;
-    let (ct, ss) = kyber512::encapsulate(public_key);
+    let (ss, ct) = kyber512::encapsulate(&public_key);
     Ok((ct.as_bytes().to_vec(), ss.as_bytes().to_vec()))
 }
 
 /// Decapsulate a shared secret using Kyber512
 pub fn kyber_decapsulate(ct: &[u8], sk: &[u8]) -> Result<Vec<u8>, String> {
-    // Temporarily disabled due to compilation issues
-    Err("Kyber decapsulation temporarily disabled".to_string())
-    // let secret_key = kyber512::SecretKey::from_bytes(sk)
-    //     .map_err(|e| format!("Invalid secret key: {}", e))?;
-    // let ciphertext = kyber512::Ciphertext::from_bytes(ct)
-    //     .map_err(|e| format!("Invalid ciphertext: {}", e))?;
-    // let ss = kyber512::decapsulate(ciphertext, secret_key);
-    // Ok(ss.as_bytes().to_vec())
+    let secret_key = kyber512::SecretKey::from_bytes(sk)
+        .map_err(|e| format!("Invalid secret key: {}", e))?;
+    let ciphertext = kyber512::Ciphertext::from_bytes(ct)
+        .map_err(|e| format!("Invalid ciphertext: {}", e))?;
+    let ss = kyber512::decapsulate(&ciphertext, &secret_key);
+    Ok(ss.as_bytes().to_vec())
 }
 
-/// Generate a Dilithium4 keypair
+/// Generate a Dilithium5 keypair
 pub fn generate_dilithium_keypair() -> Result<(Vec<u8>, Vec<u8>), String> {
-    let (pk, sk) = dilithium4::keypair();
+    let (pk, sk) = dilithium5::keypair();
     Ok((pk.as_bytes().to_vec(), sk.as_bytes().to_vec()))
 }
 
-/// Sign a message with Dilithium4
+/// Sign a message with Dilithium5
 pub fn dilithium_sign(sk: &[u8], msg: &[u8]) -> Result<Vec<u8>, String> {
-    let secret_key = dilithium4::SecretKey::from_bytes(sk)
+    let secret_key = dilithium5::SecretKey::from_bytes(sk)
         .map_err(|e| format!("Failed to parse secret key: {}", e))?;
-    let sig = dilithium4::detached_sign(msg, &secret_key);
+    let sig = dilithium5::detached_sign(msg, &secret_key);
     Ok(sig.as_bytes().to_vec())
 }
 
-/// Verify a signature with Dilithium4
+/// Verify a signature with Dilithium5
 pub fn dilithium_verify(pk: &[u8], msg: &[u8], sig: &[u8]) -> bool {
-    let public_key = match dilithium4::PublicKey::from_bytes(pk) {
+    let public_key = match dilithium5::PublicKey::from_bytes(pk) {
         Ok(pk) => pk,
         Err(_) => return false,
     };
-    let signature = match dilithium4::DetachedSignature::from_bytes(sig) {
+    let signature = match dilithium5::DetachedSignature::from_bytes(sig) {
         Ok(sig) => sig,
         Err(_) => return false,
     };
-    dilithium4::verify_detached_signature(&signature, msg, &public_key).is_ok()
+    dilithium5::verify_detached_signature(&signature, msg, &public_key).is_ok()
 }
 
 #[cfg(test)]

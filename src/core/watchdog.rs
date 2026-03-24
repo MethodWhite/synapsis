@@ -388,6 +388,7 @@ impl FilesystemWatchdog {
         3
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_event(
         &self,
         event_type: WatchEventType,

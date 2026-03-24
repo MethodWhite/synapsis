@@ -11,7 +11,7 @@ use crate::core::uuid::Uuid;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -391,7 +391,7 @@ impl FileWorker {
         self
     }
 
-    fn is_path_allowed(&self, path: &PathBuf) -> bool {
+    fn is_path_allowed(&self, path: &Path) -> bool {
         let allowed = self.allowed_dirs.lock().unwrap();
         if allowed.is_empty() {
             return true;

@@ -3,7 +3,6 @@
 //! Tests para verificar resistencia a race conditions y concurrency
 
 #[cfg(test)]
-mod tests {
     use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
     use std::thread;
     use std::time::Duration;
@@ -257,4 +256,3 @@ mod tests {
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().name, "test-agent");
     }
-}

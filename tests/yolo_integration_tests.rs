@@ -1,7 +1,6 @@
 //! YOLO Mode Integration Tests
 
 #[cfg(test)]
-mod tests {
     #[test]
     fn test_yolo_auto_task_generation() {
         // Test that YOLO mode auto-generates tasks
@@ -32,4 +31,3 @@ mod tests {
         // Test that actions execute without confirmation
         println!("YOLO no-confirmation test - EXECUTING AUTONOMOUSLY");
     }
-}

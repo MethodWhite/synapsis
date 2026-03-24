@@ -90,6 +90,7 @@ pub struct RequestContext {
 }
 
 /// Policy engine that evaluates requests against registered policies
+#[derive(Default)]
 pub struct PolicyEngine {
     policies: Vec<Policy>,
 }

@@ -97,7 +97,7 @@ impl SessionId {
     }
 
     /// Format as string for storage/display (includes signature)
-    pub fn to_string(&self) -> String {
+    pub fn as_string(&self) -> String {
         format!(
             "{}-{}-{}-{}-{}-{}",
             self.cli_type,
@@ -193,7 +193,7 @@ impl SessionRegistry {
             return None;
         }
         
-        let key = session.to_string();
+        let key = session.as_string();
         self.sessions.insert(key.clone(), session);
         self.sessions.get(&key).map(|s| s.instance_uuid.as_str())
     }
@@ -245,7 +245,7 @@ mod tests {
         let s2 = SessionId::new("qwen");
 
         assert_ne!(s1.instance_uuid, s2.instance_uuid);
-        assert_ne!(s1.to_string(), s2.to_string());
+        assert_ne!(s1.as_string(), s2.as_string());
     }
 
     #[test]

@@ -25,7 +25,7 @@ use ctrlc;
 // Port ranges according to IANA
 const WELL_KNOWN_PORTS: std::ops::Range<u16> = 0..1024;
 const REGISTERED_PORTS: std::ops::Range<u16> = 1024..49152;
-const DYNAMIC_PORTS: std::ops::Range<u16> = 49152..65536;
+const DYNAMIC_PORTS: std::ops::RangeInclusive<u16> = 49152..=65535;
 
 // Protected ports that should never be used (system and Synapsis defaults)
 const PROTECTED_PORTS: &[u16] = &[
@@ -230,14 +230,14 @@ impl ServerProtection {
     
     /// Start protection threads (port hopping, monitoring, etc.)
     fn start_protection_threads(&self) {
-        let is_running = Arc::clone(&self.is_running);
-        let current_port = Arc::clone(&self.current_port);
-        let listener = Arc::clone(&self.listener);
-        let connections = Arc::clone(&self.connections);
-        let config = self.security_config.clone();
-        
         // Port hopping thread
-        if config.enable_port_hopping {
+        if self.security_config.enable_port_hopping {
+            let is_running = Arc::clone(&self.is_running);
+            let current_port = Arc::clone(&self.current_port);
+            let listener = Arc::clone(&self.listener);
+            let connections = Arc::clone(&self.connections);
+            let config = self.security_config.clone();
+            
             let hopping_thread = thread::spawn(move || {
                 let mut last_change = Instant::now();
                 
@@ -264,6 +264,10 @@ impl ServerProtection {
         }
         
         // Connection monitoring thread
+        let is_running = Arc::clone(&self.is_running);
+        let connections = Arc::clone(&self.connections);
+        let config = self.security_config.clone();
+        
         let monitor_thread = thread::spawn(move || {
             while is_running.load(Ordering::SeqCst) {
                 thread::sleep(Duration::from_secs(30));
@@ -676,28 +680,29 @@ impl ProtectedServer {
         // Main server loop
         let is_running = Arc::new(AtomicBool::new(true));
         let is_running_clone = Arc::clone(&is_running);
-        
+        let is_running_ctrl = Arc::clone(&is_running);
+
         let handler = connection_handler.clone();
         let protection = self.protection.clone();
-        
+
         thread::spawn(move || {
             while is_running_clone.load(Ordering::SeqCst) {
                 // Accept connections
-                if let Err(e) = protection.accept_connections(&handler) {
+                if let Err(e) = protection.accept_connections(handler.clone()) {
                     eprintln!("[PROTECTION] Error accepting connection: {}", e);
                 }
-                
+
                 // Small sleep to prevent busy loop
                 thread::sleep(Duration::from_millis(10));
             }
         });
-        
+
         // Wait for signal
         ctrlc::set_handler(move || {
             println!("\n[PROTECTION] Shutting down...");
-            is_running.store(false, Ordering::SeqCst);
+            is_running_ctrl.store(false, Ordering::SeqCst);
         }).expect("Error setting Ctrl-C handler");
-        
+
         // Keep main thread alive
         while is_running.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_secs(1));
@@ -765,7 +770,7 @@ mod tests {
     #[test]
     fn test_security_config_default() {
         let config = SecurityConfig::default();
-        assert_eq!(config.min_port, 1024);
+        assert_eq!(config.min_port, 49152);
         assert_eq!(config.max_port, 65535);
         assert_eq!(config.port_change_interval, Duration::from_secs(300));
         assert_eq!(config.max_connections_per_port, 100);

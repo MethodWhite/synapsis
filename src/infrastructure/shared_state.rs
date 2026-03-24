@@ -4,6 +4,7 @@
 //! Both servers share the same Database, Skills, and AgentRegistry.
 
 use crate::core::audit_log::AuditLog;
+use crate::domain::ports::StoragePort;
 use crate::infrastructure::agents::AgentRegistry;
 use crate::infrastructure::database::Database;
 use crate::infrastructure::skills::SkillRegistry;
@@ -30,6 +31,7 @@ impl SharedState {
     }
 
     pub fn init(&self) {
+        self.db.init().ok();
         self.skills.init().ok();
         self.skills.register_default_skills();
         self.agents.init().ok();
@@ -40,6 +42,7 @@ impl SharedState {
         let agents = Arc::new(AgentRegistry::new());
         let audit_log = Arc::new(AuditLog::new(Arc::clone(&db)));
 
+        db.init().ok();
         skills.init().ok();
         skills.register_default_skills();
         agents.init().ok();

@@ -112,7 +112,7 @@ impl MerkleTree {
         
         for level in 0..self.levels.len() - 1 {
             let level_len = self.levels[level].len();
-            if idx % 2 == 0 {
+            if idx.is_multiple_of(2) {
                 // Need right sibling
                 if idx + 1 < level_len {
                     proof.push((true, self.levels[level][idx + 1]));
@@ -141,8 +141,6 @@ impl MerkleTree {
         let leaf_hash = hasher.finalize();
         let mut current = [0u8; 64];
         current.copy_from_slice(&leaf_hash);
-        
-        let mut idx = index;
         for (is_right_sibling, sibling) in proof {
             let combined = if *is_right_sibling {
                 // Current is left, sibling is right
@@ -155,8 +153,7 @@ impl MerkleTree {
             hasher.update(&combined);
             let result = hasher.finalize();
             current.copy_from_slice(&result);
-            // idx is updated for conceptual clarity (moving up the tree)
-            idx /= 2;
+
         }
         
         &current == root

@@ -24,6 +24,7 @@ pub struct IntegrityMonitor {
 
 impl IntegrityMonitor {
     /// Create a new integrity monitor with empty baseline
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             baseline: HashMap::new(),

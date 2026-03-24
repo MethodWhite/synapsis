@@ -412,9 +412,9 @@ mod hmac_sha1 {
         for chunk in padded.chunks(64) {
             let mut w = [0u32; 80];
 
-            for i in 0..16 {
+            for (i, elem) in w.iter_mut().enumerate().take(16) {
                 let offset = i * 4;
-                w[i] = u32::from_be_bytes([
+                *elem = u32::from_be_bytes([
                     chunk[offset],
                     chunk[offset + 1],
                     chunk[offset + 2],
@@ -422,6 +422,7 @@ mod hmac_sha1 {
                 ]);
             }
 
+            #[allow(clippy::needless_range_loop)]
             for i in 16..80 {
                 let val = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
                 w[i] = val.rotate_left(1);
@@ -433,6 +434,7 @@ mod hmac_sha1 {
             let mut d = h[3];
             let mut e = h[4];
 
+            #[allow(clippy::needless_range_loop)]
             for i in 0..80 {
                 let (f, k) = if i < 20 {
                     ((b & c) | ((!b) & d), 0x5a827999u32)
