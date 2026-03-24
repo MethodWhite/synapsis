@@ -1,22 +1,145 @@
 //! Synapsis MCP Server Implementation
 use anyhow::Result;
+use serde::{Serialize, Deserialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::RwLock;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::time::{Instant, Duration};
 
-use crate::domain::*;
-use crate::infrastructure::database::Database;
-use crate::domain::entities::SearchParams;
-use crate::infrastructure::agents::AgentRegistry;
-use crate::infrastructure::skills::SkillRegistry;
-use crate::core::orchestrator::Orchestrator;
-use crate::core::antibrick::{AntiBrickEngine, AntiBrickConfig};
-use crate::core::watchdog::FilesystemWatchdog;
+use synapsis_core::domain::*;
+use synapsis_core::infrastructure::database::Database;
+use synapsis_core::domain::entities::SearchParams;
+use synapsis_core::infrastructure::agents::AgentRegistry;
+use synapsis_core::infrastructure::plugin::PluginManager;
+use synapsis_core::infrastructure::skills::SkillRegistry;
+use synapsis_core::core::orchestrator::{Orchestrator, AgentStatus};
+use synapsis_core::core::antibrick::{AntiBrickEngine, AntiBrickConfig};
+use synapsis_core::core::watchdog::FilesystemWatchdog;
 use crate::tools::web_research::mcp_tools as web_research_tools;
 use crate::tools::cve_search::mcp_tools as cve_search_tools;
 use crate::tools::security_classify::mcp_tools as security_classify_tools;
 use crate::tools::browser_navigation::mcp_tools as browser_navigation_tools;
+use synapsis_core::domain::crypto::{CryptoProvider, PqcAlgorithm};
+use synapsis_core::core::PqcryptoProvider;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Event {
+    event_type: String,
+    session_id: Option<String>,
+    agent_type: Option<String>,
+    project: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+    content: Option<String>,
+    task_id: Option<String>,
+    skill_id: Option<String>,
+    timestamp: i64,
+}
+
+impl Event {
+    fn new(event_type: &str) -> Self {
+        Self {
+            event_type: event_type.to_string(),
+            session_id: None,
+            agent_type: None,
+            project: None,
+            from: None,
+            to: None,
+            content: None,
+            task_id: None,
+            skill_id: None,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PendingMessage {
+    from: Option<String>,
+    content: String,
+    timestamp: i64,
+}
+
+impl PendingMessage {
+    fn new(from: Option<String>, content: String) -> Self {
+        Self {
+            from,
+            content,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ConnectionInfo {
+    client_name: String,
+    client_type: String, // "cursor", "vscode", "cli", "tui", "unknown"
+    connected_at: Instant,
+    last_activity: Instant,
+    protocol: String, // "mcp-stdin", "mcp-tcp", "secure-tcp"
+    status: ConnectionStatus,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ConnectionStatus {
+    Connected,
+    Idle,
+    Disconnected,
+}
+
+struct EventBus {
+    events: Arc<Mutex<Vec<Event>>>,
+    message_queue: Arc<Mutex<HashMap<String, Vec<PendingMessage>>>>,
+}
+
+impl EventBus {
+    fn new() -> Self {
+        Self {
+            events: Arc::new(Mutex::new(Vec::new())),
+            message_queue: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    fn publish(&self, event: Event) {
+        let mut events = self.events.lock().unwrap();
+        events.push(event.clone());
+        if events.len() > 1000 {
+            events.drain(0..500);
+        }
+
+        // Queue message for recipient if it's a direct message
+        if event.event_type == "message" {
+            if let (Some(to), Some(content)) = (&event.to, &event.content) {
+                let mut queue = self.message_queue.lock().unwrap();
+                let msg = PendingMessage::new(event.from.clone(), content.clone());
+                queue.entry(to.clone()).or_default().push(msg);
+            }
+        }
+    }
+
+    fn poll(&self, since: i64) -> Vec<Event> {
+        let events = self.events.lock().unwrap();
+        events
+            .iter()
+            .filter(|e| e.timestamp > since)
+            .cloned()
+            .collect()
+    }
+
+    fn get_pending_messages(&self, session_id: &str) -> Vec<PendingMessage> {
+        let mut queue = self.message_queue.lock().unwrap();
+        queue.remove(session_id).unwrap_or_default()
+    }
+}
 
 pub struct McpServer {
     db: Arc<Database>,
@@ -26,10 +149,23 @@ pub struct McpServer {
     antibrick: Arc<AntiBrickEngine>,
     watchdog: Arc<FilesystemWatchdog>,
     client_name: Arc<RwLock<Option<String>>>,
+    event_bus: Arc<EventBus>,
+    plugin_manager: Arc<PluginManager>,
+    crypto_provider: Arc<dyn CryptoProvider>,
+    connections: Arc<Mutex<HashMap<String, ConnectionInfo>>>,
 }
 
 impl McpServer {
     pub fn new(db: Arc<Database>, orchestrator: Arc<Orchestrator>) -> Self {
+        // Determine plugin directory
+        let plugin_dir = dirs::data_local_dir()
+            .map(|mut d| {
+                d.push("synapsis");
+                d.push("plugins");
+                d
+            })
+            .unwrap_or_else(|| PathBuf::from("./synapsis_plugins"));
+        
         Self {
             db,
             skills: Arc::new(SkillRegistry::new()),
@@ -38,6 +174,10 @@ impl McpServer {
             antibrick: Arc::new(AntiBrickEngine::new(AntiBrickConfig::default())),
             watchdog: Arc::new(FilesystemWatchdog::new(Default::default())),
             client_name: Arc::new(RwLock::new(None)),
+            event_bus: Arc::new(EventBus::new()),
+            plugin_manager: Arc::new(PluginManager::new(plugin_dir)),
+            crypto_provider: Arc::new(PqcryptoProvider::new()),
+            connections: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -111,6 +251,17 @@ impl McpServer {
                     let mut client_name_lock = self.client_name.write().unwrap();
                     *client_name_lock = Some(client_name.clone());
                 }
+                // Track connection
+                let connection_id = client_name.clone();
+                let mut connections = self.connections.lock().unwrap();
+                connections.insert(connection_id, ConnectionInfo {
+                    client_name: client_name.clone(),
+                    client_type: "unknown".to_string(),
+                    connected_at: Instant::now(),
+                    last_activity: Instant::now(),
+                    protocol: "mcp-stdin".to_string(),
+                    status: ConnectionStatus::Connected,
+                });
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -147,6 +298,62 @@ impl McpServer {
                     "id": id,
                     "result": { "prompts": [{ "name": "memory_context" }] }
                 }))
+            }
+            "agents_active" => {
+                let params = &request["params"];
+                let project = params.get("project").and_then(|v| v.as_str());
+                match self.db.get_active_agents(project) {
+                    Ok(agents) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": { "agents": agents }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": e.to_string() }
+                    })),
+                }
+            }
+            "task_create" => {
+                let params = &request["params"];
+                let args = params.get("arguments").and_then(|v| v.as_object());
+                let project = args.and_then(|a| a.get("project")).and_then(|v| v.as_str()).unwrap_or("default");
+                let task_type = args.and_then(|a| a.get("task_type")).and_then(|v| v.as_str()).unwrap_or("");
+                let payload = args.and_then(|a| a.get("payload")).and_then(|v| v.as_str()).unwrap_or("");
+                let priority = args.and_then(|a| a.get("priority")).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                // Use the multi_agent module to create task
+                match self.db.create_task(project, task_type, payload, priority) {
+                    Ok(task_id) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": { "task_id": task_id }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": e.to_string() }
+                    })),
+                }
+            }
+            "session_register" => {
+                let params = &request["params"];
+                let args = params.get("arguments").and_then(|v| v.as_object());
+                let agent_type = args.and_then(|a| a.get("agent_type")).and_then(|v| v.as_str()).unwrap_or("");
+                let project = args.and_then(|a| a.get("project")).and_then(|v| v.as_str()).unwrap_or("default");
+                let agent_instance = "unknown"; // default instance
+                match self.db.register_agent_session(agent_type, agent_instance, project, None) {
+                    Ok(session_id) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": { "session_id": session_id }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": e.to_string() }
+                    })),
+                }
             }
             _ => Ok(json!({
                 "jsonrpc": "2.0",
@@ -476,6 +683,227 @@ impl McpServer {
                             },
                             "required": ["url", "output_path"]
                         }
+                    },
+                    {
+                        "name": "agent_heartbeat",
+                        "description": "Update agent heartbeat and status",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "status": { "type": "string", "enum": ["idle", "busy"] },
+                                "task": { "type": "string" }
+                            },
+                            "required": ["session_id", "status"]
+                        }
+                    },
+                    {
+                        "name": "agent_details",
+                        "description": "Get details about a specific agent",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" }
+                            },
+                            "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "send_message",
+                        "description": "Send a message to another agent",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "to": { "type": "string" },
+                                "content": { "type": "string" }
+                            },
+                            "required": ["session_id", "to", "content"]
+                        }
+                    },
+                    {
+                        "name": "agents_active",
+                        "description": "List active agents in a project",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "project": { "type": "string" }
+                            }
+                        }
+                    },
+                    {
+                        "name": "task_delegate",
+                        "description": "Delegate a task to another agent",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": { "type": "string" },
+                                "to_agent": { "type": "string" }
+                            },
+                            "required": ["task_id", "to_agent"]
+                        }
+                    },
+                    {
+                        "name": "task_claim",
+                        "description": "Claim a pending task",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" }
+                            },
+                            "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "task_request",
+                        "description": "Request a task assignment",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "skills": { "type": "array", "items": { "type": "string" } }
+                            },
+                            "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "task_complete",
+                        "description": "Mark a task as completed",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": { "type": "string" },
+                                "success": { "type": "boolean", "default": true },
+                                "result": { "type": "string" }
+                            },
+                            "required": ["task_id"]
+                        }
+                    },
+                    {
+                        "name": "task_audit",
+                        "description": "Audit a task with status and notes",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": { "type": "string" },
+                                "auditor_session_id": { "type": "string" },
+                                "audit_status": { "type": "string", "default": "approved" },
+                                "audit_notes": { "type": "string" }
+                            },
+                            "required": ["task_id", "auditor_session_id"]
+                        }
+                    },
+                    {
+                        "name": "event_poll",
+                        "description": "Poll for new events since timestamp",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "since": { "type": "integer" }
+                            }
+                        }
+                    },
+                    {
+                        "name": "get_pending_messages",
+                        "description": "Get pending messages for session",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" }
+                            },
+                            "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "plugin_load",
+                        "description": "Load a plugin from path",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string" }
+                            },
+                            "required": ["path"]
+                        }
+                    },
+                    {
+                        "name": "plugin_unload",
+                        "description": "Unload a plugin",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "plugin_id": { "type": "string" }
+                            },
+                            "required": ["plugin_id"]
+                        }
+                    },
+                    {
+                        "name": "plugin_list",
+                        "description": "List all loaded plugins",
+                        "inputSchema": { "type": "object", "properties": {} }
+                    },
+                    {
+                        "name": "plugin_info",
+                        "description": "Get plugin information",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "plugin_id": { "type": "string" }
+                            },
+                            "required": ["plugin_id"]
+                        }
+                    },
+                    {
+                        "name": "plugin_enable",
+                        "description": "Enable a plugin",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "plugin_id": { "type": "string" },
+                                "enabled": { "type": "boolean", "default": true }
+                            },
+                            "required": ["plugin_id"]
+                        }
+                    },
+                    {
+                        "name": "plugin_disable",
+                        "description": "Disable a plugin",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "plugin_id": { "type": "string" }
+                            },
+                            "required": ["plugin_id"]
+                        }
+                    },
+                    {
+                        "name": "plugin_health",
+                        "description": "Check plugin health",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "plugin_id": { "type": "string" }
+                            }
+                        }
+                    },
+                    {
+                        "name": "plugin_update_check",
+                        "description": "Check for plugin updates",
+                        "inputSchema": { "type": "object", "properties": {} }
+                    },
+                    {
+                        "name": "plugin_cleanup",
+                        "description": "Clean up unused plugins",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "max_age_seconds": { "type": "integer", "default": 86400 }
+                            }
+                        }
+                    },
+                    {
+                        "name": "connection_status",
+                        "description": "Check connection status with green/red indicators",
+                        "inputSchema": { "type": "object", "properties": {} }
                     }
                 ]
             }
@@ -600,19 +1028,19 @@ impl McpServer {
             }
             "pqc_encrypt" => {
                 let plaintext = args["plaintext"].as_str().unwrap_or("");
-                let key = crate::core::pqc::generate_key(); // In 2026, would use session key
-                match crate::core::pqc::encrypt(plaintext.as_bytes(), &key) {
-                    Ok(ciphertext) => {
-                        Ok(json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "result": {
-                                "content": [{ "type": "text", "text": hex::encode(ciphertext) }]
-                            }
-                        }))
+                let key_bytes = self.crypto_provider.random_bytes(32)
+                    .map_err(|e| anyhow::anyhow!("Failed to generate key: {}", e))?;
+                let mut key = [0u8; 32];
+                key.copy_from_slice(&key_bytes);
+                let ciphertext = self.crypto_provider.encrypt(&key, plaintext.as_bytes(), PqcAlgorithm::Aes256Gcm)
+                    .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": hex::encode(ciphertext) }]
                     }
-                    Err(e) => Err(anyhow::anyhow!("Encryption failed: {}", e)),
-                }
+                }))
             }
             "wasm_run" => {
                 Ok(json!({
@@ -630,7 +1058,7 @@ impl McpServer {
                     .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
                     .unwrap_or_default();
                 
-                let result = crate::core::antibrick::mcp_tools::handle_antibrick_scan(
+                let result = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_scan(
                     &self.antibrick,
                     command,
                     args_vec,
@@ -645,7 +1073,7 @@ impl McpServer {
                 }))
             }
             "antibrick_stats" => {
-                let stats = crate::core::antibrick::mcp_tools::handle_antibrick_stats(&self.antibrick);
+                let stats = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_stats(&self.antibrick);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -656,7 +1084,7 @@ impl McpServer {
             }
             "antibrick_enable" => {
                 let enable = args["enable"].as_bool().unwrap_or(true);
-                let result = crate::core::antibrick::mcp_tools::handle_antibrick_enable(&self.antibrick, enable);
+                let result = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_enable(&self.antibrick, enable);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -666,7 +1094,7 @@ impl McpServer {
                 }))
             }
             "watchdog_stats" => {
-                let stats = crate::core::watchdog::mcp_tools::handle_watchdog_stats(&self.watchdog);
+                let stats = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_stats(&self.watchdog);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -676,7 +1104,7 @@ impl McpServer {
                 }))
             }
             "watchdog_verify" => {
-                let result = crate::core::watchdog::mcp_tools::handle_watchdog_verify(&self.watchdog);
+                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_verify(&self.watchdog);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -687,7 +1115,7 @@ impl McpServer {
             }
             "watchdog_snapshot" => {
                 let path = args["path"].as_str().unwrap_or("/").to_string();
-                let result = crate::core::watchdog::mcp_tools::handle_watchdog_snapshot(&self.watchdog, path);
+                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_snapshot(&self.watchdog, path);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -698,7 +1126,7 @@ impl McpServer {
             }
             "watchdog_events" => {
                 let limit = args["limit"].as_u64().unwrap_or(20) as usize;
-                let result = crate::core::watchdog::mcp_tools::handle_watchdog_events(&self.watchdog, limit);
+                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_events(&self.watchdog, limit);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -709,7 +1137,7 @@ impl McpServer {
             }
             "watchdog_check_path" => {
                 let path = args["path"].as_str().unwrap_or("/").to_string();
-                let result = crate::core::watchdog::mcp_tools::handle_watchdog_check_path(&self.watchdog, path);
+                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_check_path(&self.watchdog, path);
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -812,6 +1240,407 @@ impl McpServer {
                     "id": id,
                     "result": {
                         "content": [{ "type": "text", "text": result.to_string() }]
+                    }
+                }))
+            },
+            "agent_heartbeat" => {
+                let session_id = args["session_id"].as_str().unwrap_or("");
+                let status_str = args["status"].as_str().unwrap_or("idle");
+                let task = args["task"].as_str();
+                let status = match status_str {
+                    "idle" => AgentStatus::Idle,
+                    "busy" => AgentStatus::Busy,
+                    _ => AgentStatus::Idle,
+                };
+                self.orchestrator.heartbeat(session_id, Some(status), task);
+                // Update connection activity
+                if let Some(client_name) = self.client_name.read().unwrap().as_ref() {
+                    let mut connections = self.connections.lock().unwrap();
+                    if let Some(conn) = connections.get_mut(client_name) {
+                        conn.last_activity = Instant::now();
+                    }
+                }
+                if let Err(e) = self.db.agent_heartbeat(session_id, task) {
+                    return Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("{:?}", e) }
+                    }));
+                }
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": "Heartbeat updated" }]
+                    }
+                }))
+            },
+            "agent_details" => {
+                let session_id = args["session_id"].as_str().unwrap_or("");
+                match self.db.get_agent_details(session_id) {
+                    Ok(details) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("{:?}", details) }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("{:?}", e) }
+                    })),
+                }
+            },
+            "send_message" => {
+                let session_id = args["session_id"].as_str().unwrap_or("");
+                let to = args["to"].as_str().unwrap_or("");
+                let content = args["content"].as_str().unwrap_or("");
+                let event = Event {
+                    event_type: "message".to_string(),
+                    session_id: Some(session_id.to_string()),
+                    agent_type: None,
+                    project: None,
+                    from: Some(session_id.to_string()),
+                    to: Some(to.to_string()),
+                    content: Some(content.to_string()),
+                    task_id: None,
+                    skill_id: None,
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64,
+                };
+                self.event_bus.publish(event);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": "Message sent" }]
+                    }
+                }))
+            },
+            "agents_active" => {
+                let project = args["project"].as_str();
+                match self.db.get_active_agents(project) {
+                    Ok(agents) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("{:?}", agents) }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("{:?}", e) }
+                    })),
+                }
+            },
+            "task_delegate" => {
+                let task_id = args["task_id"].as_str().unwrap_or("");
+                let to_agent = args["to_agent"].as_str().unwrap_or("");
+                if self.orchestrator.assign_task(&task_id, &to_agent) {
+                    Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("Task {} delegated to {}", task_id, to_agent) }]
+                        }
+                    }))
+                } else {
+                    Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": "Failed to delegate task" }
+                    }))
+                }
+            },
+            "task_claim" => {
+                let session_id = args["session_id"].as_str().unwrap_or("");
+                match self.db.claim_task(session_id, None) {
+                    Ok(task) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("Claimed task {:?}", task) }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("{:?}", e) }
+                    })),
+                }
+            },
+            "task_request" => {
+                let session_id = args["session_id"].as_str().unwrap_or("");
+                let skills: Vec<String> = args["skills"]
+                    .as_array()
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
+                    .unwrap_or_default();
+                match self.orchestrator.find_best_agent(&skills) {
+                    Some(agent_id) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("Best agent: {}", agent_id) }]
+                        }
+                    })),
+                    None => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": "No suitable agent found" }]
+                        }
+                    })),
+                }
+            },
+            "task_complete" => {
+                let task_id = args["task_id"].as_str().unwrap_or("");
+                let success = args["success"].as_bool().unwrap_or(true);
+                let result = args["result"].as_str();
+                self.orchestrator.complete_task(task_id, success);
+                if let Some(result_text) = result {
+                    let _ = self.db.complete_task(task_id, Some(result_text), None);
+                }
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": format!("Task {} completed", task_id) }]
+                    }
+                }))
+            },
+            "task_audit" => {
+                let task_id = args["task_id"].as_str().unwrap_or("");
+                let auditor_session_id = args["auditor_session_id"].as_str().unwrap_or("");
+                let audit_status = args["audit_status"].as_str().unwrap_or("approved");
+                let audit_notes = args["audit_notes"].as_str();
+                match self.db.audit_task(task_id, auditor_session_id, audit_status, audit_notes) {
+                    Ok(_) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("Task {} audited", task_id) }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("{:?}", e) }
+                    })),
+                }
+            },
+            "event_poll" => {
+                let since = args["since"].as_i64().unwrap_or(0);
+                let events = self.event_bus.poll(since);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": format!("{:?}", events) }]
+                    }
+                }))
+            },
+            "get_pending_messages" => {
+                let session_id = args["session_id"].as_str().unwrap_or("");
+                let messages = self.event_bus.get_pending_messages(session_id);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": format!("{:?}", messages) }]
+                    }
+                }))
+            }
+            "plugin_load" => {
+                let path = args["path"].as_str().unwrap_or("");
+                match self.plugin_manager.load_plugin(path) {
+                    Ok(plugin_id) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("Plugin loaded with ID: {}", plugin_id) }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("Failed to load plugin: {}", e) }
+                    })),
+                }
+            }
+            "plugin_unload" => {
+                let plugin_id = args["plugin_id"].as_str().unwrap_or("");
+                match self.plugin_manager.unload_plugin(plugin_id) {
+                    Ok(_) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("Plugin {} unloaded", plugin_id) }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("Failed to unload plugin: {}", e) }
+                    })),
+                }
+            }
+            "plugin_list" => {
+                let plugins = self.plugin_manager.get_plugins();
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": format!("{:?}", plugins) }]
+                    }
+                }))
+            }
+            "plugin_info" => {
+                let plugin_id = args["plugin_id"].as_str().unwrap_or("");
+                match self.plugin_manager.get_plugin(plugin_id) {
+                    Some(info) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("{:?}", info) }]
+                        }
+                    })),
+                    None => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("Plugin not found: {}", plugin_id) }
+                    })),
+                }
+            }
+            "plugin_enable" => {
+                let plugin_id = args["plugin_id"].as_str().unwrap_or("");
+                let enabled = args["enabled"].as_bool().unwrap_or(true);
+                match self.plugin_manager.set_plugin_enabled(plugin_id, enabled) {
+                    Ok(_) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("Plugin {} {}", plugin_id, if enabled { "enabled" } else { "disabled" }) }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("Failed to set plugin state: {}", e) }
+                    })),
+                }
+            }
+            "plugin_disable" => {
+                let plugin_id = args["plugin_id"].as_str().unwrap_or("");
+                match self.plugin_manager.set_plugin_enabled(plugin_id, false) {
+                    Ok(_) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("Plugin {} disabled", plugin_id) }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("Failed to disable plugin: {}", e) }
+                    })),
+                }
+            }
+            "plugin_health" => {
+                let plugin_id = args["plugin_id"].as_str();
+                let health_results = self.plugin_manager.health_check();
+                if let Some(pid) = plugin_id {
+                    match health_results.get(pid) {
+                        Some(result) => Ok(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "content": [{ "type": "text", "text": format!("{:?}", result) }]
+                            }
+                        })),
+                        None => Ok(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": { "code": -32603, "message": format!("Plugin not found: {}", pid) }
+                        })),
+                    }
+                } else {
+                    Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("{:?}", health_results) }]
+                        }
+                    }))
+                }
+            }
+            "plugin_update_check" => {
+                let updates = self.plugin_manager.check_for_updates();
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": format!("{:?}", updates) }]
+                    }
+                }))
+            }
+            "plugin_cleanup" => {
+                let max_age_seconds = args["max_age_seconds"].as_i64().unwrap_or(86400);
+                let removed = self.plugin_manager.cleanup_unused_plugins(max_age_seconds);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": format!("Removed plugins: {:?}", removed) }]
+                    }
+                }))
+            }
+            "connection_status" => {
+                let mut connections = self.connections.lock().unwrap();
+                // Clean up stale connections (older than 5 minutes)
+                let mut to_remove = Vec::new();
+                for (id, conn) in connections.iter() {
+                    if conn.last_activity.elapsed() > Duration::from_secs(300) {
+                        to_remove.push(id.clone());
+                    }
+                }
+                for id in to_remove {
+                    connections.remove(&id);
+                }
+                // Build status list
+                let mut status_list = Vec::new();
+                for (id, conn) in connections.iter_mut() {
+                    // Update status based on activity
+                    let elapsed = conn.last_activity.elapsed();
+                    let new_status = if elapsed < Duration::from_secs(30) {
+                        ConnectionStatus::Connected
+                    } else {
+                        ConnectionStatus::Idle
+                    };
+                    conn.status = new_status;
+                    let status_str = match conn.status {
+                        ConnectionStatus::Connected => "🟢 Connected",
+                        ConnectionStatus::Idle => "🟡 Idle",
+                        ConnectionStatus::Disconnected => "🔴 Disconnected",
+                    };
+                    let duration = elapsed.as_secs();
+                    status_list.push(format!("{} ({}): {} - {}s ago via {}", 
+                        conn.client_name, id, status_str, duration, conn.protocol));
+                }
+                let output = if status_list.is_empty() {
+                    "No active connections".to_string()
+                } else {
+                    status_list.join("\n")
+                };
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": output }]
                     }
                 }))
             }

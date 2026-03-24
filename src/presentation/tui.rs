@@ -1,6 +1,6 @@
 //! Synapsis TUI - Minimal terminal UI
 
-use crate::domain::{
+use synapsis_core::domain::{
     entities::{Observation, SearchParams, SessionSummary},
     ports::{SessionPort, StoragePort},
 };
@@ -71,14 +71,14 @@ impl Tui {
         Err(Box::new(SynapsisError::internal_unimplemented()))
     }
 
-    fn refresh_data(&mut self) -> crate::domain::errors::Result<()> {
+    fn refresh_data(&mut self) -> synapsis_core::domain::errors::Result<()> {
         let entries = self.storage.get_timeline(1000)?;
         self.state.observations = entries.into_iter().map(|e| e.observation).collect();
         self.state.selected_index = 0;
         Ok(())
     }
 
-    fn perform_search(&mut self) -> crate::domain::errors::Result<()> {
+    fn perform_search(&mut self) -> synapsis_core::domain::errors::Result<()> {
         let params = SearchParams::new(&self.state.search_query).with_limit(50);
         let results = self.storage.search_observations(&params)?;
         self.state.search_results = results.into_iter().map(|r| r.observation).collect();
@@ -86,7 +86,7 @@ impl Tui {
         Ok(())
     }
 
-    fn calculate_stats(&mut self) -> crate::domain::errors::Result<()> {
+    fn calculate_stats(&mut self) -> synapsis_core::domain::errors::Result<()> {
         let entries = self.storage.get_timeline(0)?;
         let sessions = self.sessions.list_sessions()?;
 
@@ -153,7 +153,7 @@ mod tui_impl {
         fn run_internal(
             &mut self,
             terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-        ) -> crate::domain::errors::Result<()> {
+        ) -> synapsis_core::domain::errors::Result<()> {
             self.refresh_data()?;
 
             loop {

@@ -3,7 +3,6 @@
 //! Unit tests for the Database struct covering CRUD operations,
 //! search functionality, timeline ordering, and session management.
 
-use std::env;
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -19,7 +18,7 @@ static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// Automatically cleans up the directory when dropped
 struct TestContext {
     db: Database,
-    test_dir: String,
+    pub test_dir: String,
 }
 
 impl TestContext {
@@ -34,12 +33,12 @@ impl TestContext {
         
         println!("[TEST_CONTEXT] Creating test directory: {}", test_dir);
         let _ = std::io::stdout().flush();
-        env::set_var("XDG_DATA_HOME", &test_dir);
+        let db_path = format!("{}/synapsis/synapsis.db", test_dir);
         std::fs::create_dir_all(&format!("{}/synapsis", test_dir)).ok();
         
-        println!("[TEST_CONTEXT] Creating Database instance");
+        println!("[TEST_CONTEXT] Creating Database instance at {}", db_path);
         let _ = std::io::stdout().flush();
-        let db = Database::new();
+        let db = Database::new_with_path(db_path, None);
         println!("[TEST_CONTEXT] Calling init");
         let _ = std::io::stdout().flush();
         db.init().unwrap();
@@ -64,29 +63,7 @@ impl Drop for TestContext {
     }
 }
 
-fn test_db() -> Database {
-    println!("[TEST_DB] Setting XDG_DATA_HOME to /tmp/synapsis-test");
-    let _ = std::io::stdout().flush();
-    env::set_var("XDG_DATA_HOME", "/tmp/synapsis-test");
-    std::fs::create_dir_all("/tmp/synapsis-test/synapsis").ok();
-    println!("[TEST_DB] Creating Database instance");
-    let _ = std::io::stdout().flush();
-    let db = Database::new();
-    println!("[TEST_DB] Calling init");
-    let _ = std::io::stdout().flush();
-    db.init().unwrap();
-    println!("[TEST_DB] Returning db");
-    let _ = std::io::stdout().flush();
-    db
-}
 
-fn cleanup_test_dir() {
-    println!("[CLEANUP] Removing /tmp/synapsis-test");
-    let _ = std::io::stdout().flush();
-    std::fs::remove_dir_all("/tmp/synapsis-test").ok();
-    println!("[CLEANUP] Done");
-    let _ = std::io::stdout().flush();
-}
 
 mod database_tests {
     use super::*;
@@ -451,10 +428,10 @@ mod database_tests {
     #[test]
     fn test_persistence_across_instances() {
         let ctx = TestContext::new();
-        println!("[TEST] XDG_DATA_HOME = {:?}", std::env::var("XDG_DATA_HOME"));
+        let db_path = format!("{}/synapsis/synapsis.db", ctx.test_dir);
         
         {
-            let db1 = Database::new();
+            let db1 = Database::new_with_path(&db_path, None);
             db1.init().unwrap();
             let obs = Observation::new(
                 SessionId::new("test"),
@@ -466,7 +443,7 @@ mod database_tests {
         }
 
         {
-            let db2 = Database::new();
+            let db2 = Database::new_with_path(&db_path, None);
             db2.init().unwrap();
             let timeline = db2.get_timeline(10).unwrap();
             println!("[TEST] Timeline length: {}", timeline.len());

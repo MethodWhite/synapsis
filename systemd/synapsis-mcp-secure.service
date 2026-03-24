@@ -1,0 +1,41 @@
+[Unit]
+Description=Synapsis Secure MCP Server
+Documentation=https://github.com/methodwhite/synapsis
+After=network.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=synapsis
+Group=synapsis
+Environment="SYNAPSIS_PQC_PASSPHRASE=change-me-in-production"
+Environment="RUST_LOG=info"
+WorkingDirectory=/opt/synapsis
+ExecStart=/opt/synapsis/bin/synapsis-mcp --tcp --secure --tcp-addr 0.0.0.0:7439
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=synapsis-mcp-secure
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/synapsis
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

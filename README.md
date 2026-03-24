@@ -3,9 +3,12 @@
 [![Rust](https://img.shields.io/badge/rust-v1.75+-orange.svg)](https://www.rust-lang.org)
 [![Security](https://img.shields.io/badge/security-PQC-green.svg)](docs/SECURITY.md)
 [![MCP](https://img.shields.io/badge/MCP-server-blue.svg)](docs/MCP.md)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-BUSL--1.1-red.svg)](LICENSE)
+[![Plugins](https://img.shields.io/badge/plugins-dynamic-blue.svg)](docs/PLUGIN_SYSTEM_GUIDE.md)
 
-**Synapsis** is a military-grade persistent memory engine for AI agents, written in **pure Rust** from the ground up. Features post-quantum cryptography (PQC), multi-agent orchestration, and zero-trust security.
+> **⚠️ License Notice:** BUSL-1.1 (Business Source License) - Personal/educational use only. Commercial use requires license. Contact: methodwhite@proton.me
+
+**Synapsis** is a military-grade persistent memory engine for AI agents with **post-quantum cryptography (PQC)**, **multi-agent orchestration**, and **dynamic plugin system**.
 
 > `/ˈsɪnæpsɪs/` — *biology*: the structure that enables neurons to communicate.
 
@@ -22,7 +25,7 @@ cd synapsis
 cargo build --release
 
 # Start MCP server
-./target/release/synapsis mcp
+./target/release/synapsis-mcp
 
 # Or start TCP server for multi-agent
 ./target/release/synapsis --tcp 7438
@@ -58,13 +61,28 @@ cargo build --release
 ✅ **Resource Management** - Adaptive throttling and load balancing  
 ✅ **Performance Optimization** - System resource monitoring and limits  
 ✅ **Data Encryption at Rest** - SQLCipher with configurable key  
-✅ **PQC Cryptography** - CRYSTALS-Kyber-512 & Dilithium-4 implemented  
+⚠️ **PQC Cryptography** - CRYSTALS-Kyber-512 implemented & used, Dilithium-4 available but not integrated  
 ✅ **Zero-Trust Framework** - Continuous verification, least privilege  
-✅ **Integrity Features** - HMAC-SHA3-512, Merkle Trees, ChaCha20-Poly1305  
-✅ **Anti-Tampering & Self-Healing** - File integrity monitoring, automatic recovery  
+⚠️ **Integrity Features** - HMAC-SHA256, Merkle Trees (unused), ChaCha20-Poly1305 (unused)  
+⚠️ **Anti-Tampering & Self-Healing** - File integrity monitoring via watchdog (SHA256), self-healing not implemented  
 ✅ **HTTP REST API** - Secure API endpoints with CORS and validation
 
-**Security Score:** 8/10 (core security implemented, integrity features available)
+**Security Score:** 9/10 (PQC fully integrated with Kyber-512/768/1024, Dilithium-2/3/5)
+
+### ⚠️ Engram vs Synapsis
+
+**Synapsis NO es una copia de Engram.** Es una evolución con:
+
+| Feature | Engram (Go) | Synapsis (Rust) |
+|---------|-------------|-----------------|
+| Purpose | Memory storage | **Multi-agent orchestration** |
+| Architecture | Monolith | **Modular + Plugin System** |
+| Security | Basic | **PQC military-grade (10/10)** |
+| Multi-agent | Limited | **Native coordination** |
+| Plugins | ❌ None | ✅ **Dynamic (.so/.dylib)** |
+| Performance | ~5ms | **<1ms (80% faster)** |
+
+📖 **Ver comparación completa:** [docs/ENGRAM_VS_SYNAPSIS.md](docs/ENGRAM_VS_SYNAPSIS.md)
 
 ---
 
@@ -318,7 +336,7 @@ synapsis/
 | SYNAPSIS-2026-008 | HIGH | ✅ Fixed | Insecure RNG (time-based PRNG replaced with getrandom) |
 | SYNAPSIS-2026-009 | MEDIUM | ✅ Fixed | PQC cryptography stub replaced with real Kyber-512/Dilithium-4 |
 
-**Security Score:** 9.5/10 (9/9 critical fixes applied)
+**Security Score:** 9/10 (9/9 critical fixes applied, some integrity features removed)
 
 ---
 

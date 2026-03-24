@@ -23,7 +23,8 @@ test_result() {
 }
 
 echo "╔═══════════════════════════════════════════════════════════╗"
-echo "║     MULTI-AGENT BRIDGE TEST                               ║"
+echo "║  ⚠️  DEPRECATED: Tests standalone TCP server              ║"
+echo "║     Use MCP server (synapsis-mcp) for new development     ║"
 echo "║     Testing: qwen-code + opencode context sharing         ║"
 echo "╚═══════════════════════════════════════════════════════════╝"
 echo ""

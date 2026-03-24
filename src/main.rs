@@ -27,6 +27,7 @@ use synapsis::core::tool_registry::ToolRegistry;
 use synapsis::core::uuid::Uuid;
 use synapsis::core::vault::SecureVault;
 use synapsis::infrastructure::database::Database;
+use synapsis::session_cleanup;  // Session cleanup module
 use synapsis::infrastructure::shared_state::SharedState;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -224,9 +225,13 @@ impl ServerState {
         orchestrator.cleanup_stale_agents(300); // 5 minutes
 
         // Clean up stale sessions from database
-        let db = Database::new();
-        let session_manager = SessionManager::new(Arc::new(db));
+        let db = Arc::new(Database::new());
+        let session_manager = SessionManager::new(db.clone());
         session_manager.cleanup_stale_sessions(300).ok(); // 5 minutes
+
+        // Initialize automatic session cleanup job (background)
+        // This runs every 60 seconds and cleans sessions without heartbeat for 5+ minutes
+        let _cleanup_job = session_cleanup::init_session_cleanup(&db);
 
         let classifier = Arc::new(AgentClassifier::new());
         let challenge_response = Arc::new(ChallengeResponse::new());
@@ -667,6 +672,9 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
                 "mw",
                 "mw-cli",
                 "cli",
+                "pqc-worker",
+                "pqc-tester",
+                "pqc-optimizer",
             ];
             if !allowed
                 .iter()
@@ -1220,7 +1228,13 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
     })
 }
 
-fn main() {
+ fn main() {
+    eprintln!("╔══════════════════════════════════════════════════════════╗");
+    eprintln!("║  DEPRECATION WARNING: TCP Server is being phased out     ║");
+    eprintln!("║  Please migrate to MCP server: synapsis-mcp              ║");
+    eprintln!("║  For local use:  synapsis-mcp (no arguments)             ║");
+    eprintln!("║  For TCP multi-client: synapsis-mcp --tcp                ║");
+    eprintln!("╚══════════════════════════════════════════════════════════╝");
     println!("Synapsis v{} - YOLO Mode Active", env!("CARGO_PKG_VERSION"));
     println!("TCP Server: 127.0.0.1:7438");
     println!("Ready for autonomous multi-agent operations");

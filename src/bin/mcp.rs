@@ -1,4 +1,4 @@
-//! Synapsis MCP Bridge - connects MCP clients to TCP server
+//! Synapsis MCP Server - primary interface for AI agent coordination
 //!
 //! This bridge allows IDEs/CLIs that support MCP to connect to the
 //! Synapsis TCP server, enabling shared state between all agents.
@@ -6,55 +6,80 @@
 use std::io::{BufRead, Write};
 use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
+use synapsis::presentation::mcp::tcp;
+use synapsis::presentation::mcp::secure_tcp;
 
 struct Bridge {
     server_url: String,
     connected: bool,
+    secure: bool,
+    secure_client: Option<secure_tcp::SecureTcpClient>,
 }
 
 impl Bridge {
-    fn new(server_url: &str) -> Self {
+    fn new(server_url: &str, secure: bool) -> Self {
         Self {
             server_url: server_url.to_string(),
             connected: false,
+            secure,
+            secure_client: None,
         }
     }
 
     fn connect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let stream = TcpStream::connect(&self.server_url)?;
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
-        std::io::BufReader::new(stream).lines().next();
-        self.connected = true;
+        if self.secure {
+            let client = secure_tcp::SecureTcpClient::connect(&self.server_url)
+                .map_err(|e| format!("Secure connection failed: {}", e))?;
+            self.secure_client = Some(client);
+            self.connected = true;
+        } else {
+            let stream = TcpStream::connect(&self.server_url)?;
+            stream.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
+            std::io::BufReader::new(stream).lines().next();
+            self.connected = true;
+        }
         Ok(())
     }
 
-    fn forward(&self, request: &str) -> Result<String, Box<dyn std::error::Error>> {
+    fn forward(&mut self, request: &str) -> Result<String, Box<dyn std::error::Error>> {
         if !self.connected {
             return Err("Not connected to TCP server".into());
         }
 
-        let mut stream = TcpStream::connect(&self.server_url)?;
-        stream.write_all(request.as_bytes())?;
-        stream.write_all(b"\n")?;
-        stream.flush()?;
+        if self.secure {
+            let client = self.secure_client.as_mut()
+                .ok_or("Secure client not initialized")?;
+            client.send(request)
+                .map_err(|e| format!("Secure send failed: {}", e).into())
+        } else {
+            let mut stream = TcpStream::connect(&self.server_url)?;
+            stream.write_all(request.as_bytes())?;
+            stream.write_all(b"\n")?;
+            stream.flush()?;
 
-        let reader = std::io::BufReader::new(stream);
-        let mut response = String::new();
-        if let Some(Ok(line)) = reader.lines().next() {
-            response = line;
+            let reader = std::io::BufReader::new(stream);
+            let mut response = String::new();
+            if let Some(Ok(line)) = reader.lines().next() {
+                response = line;
+            }
+
+            Ok(response)
         }
-
-        Ok(response)
     }
 }
 
-fn start_tcp_server() -> Result<Child, Box<dyn std::error::Error>> {
-    let child = Command::new(std::env::current_exe()?)
-        .arg("serve")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
-
+fn start_tcp_server(secure: bool, addr: &str) -> Result<Child, Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(std::env::current_exe()?);
+    cmd.arg("--tcp");
+    if secure {
+        cmd.arg("--secure");
+    } else {
+        cmd.arg("--insecure");
+    }
+    cmd.arg("--tcp-addr").arg(addr);
+    cmd.stdout(Stdio::null()).stderr(Stdio::null());
+    
+    let child = cmd.spawn()?;
     std::thread::sleep(std::time::Duration::from_millis(500));
     Ok(child)
 }
@@ -71,11 +96,38 @@ fn run_local_mcp() {
     }
 }
 
-fn run_bridge_mode(server_url: &str, auto_start: bool) {
+fn run_tcp_server(addr: &str, secure: bool) {
+    let db = std::sync::Arc::new(synapsis::infrastructure::database::Database::new());
+    let orchestrator = std::sync::Arc::new(synapsis::core::orchestrator::Orchestrator::new());
+    let server = std::sync::Arc::new(synapsis::presentation::mcp::McpServer::new(db, orchestrator));
+    server.init();
+
+    if secure {
+        eprintln!("[MCP Secure TCP] Starting secure server on {}", addr);
+        if let Err(e) = secure_tcp::start_secure_tcp_server(server, addr) {
+            eprintln!("Secure TCP Server error: {}", e);
+            std::process::exit(1);
+        }
+    } else {
+        eprintln!("[MCP TCP] Starting insecure server on {}", addr);
+        if let Err(e) = tcp::start_tcp_server(server, addr) {
+            eprintln!("TCP Server error: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_bridge_mode(server_url: &str, auto_start: bool, secure: bool) {
+    eprintln!("╔══════════════════════════════════════════════════════════╗");
+    eprintln!("║  DEPRECATION WARNING: Bridge mode is being phased out    ║");
+    eprintln!("║  For local use, run without --bridge flag                ║");
+    eprintln!("║  For multi-client TCP, use --tcp flag instead            ║");
+    eprintln!("╚══════════════════════════════════════════════════════════╝");
+    
     let _tcp_server: Option<Child> = if auto_start {
-        match start_tcp_server() {
+        match start_tcp_server(secure, server_url) {
             Ok(child) => {
-                println!("[Bridge] Started TCP server");
+                println!("[Bridge] Started TCP server at {} (secure: {})", server_url, secure);
                 Some(child)
             }
             Err(e) => {
@@ -87,7 +139,7 @@ fn run_bridge_mode(server_url: &str, auto_start: bool) {
         None
     };
 
-    let mut bridge = Bridge::new(server_url);
+    let mut bridge = Bridge::new(server_url, secure);
 
     match bridge.connect() {
         Ok(_) => {
@@ -139,15 +191,24 @@ fn main() {
     let mut bridge_mode = false;
     let mut auto_start_server = true;
     let mut server_url = "127.0.0.1:7438".to_string();
+    let mut tcp_mode = false;
+    let mut tcp_addr = "127.0.0.1:7439".to_string();
+    let mut secure = true; // default secure
 
     for (i, arg) in args.iter().enumerate() {
         match arg.as_str() {
             "--help" | "-h" => {
-                println!("Synapsis MCP Bridge");
+                println!("Synapsis MCP Server");
                 println!();
                 println!("Usage:");
-                println!("  synapsis mcp              Start MCP server (local mode)");
-                println!("  synapsis mcp --bridge     Connect MCP to TCP server");
+                println!("  synapsis mcp              Start MCP server (local stdio mode) - RECOMMENDED");
+                println!("  synapsis mcp --tcp        Start MCP TCP server (multi-client/remote)");
+                println!("  synapsis mcp --tcp-addr ADDR  TCP server address (default: 127.0.0.1:7439)");
+                println!("  synapsis mcp --secure     Use secure PQC encryption (TCP only)");
+                println!("  synapsis mcp --insecure   Use plaintext TCP (insecure)");
+                println!();
+                println!("Deprecated:");
+                println!("  synapsis mcp --bridge     Connect to TCP server (legacy)");
                 println!("  synapsis mcp --url HOST   Custom TCP server URL");
                 println!("  synapsis mcp --no-server  Don't auto-start TCP server");
                 return;
@@ -159,13 +220,21 @@ fn main() {
                 }
             }
             "--no-server" => auto_start_server = false,
+            "--tcp" | "-t" => tcp_mode = true,
+            "--tcp-addr" => {
+                if let Some(addr) = args.get(i + 1) {
+                    tcp_addr = addr.clone();
+                }
+            }
+            "--secure" => secure = true,
+            "--insecure" => secure = false,
             _ => {}
         }
     }
 
     eprintln!("╔══════════════════════════════════════════════════════════╗");
     eprintln!(
-        "║  Synapsis v{} - MCP Bridge                          ║",
+        "║  Synapsis v{} - MCP Server                           ║",
         env!("CARGO_PKG_VERSION")
     );
     if bridge_mode {
@@ -173,14 +242,29 @@ fn main() {
             "║  Connecting to TCP server: {}                       ║",
             server_url
         );
+        eprintln!(
+            "║  Security: {}                                        ║",
+            if secure { "PQC Encrypted" } else { "Insecure (Plaintext)" }
+        );
+    } else if tcp_mode {
+        eprintln!(
+            "║  MCP TCP Server: {}                                ║",
+            tcp_addr
+        );
+        eprintln!(
+            "║  Security: {}                                        ║",
+            if secure { "PQC Encrypted" } else { "Insecure (Plaintext)" }
+        );
     } else {
-        eprintln!("║  MCP Memory Server (Local Mode)                     ║");
+        eprintln!("║  MCP Memory Server (Local Mode - RECOMMENDED)       ║");
     }
     eprintln!("╚══════════════════════════════════════════════════════════╝");
     eprintln!();
 
     if bridge_mode {
-        run_bridge_mode(&server_url, auto_start_server);
+        run_bridge_mode(&server_url, auto_start_server, secure);
+    } else if tcp_mode {
+        run_tcp_server(&tcp_addr, secure);
     } else {
         run_local_mcp();
     }

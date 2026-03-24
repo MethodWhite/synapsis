@@ -14,13 +14,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use rand::RngCore;
+
+
 use synapsis::core::security::SecureRng;
 
 use synapsis::core::rate_limiter::RateLimiter;
 use synapsis::core::uuid::Uuid;
 use synapsis::infrastructure::database::Database;
 use synapsis::core::zero_trust::{PolicyEngine, RequestContext, Resource, Action, default_policies};
+
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -32,6 +34,7 @@ struct ServerState {
     challenges: Mutex<HashMap<String, (String, u64)>>,
     /// API keys for authentication (in production, load from secure config)
     api_keys: Vec<String>,
+
     /// Rate limiter for DoS protection
     rate_limiter: RateLimiter,
     /// Zero-trust policy engine for continuous verification
@@ -44,6 +47,7 @@ struct SessionInfo {
     project: String,
     connected_at: i64,
     authenticated: bool,
+    auth_level: u8,
     api_key_hash: Option<String>,
 }
 
@@ -143,7 +147,7 @@ fn handle_client(
                         let agent_id = authenticated_session.as_deref().unwrap_or(&peer_addr).to_string();
                         let agent_type = session_info.map(|s| s.agent_type.as_str()).unwrap_or("unauthenticated").to_string();
                         let project = session_info.map(|s| s.project.as_str()).unwrap_or("default").to_string();
-                        let auth_level = if authenticated_session.is_some() { 1 } else { 0 }; // 1 = API key auth, 2 = challenge-response
+                        let auth_level = session_info.map(|s| s.auth_level).unwrap_or(0); // 0 = none, 1 = API key auth, 2 = challenge-response, 3 = PQC signature
                         
                         // Map method to resource and action
                         let (resource, action) = match method {
@@ -276,6 +280,7 @@ fn handle_client(
                                                     project: project.to_string(),
                                                     connected_at: now as i64,
                                                     authenticated: true,
+                                                    auth_level: 2,
                                                     api_key_hash: Some(hex::encode(
                                                         &api_key.as_bytes()[..8]
                                                     )),
@@ -340,6 +345,7 @@ fn handle_client(
                                         project: project.to_string(),
                                         connected_at: now as i64,
                                         authenticated: true,
+                                        auth_level: 1,
                                         api_key_hash: Some(hex::encode(&api_key.as_bytes()[..8])),
                                     },
                                 );
@@ -390,6 +396,7 @@ fn handle_client(
                                         project: project.to_string(),
                                         connected_at: now,
                                         authenticated: false,
+                                        auth_level: 0,
                                         api_key_hash: None,
                                     },
                                 );
@@ -635,6 +642,7 @@ fn main() {
         sessions: Mutex::new(std::collections::HashMap::new()),
         challenges: Mutex::new(std::collections::HashMap::new()),
         api_keys,
+
         rate_limiter: RateLimiter::new(10, 100), // 10 requests per second, burst up to 100
         policy_engine,
     });

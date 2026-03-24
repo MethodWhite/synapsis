@@ -1,20 +1,69 @@
-Business Source License 1.1
-Parameters
+# Business Source License 1.1
 
-Licensor: [USER_NAME] (MethodWhite)
-Licensed Work: Synapsis Orchestrator and related tools in this repository.
-Additional Use Grant: Non-commercial use, educational use, and personal use are permitted. Commercial use is permitted for entities with fewer than 3 employees or less than $100k annual revenue. Use by any entity for the purpose of creating a competing orchestrator or infrastructure management platform is strictly prohibited.
-Change Date: March 23, 2030
-Change License: Apache License, Version 2.0
+**Licensor:** MethodWhite  
+**Licensed Work:** Synapsis - Persistent Memory Engine v0.1.0  
+**Additional Use Grant:** Personal, educational, and research use only
 
-Terms
+## Terms
 
-1. Use Limit. Licensor hereby grants you the right to Copy and Modify the Licensed Work and to Use the Licensed Work for any purpose, provided that your use does not exceed the Use Limit. Any use that exceeds the Use Limit is subject to a separate license from the Licensor.
+1. **License Grant**: You are granted a non-exclusive, non-transferable license to use, modify, and distribute the Licensed Work, subject to the terms herein.
 
-2. Change. Licensor hereby grants you the right to Copy, Modify, and Use the Licensed Work under the Change License as of the Change Date.
+2. **Permitted Uses**:
+   - Personal projects and experimentation
+   - Educational purposes (academic courses, tutorials, learning)
+   - Research purposes (academic research, security research)
+   - Non-commercial open source projects
+   - Evaluation and testing
+   - Development of personal AI assistants
 
-3. Termination. This License, and any rights under it, will terminate immediately if you (a) fail to comply with its terms, including the Use Limit, or (b) initiate any patent infringement litigation against Licensor or its affiliates.
+3. **Restricted Uses** (require separate commercial license):
+   - **Commercial use** in any business, company, or organization
+   - **Production deployment** in commercial environments
+   - **SaaS offerings** or hosted services for commercial purposes
+   - **Integration** into commercial products or services
+   - **Consulting services** using the Licensed Work
+   - **Training programs** offered for profit
+   - **AI model training** for commercial purposes
+   - **Multi-tenant deployments** for commercial entities
 
-4. Disclaimer of Warranty. THE LICENSED WORK IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+4. **Commercial License**: For any Restricted Use, you must obtain a commercial license from the Licensor. Contact: methodwhite@proton.me
 
-5. Limitation of Liability. IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE LICENSED WORK OR THE USE OR OTHER DEALINGS IN THE LICENSED WORK.
+5. **Violation Consequences**:
+   - **Immediate termination** of all rights granted herein
+   - **Disgorgement of ALL profits** gained from unauthorized use (100% of revenue)
+   - **Statutory damages** of up to $150,000 per willful violation
+   - **Treble damages** for willful and malicious violations
+   - **Legal fees and costs** incurred by Licensor in enforcement
+   - **Injunctive relief** without bond or security
+   - **Criminal referral** for willful copyright infringement
+
+6. **Audit Rights**: Licensor reserves the right to audit your use of the Licensed Work upon reasonable notice if there is suspicion of violation.
+
+7. **No Warranty**: THE LICENSED WORK IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.
+
+8. **Governing Law**: This license is governed by the laws of the jurisdiction of the Licensor.
+
+## Acceptance
+
+By using, copying, modifying, or distributing the Licensed Work, you agree to be bound by these terms. If you do not agree, do not use the Licensed Work.
+
+---
+
+## Enterprise Licensing
+
+For organizations requiring commercial use, we offer:
+
+| License Type | Use Case | Contact |
+|-------------|----------|---------|
+| **Startup** | <10 employees, <$1M revenue | methodwhite@proton.me |
+| **Business** | 10-100 employees, <$10M revenue | methodwhite.developer@gmail.com |
+| **Enterprise** | 100+ employees, unlimited revenue | methodwhite.developer@gmail.com |
+| **SaaS Provider** | Hosted services | methodwhite.developer@gmail.com |
+| **OEM** | Embed in commercial products | methodwhite.developer@gmail.com |
+
+**For Commercial Licensing:**  
+MethodWhite  
+Email: methodwhite@proton.me (primary) · methodwhite.developer@gmail.com (enterprise)  
+GitHub: https://github.com/methodwhite/synapsis
+
+**Last Updated:** 2026-03-24

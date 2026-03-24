@@ -4,22 +4,60 @@
 //! hash functions, encryption, search, and MCP protocol parsing.
 
 
-use std::env;
+use std::io::Write;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use synapsis::domain::entities::*;
 use synapsis::domain::types::*;
 use synapsis::infrastructure::database::Database;
 use synapsis::domain::ports::StoragePort;
 
-fn test_db() -> Database {
-    env::set_var("XDG_DATA_HOME", "/tmp/synapsis-fuzz-test");
-    std::fs::create_dir_all("/tmp/synapsis-fuzz-test/synapsis").ok();
-    let db = Database::new();
-    db.init().unwrap();
-    db
+static FUZZ_TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+struct TestContext {
+    db: Database,
+    pub test_dir: String,
 }
 
-fn cleanup_test_dir() {
-    std::fs::remove_dir_all("/tmp/synapsis-fuzz-test").ok();
+impl TestContext {
+    fn new() -> Self {
+        let test_id = FUZZ_TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let test_dir = format!("/tmp/synapsis-fuzz-test-{}-{}", test_id, timestamp);
+        
+        println!("[TEST_CONTEXT] Creating test directory: {}", test_dir);
+        let _ = std::io::stdout().flush();
+        let db_path = format!("{}/synapsis/synapsis.db", test_dir);
+        std::fs::create_dir_all(&format!("{}/synapsis", test_dir)).ok();
+        
+        println!("[TEST_CONTEXT] Creating Database instance at {}", db_path);
+        let _ = std::io::stdout().flush();
+        let db = Database::new_with_path(db_path, None);
+        println!("[TEST_CONTEXT] Calling init");
+        let _ = std::io::stdout().flush();
+        db.init().unwrap();
+        println!("[TEST_CONTEXT] TestContext created successfully");
+        let _ = std::io::stdout().flush();
+        
+        Self { db, test_dir }
+    }
+    
+    fn db(&self) -> &Database {
+        &self.db
+    }
+}
+
+impl Drop for TestContext {
+    fn drop(&mut self) {
+        println!("[TEST_CONTEXT] Cleaning up test directory: {}", self.test_dir);
+        let _ = std::io::stdout().flush();
+        std::fs::remove_dir_all(&self.test_dir).ok();
+        println!("[TEST_CONTEXT] Cleanup complete");
+        let _ = std::io::stdout().flush();
+    }
 }
 
 // proptest! {
@@ -513,8 +551,8 @@ fn cleanup_test_dir() {
 
 #[test]
 fn test_search_query_injection_attempt() {
-    cleanup_test_dir();
-    let db = test_db();
+    let ctx = TestContext::new();
+    let db = ctx.db();
 
     let malicious_inputs = vec![
         "'; DROP TABLE observations; --",
@@ -539,14 +577,12 @@ fn test_search_query_injection_attempt() {
         let results = db.search_fts(input, None, 10).unwrap();
         assert!(results.len() <= 1, "Should handle search safely");
     }
-
-    cleanup_test_dir();
 }
 
 #[test]
 fn test_unicode_normalization() {
-    cleanup_test_dir();
-    let db = test_db();
+    let ctx = TestContext::new();
+    let db = ctx.db();
 
     let unicode_forms = vec![
         " café",    // combining accent
@@ -563,14 +599,12 @@ fn test_unicode_normalization() {
         );
         db.save_observation(&obs).ok();
     }
-
-    cleanup_test_dir();
 }
 
 #[test]
 fn test_stats_after_operations() {
-    cleanup_test_dir();
-    let db = test_db();
+    let ctx = TestContext::new();
+    let db = ctx.db();
 
     let initial_stats = db.stats().unwrap();
     assert_eq!(initial_stats["observations"].as_i64().unwrap(), 0);
@@ -587,6 +621,4 @@ fn test_stats_after_operations() {
 
     let final_stats = db.stats().unwrap();
     assert_eq!(final_stats["observations"].as_i64().unwrap(), 10);
-
-    cleanup_test_dir();
 }

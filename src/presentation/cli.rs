@@ -1,9 +1,9 @@
 //! Synapsis CLI - Robust Command Line Interface
 
-use crate::domain::entities::{Observation, SearchParams};
-use crate::domain::ports::StoragePort;
-use crate::domain::types::{ObservationId, ObservationType, SessionId};
-use crate::infrastructure::database::Database;
+use synapsis_core::domain::entities::{Observation, SearchParams};
+use synapsis_core::domain::ports::StoragePort;
+use synapsis_core::domain::types::{ObservationId, ObservationType, SessionId};
+use synapsis_core::infrastructure::database::Database;
 use std::env;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -314,7 +314,7 @@ impl CLI {
     }
 
     fn cmd_sessions(&self, _args: &[&str]) -> Result<(), i32> {
-        use crate::domain::ports::SessionPort;
+        use synapsis_core::domain::ports::SessionPort;
         
         let sessions = self.db.list_sessions().map_err(|e| {
             eprintln!("Error: {}", e);
