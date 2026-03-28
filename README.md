@@ -2,11 +2,12 @@
 
 [![Rust](https://img.shields.io/badge/rust-v1.88-orange.svg)](https://www.rust-lang.org)
 [![Security Audit](https://img.shields.io/badge/security-A%20(100%2F100)-success)](docs/SECURITY_AUDIT_REPORT.md)
-[![Tests](https://img.shields.io/badge/tests-50%2B%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-11%20passing-brightgreen)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen)](target/tarpaulin-report.html)
 [![Build](https://github.com/MethodWhite/synapsis/actions/workflows/ci.yml/badge.svg)](https://github.com/MethodWhite/synapsis/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-BUSL--1.1-red.svg)](LICENSE)
 [![Contributors](https://img.shields.io/github/contributors/MethodWhite/synapsis)](https://github.com/MethodWhite/synapsis/graphs/contributors)
+[![Last Commit](https://img.shields.io/github/last-commit/MethodWhite/synapsis)](https://github.com/MethodWhite/synapsis/commits/main)
 
 > **⚠️ License Notice:** BUSL-1.1 (Business Source License) - Personal/educational use only. Commercial use requires license. Contact: methodwhite@proton.me
 
@@ -429,4 +430,6 @@ See [LICENSE](LICENSE) file for details.
 
 **Built with ❤️ and 🦀 by MethodWhite**
 
-*Last updated: 2026-03-23*
+*Last updated: 2026-03-28*
+
+**PQC Transparency:** CRYSTALS-Kyber-512 ✅ Production Ready | CRYSTALS-Dilithium ⚠️ Library Available (Not in Main Flow)
