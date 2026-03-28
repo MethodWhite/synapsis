@@ -27,8 +27,8 @@ use synapsis::core::tool_registry::ToolRegistry;
 use synapsis::core::uuid::Uuid;
 use synapsis::core::vault::SecureVault;
 use synapsis::infrastructure::database::Database;
-use synapsis::session_cleanup;  // Session cleanup module
 use synapsis::infrastructure::shared_state::SharedState;
+use synapsis::session_cleanup; // Session cleanup module
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct Event {
@@ -114,6 +114,7 @@ impl EventBus {
         }
     }
 
+    #[allow(dead_code)]
     fn poll(&self, since: i64) -> Vec<Event> {
         let events = self.events.lock().unwrap();
         events
@@ -177,6 +178,7 @@ struct DelegatedTask {
     completed_at: Option<i64>,
 }
 
+#[allow(dead_code)]
 struct ServerState {
     shared: Arc<SharedState>,
     sessions: Arc<Mutex<Vec<AgentSession>>>,
@@ -200,6 +202,7 @@ struct ServerState {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ConnectionInfo {
     session_id: String,
     agent_type: String,
@@ -1228,7 +1231,7 @@ fn handle_request(line: &str, state: &Arc<ServerState>) -> String {
     })
 }
 
- fn main() {
+fn main() {
     eprintln!("╔══════════════════════════════════════════════════════════╗");
     eprintln!("║  DEPRECATION WARNING: TCP Server is being phased out     ║");
     eprintln!("║  Please migrate to MCP server: synapsis-mcp              ║");

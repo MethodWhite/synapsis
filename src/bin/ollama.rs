@@ -16,7 +16,7 @@ struct Message {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() < 2 {
         println!("Synapsis Ollama CLI - Unified Ollama + MCP");
         println!();
@@ -31,7 +31,7 @@ fn main() {
         println!("  huihui-qwen-9b       - Chat");
         return;
     }
-    
+
     match args[1].as_str() {
         "chat" => {
             let model = args.get(2).map(|s| s.as_str()).unwrap_or("huihui-qwen-9b");
@@ -59,7 +59,7 @@ fn run_prompt(model: &str, prompt: &str) {
             "stream": false
         }))
         .send();
-    
+
     match response {
         Ok(resp) => {
             let json_res: Result<OllamaResponse, reqwest::Error> = resp.json();
@@ -77,23 +77,26 @@ fn run_prompt(model: &str, prompt: &str) {
 
 fn interactive_chat(model: &str) {
     println!("╔══════════════════════════════════════════════════════════╗");
-    println!("║  Synapsis Ollama Chat - Model: {}                  ║", model);
+    println!(
+        "║  Synapsis Ollama Chat - Model: {}                  ║",
+        model
+    );
     println!("║  Type 'quit' to exit                                    ║");
     println!("╚══════════════════════════════════════════════════════════╝");
-    
+
     let client = reqwest::blocking::Client::new();
     let stdin = io::stdin();
     let mut stdout = io::stdout();
-    
+
     loop {
         print!("\n🦙 > ");
         stdout.flush().unwrap();
-        
+
         let mut input = String::new();
         if stdin.read_line(&mut input).is_err() {
             break;
         }
-        
+
         let input = input.trim();
         if input.is_empty() {
             continue;
@@ -101,7 +104,7 @@ fn interactive_chat(model: &str) {
         if input == "quit" || input == "exit" {
             break;
         }
-        
+
         let response = client
             .post("http://127.0.0.1:11434/api/generate")
             .json(&serde_json::json!({
@@ -110,7 +113,7 @@ fn interactive_chat(model: &str) {
                 "stream": false
             }))
             .send();
-        
+
         match response {
             Ok(resp) => {
                 let json_res: Result<OllamaResponse, reqwest::Error> = resp.json();
@@ -128,10 +131,8 @@ fn interactive_chat(model: &str) {
 fn mcp_mode() {
     println!("MCP mode - reading from stdin...");
     let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        if let Ok(line) = line {
-            // Process MCP request
-            println!("{{\"result\": \"processed: {}\"}}", line);
-        }
+    for line in stdin.lock().lines().flatten() {
+        // Process MCP request
+        println!("{{\"result\": \"processed: {}\"}}", line);
     }
 }

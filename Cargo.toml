@@ -16,9 +16,9 @@ browser = ["dep:headless_chrome"]
 name = "synapsis"
 path = "src/lib.rs"
 
-[[bin]]
-name = "synapsis"
-path = "src/main.rs"
+#[[bin]]
+#name = "synapsis"
+#path = "src/main.rs"
 
 [[bin]]
 name = "synapsis-mcp"
@@ -28,9 +28,9 @@ path = "src/bin/mcp.rs"
 #name = "synapsis-server"
 #path = "src/bin/server.rs"
 
-[[bin]]
-name = "synapsis-ollama"
-path = "src/bin/ollama.rs"
+#[[bin]]
+#name = "synapsis-ollama"
+#path = "src/bin/ollama.rs"
 
 #[[bin]]
 #name = "synapsis-http"
@@ -99,6 +99,17 @@ libc = "0.2"
 # Dynamic loading for plugins
 libloading = "0.8"
 
+# TUI (optional) - disabled
+#ratatui = { version = "0.29", optional = true }
+#crossterm = { version = "0.28", optional = true }
+
 [dev-dependencies]
 proptest = "1.4"
 tempfile = "3.10"
+pqcrypto-kyber = "0.8.1"
+pqcrypto-traits = "0.3.5"
+criterion = "0.5"
+
+[[bench]]
+name = "kyber_benchmarks"
+harness = false

@@ -2,7 +2,7 @@
 
 use synapsis::infrastructure::context::{
     AccessLevel, Context, ContextId, ContextMetrics, ContextRef, ContextRegistry, ContextState,
-    ContextType, ContextValue, IsolationConfig, Priority, SearchResult,
+    ContextType, ContextValue, Priority,
 };
 
 #[test]
@@ -10,13 +10,13 @@ fn test_context_id_new() {
     let id1 = ContextId::new();
     let id2 = ContextId::new();
     assert_ne!(id1.0, id2.0);
-    assert!(id1.0.len() > 0);
+    assert!(!id1.0.is_empty());
 }
 
 #[test]
 fn test_context_id_default() {
     let id: ContextId = Default::default();
-    assert!(id.0.len() > 0);
+    assert!(!id.0.is_empty());
 }
 
 #[test]
@@ -309,8 +309,8 @@ fn test_context_value_from_conversions() {
     let n: ContextValue = 42i64.into();
     assert!(matches!(n, ContextValue::Number(42.0)));
 
-    let f: ContextValue = 3.14f64.into();
-    assert!(matches!(f, ContextValue::Number(3.14)));
+    let f: ContextValue = 2.718f64.into();
+    assert!(matches!(f, ContextValue::Number(2.718)));
 
     let b: ContextValue = true.into();
     assert!(matches!(b, ContextValue::Boolean(true)));

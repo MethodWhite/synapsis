@@ -16,20 +16,37 @@
 
 ## 🚀 Quick Start
 
+### Installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/methodwhite/synapsis.git
 cd synapsis
 
-# Build (requires Rust 1.75+)
+# Build (requires Rust 1.88+)
 cargo build --release
 
-# Start MCP server
+# Verify installation
+./target/release/synapsis --version
+```
+
+### Quick Commands
+
+```bash
+# Start MCP server (stdio mode for IDE integration)
 ./target/release/synapsis-mcp
 
-# Or start TCP server for multi-agent
+# Start TCP server (multi-agent coordination)
 ./target/release/synapsis --tcp 7438
+
+# Start with PQC security enabled
+./target/release/synapsis --tcp 7438 --secure
+
+# Check all options
+./target/release/synapsis --help
 ```
+
+> 📖 **Full CLI documentation:** [docs/CLI_GUIDE.md](docs/CLI_GUIDE.md)
 
 ---
 
@@ -357,8 +374,9 @@ cargo tarpaulin --out Html
 
 ## 📖 Documentation
 
-| Doc | Description |
-|-----|-------------|
+| Document | Description |
+|----------|-------------|
+| [CLI Guide](docs/CLI_GUIDE.md) | **Complete CLI reference, examples, troubleshooting** |
 | [Security](docs/SECURITY.md) | PQC implementation, security model |
 | [MCP Protocol](docs/MCP.md) | MCP server details, tools |
 | [Architecture](docs/ARCHITECTURE.md) | System design, hexagonal architecture |
@@ -383,7 +401,11 @@ For security-related contributions, please review our [Security Policy](SECURITY
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
+**BUSL-1.1** (Business Source License 1.1) - Personal, educational, and research use only.
+
+Commercial use requires separate license. Contact: methodwhite@proton.me
+
+See [LICENSE](LICENSE) file for details.
 
 ---
 

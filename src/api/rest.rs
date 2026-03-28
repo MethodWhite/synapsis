@@ -20,7 +20,7 @@ impl<T> ApiResponse<T> {
             error: None,
         }
     }
-    
+
     pub fn error(message: String) -> Self {
         Self {
             success: false,
@@ -41,7 +41,7 @@ pub async fn system_status() -> Result<impl Reply, Rejection> {
         "status": "operational",
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
-    
+
     Ok(warp::reply::json(&ApiResponse::success(status)))
 }
 
@@ -61,7 +61,7 @@ pub async fn register_agent(_req: RegisterAgentRequest) -> Result<impl Reply, Re
         "status": "registered",
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
-    
+
     Ok(warp::reply::json(&ApiResponse::success(response)))
 }
 
@@ -81,7 +81,7 @@ pub async fn submit_task(_req: SubmitTaskRequest) -> Result<impl Reply, Rejectio
         "status": "queued",
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
-    
+
     Ok(warp::reply::json(&ApiResponse::success(response)))
 }
 
@@ -90,21 +90,21 @@ pub fn routes() -> impl Filter<Extract = impl Reply, Error = Infallible> + Clone
     let health = warp::path!("health")
         .and(warp::get())
         .and_then(health_check);
-    
+
     let status = warp::path!("status")
         .and(warp::get())
         .and_then(system_status);
-    
+
     let register = warp::path!("agent" / "register")
         .and(warp::post())
         .and(warp::body::json())
         .and_then(register_agent);
-    
+
     let submit = warp::path!("task" / "submit")
         .and(warp::post())
         .and(warp::body::json())
         .and_then(submit_task);
-    
+
     health
         .or(status)
         .or(register)
@@ -119,14 +119,23 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let (code, message) = if err.is_not_found() {
         (warp::http::StatusCode::NOT_FOUND, "Not Found".to_string())
     } else if let Some(e) = err.find::<warp::filters::body::BodyDeserializeError>() {
-        (warp::http::StatusCode::BAD_REQUEST, format!("Bad Request: {}", e))
-    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
-        (warp::http::StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed".to_string())
+        (
+            warp::http::StatusCode::BAD_REQUEST,
+            format!("Bad Request: {}", e),
+        )
+    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
+        (
+            warp::http::StatusCode::METHOD_NOT_ALLOWED,
+            "Method Not Allowed".to_string(),
+        )
     } else {
         eprintln!("Unhandled rejection: {:?}", err);
-        (warp::http::StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error".to_string())
+        (
+            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal Server Error".to_string(),
+        )
     };
-    
+
     let json = warp::reply::json(&ApiResponse::<()>::error(message));
     Ok(warp::reply::with_status(json, code))
 }

@@ -9,9 +9,9 @@
 pub use synapsis_core::*;
 
 // Presentation layer (MCP, HTTP, CLI, TUI) - specific to synapsis application
+pub mod api;
 pub mod presentation;
 pub mod tools;
-pub mod api;
 
 // Session cleanup module - automatic session lifecycle management
 pub mod session_cleanup;

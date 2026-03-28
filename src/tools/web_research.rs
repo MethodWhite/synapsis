@@ -17,7 +17,8 @@ pub fn web_research(query: &str, limit: usize) -> Result<serde_json::Value> {
         .timeout(Duration::from_secs(10))
         .build()?;
 
-    let response = client.get("https://api.duckduckgo.com/")
+    let response = client
+        .get("https://api.duckduckgo.com/")
         .query(&[
             ("q", query),
             ("format", "json"),
@@ -26,7 +27,7 @@ pub fn web_research(query: &str, limit: usize) -> Result<serde_json::Value> {
             ("skip_disambig", "1"),
         ])
         .send()?;
-    
+
     if !response.status().is_success() {
         return Ok(json!({
             "status": "error",
@@ -35,9 +36,9 @@ pub fn web_research(query: &str, limit: usize) -> Result<serde_json::Value> {
     }
 
     let api_response: serde_json::Value = response.json()?;
-    
+
     let mut results = Vec::new();
-    
+
     // Extract AbstractText
     if let Some(abstract_text) = api_response.get("AbstractText").and_then(|v| v.as_str()) {
         if !abstract_text.is_empty() {
@@ -48,7 +49,7 @@ pub fn web_research(query: &str, limit: usize) -> Result<serde_json::Value> {
             }));
         }
     }
-    
+
     // Extract RelatedTopics
     if let Some(related_topics) = api_response.get("RelatedTopics").and_then(|v| v.as_array()) {
         for topic in related_topics.iter().take(limit) {
@@ -63,7 +64,7 @@ pub fn web_research(query: &str, limit: usize) -> Result<serde_json::Value> {
             }
         }
     }
-    
+
     // Extract Results from Results array
     if let Some(api_results) = api_response.get("Results").and_then(|v| v.as_array()) {
         for result in api_results.iter().take(limit) {
@@ -76,7 +77,7 @@ pub fn web_research(query: &str, limit: usize) -> Result<serde_json::Value> {
             }
         }
     }
-    
+
     Ok(json!({
         "status": "ok",
         "query": query,
@@ -88,14 +89,14 @@ pub fn web_research(query: &str, limit: usize) -> Result<serde_json::Value> {
 /// MCP tools handler
 pub mod mcp_tools {
     use super::*;
-    
+
     pub fn handle_web_research(query: &str, limit: usize) -> serde_json::Value {
         match web_research(query, limit) {
             Ok(result) => result,
             Err(e) => json!({
                 "status": "error",
                 "message": format!("Web research failed: {}", e)
-            })
+            }),
         }
     }
 }

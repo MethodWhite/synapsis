@@ -7,10 +7,10 @@ use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use synapsis::domain::entities::*;
+use synapsis::domain::ports::SessionPort;
+use synapsis::domain::ports::StoragePort;
 use synapsis::domain::types::*;
 use synapsis::infrastructure::database::Database;
-use synapsis::domain::ports::StoragePort;
-use synapsis::domain::ports::SessionPort;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -30,12 +30,12 @@ impl TestContext {
             .unwrap()
             .as_nanos();
         let test_dir = format!("/tmp/synapsis-test-{}-{}", test_id, timestamp);
-        
+
         println!("[TEST_CONTEXT] Creating test directory: {}", test_dir);
         let _ = std::io::stdout().flush();
         let db_path = format!("{}/synapsis/synapsis.db", test_dir);
         std::fs::create_dir_all(&format!("{}/synapsis", test_dir)).ok();
-        
+
         println!("[TEST_CONTEXT] Creating Database instance at {}", db_path);
         let _ = std::io::stdout().flush();
         let db = Database::new_with_path(db_path, None);
@@ -44,10 +44,10 @@ impl TestContext {
         db.init().unwrap();
         println!("[TEST_CONTEXT] TestContext created successfully");
         let _ = std::io::stdout().flush();
-        
+
         Self { db, test_dir }
     }
-    
+
     fn db(&self) -> &Database {
         &self.db
     }
@@ -55,15 +55,16 @@ impl TestContext {
 
 impl Drop for TestContext {
     fn drop(&mut self) {
-        println!("[TEST_CONTEXT] Cleaning up test directory: {}", self.test_dir);
+        println!(
+            "[TEST_CONTEXT] Cleaning up test directory: {}",
+            self.test_dir
+        );
         let _ = std::io::stdout().flush();
         std::fs::remove_dir_all(&self.test_dir).ok();
         println!("[TEST_CONTEXT] Cleanup complete");
         let _ = std::io::stdout().flush();
     }
 }
-
-
 
 mod database_tests {
     use super::*;
@@ -81,7 +82,9 @@ mod database_tests {
             "Test content".to_string(),
         );
 
-        let id = db.save_observation(&obs).unwrap_or_else(|e| panic!("Save failed: {:?}", e));
+        let id = db
+            .save_observation(&obs)
+            .unwrap_or_else(|e| panic!("Save failed: {:?}", e));
         assert!(id.0 > 0, "ID should be positive");
 
         let retrieved = db
@@ -110,7 +113,11 @@ mod database_tests {
         }
 
         let stats = db.stats().unwrap();
-        assert_eq!(stats["observations"].as_i64().unwrap(), 5, "Should have 5 observations");
+        assert_eq!(
+            stats["observations"].as_i64().unwrap(),
+            5,
+            "Should have 5 observations"
+        );
     }
 
     #[test]
@@ -172,7 +179,10 @@ mod database_tests {
             1,
             "Should find 1 security-related observation"
         );
-        assert!(results[0]["content"].as_str().unwrap().contains("vulnerability"));
+        assert!(results[0]["content"]
+            .as_str()
+            .unwrap()
+            .contains("vulnerability"));
     }
 
     #[test]
@@ -249,7 +259,6 @@ mod database_tests {
 
         assert_eq!(timeline[0].observation.title, "Third", "Most recent first");
         assert_eq!(timeline[2].observation.title, "First", "Oldest last");
-
     }
 
     #[test]
@@ -269,7 +278,6 @@ mod database_tests {
 
         let timeline = db.get_timeline(5).unwrap();
         assert_eq!(timeline.len(), 5, "Should limit to 5 entries");
-
     }
 
     #[test]
@@ -287,7 +295,6 @@ mod database_tests {
         assert_eq!(sessions.len(), 1, "Should have 1 session");
         assert_eq!(sessions[0].project, "test-project");
         assert!(sessions[0].ended_at.is_none(), "Session should be active");
-
     }
 
     #[test]
@@ -306,7 +313,6 @@ mod database_tests {
         assert_eq!(sessions.len(), 1, "Should have 1 session");
         assert!(sessions[0].ended_at.is_some(), "Session should be ended");
         assert_eq!(sessions[0].summary.as_deref(), Some("Test summary"));
-
     }
 
     #[test]
@@ -337,7 +343,6 @@ mod database_tests {
         assert_eq!(stats["observations"].as_i64().unwrap(), 2);
         assert_eq!(stats["agent_sessions"].as_i64().unwrap(), 2);
         assert_eq!(stats["active_agents"].as_i64().unwrap(), 2);
-
     }
 
     #[test]
@@ -360,7 +365,6 @@ mod database_tests {
         assert_eq!(results_lower.len(), results_upper.len());
         assert_eq!(results_upper.len(), results_mixed.len());
         assert_eq!(results_lower.len(), 1, "Search should be case-insensitive");
-
     }
 
     #[test]
@@ -380,7 +384,6 @@ mod database_tests {
 
         let results = db.search_fts("", None, 10).unwrap();
         assert_eq!(results.len(), 3, "Empty query should return all");
-
     }
 
     #[test]
@@ -419,17 +422,17 @@ mod database_tests {
 
         let stats = db.stats().unwrap();
         assert_eq!(
-            stats["observations"].as_i64().unwrap(), 20,
+            stats["observations"].as_i64().unwrap(),
+            20,
             "Should have 20 observations from both threads"
         );
-
     }
 
     #[test]
     fn test_persistence_across_instances() {
         let ctx = TestContext::new();
         let db_path = format!("{}/synapsis/synapsis.db", ctx.test_dir);
-        
+
         {
             let db1 = Database::new_with_path(&db_path, None);
             db1.init().unwrap();
@@ -455,7 +458,6 @@ mod database_tests {
                 "Observation should persist across instances"
             );
         }
-
     }
 
     #[test]
@@ -473,7 +475,6 @@ mod database_tests {
 
         let results = db.search_fts("quotes", None, 10).unwrap();
         assert_eq!(results.len(), 1, "Should find with special chars");
-
     }
 
     #[test]
@@ -491,6 +492,5 @@ mod database_tests {
 
         let results = db.search_fts("测试", None, 10).unwrap();
         assert_eq!(results.len(), 1, "Should find unicode content");
-
     }
 }

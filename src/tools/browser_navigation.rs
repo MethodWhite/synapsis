@@ -1,20 +1,21 @@
 //! Browser navigation tool using headless Chrome for web interaction and data collection.
 //! Requires Chrome/Chromium installed and the `browser` feature enabled.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
-use std::time::Duration;
 use std::fs;
+use std::time::Duration;
 
 #[cfg(feature = "browser")]
-use headless_chrome::{Browser, LaunchOptionsBuilder};
-#[cfg(feature = "browser")]
 use headless_chrome::protocol::page::ScreenshotFormat;
+#[cfg(feature = "browser")]
+use headless_chrome::{Browser, LaunchOptionsBuilder};
 
 #[cfg(feature = "browser")]
 fn get_html(tab: &headless_chrome::Tab) -> Result<String> {
     let expr = "document.documentElement.outerHTML";
-    let remote_object = tab.evaluate(expr, false)
+    let remote_object = tab
+        .evaluate(expr, false)
         .map_err(|e| anyhow!("Failed to evaluate JavaScript: {}", e))?;
     match remote_object.value {
         Some(serde_json::Value::String(s)) => Ok(s),
@@ -34,18 +35,19 @@ pub fn navigate_to_url(url: &str) -> Result<String> {
             .idle_browser_timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| anyhow!("Failed to create launch options: {}", e))?;
-        
-        let browser = Browser::new(launch_options)
-            .map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
 
-        let tab = browser.new_tab()
+        let browser =
+            Browser::new(launch_options).map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
+
+        let tab = browser
+            .new_tab()
             .map_err(|e| anyhow!("Failed to create new tab: {}", e))?;
-        
+
         tab.navigate_to(url)
             .map_err(|e| anyhow!("Failed to navigate: {}", e))?;
         tab.wait_until_navigated()
             .map_err(|e| anyhow!("Navigation timeout: {}", e))?;
-        
+
         std::thread::sleep(Duration::from_secs(2));
 
         get_html(&tab)
@@ -55,7 +57,7 @@ pub fn navigate_to_url(url: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     #[cfg(feature = "browser")]
     fn test_navigate_to_example() {
@@ -68,7 +70,7 @@ mod tests {
             assert!(html.contains("Example Domain"));
         }
     }
-    
+
     #[test]
     #[cfg(feature = "browser")]
     fn test_extract_text_from_example() {
@@ -95,18 +97,19 @@ pub fn extract_text(url: &str, selector: &str) -> Result<Vec<String>> {
             .idle_browser_timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| anyhow!("Failed to create launch options: {}", e))?;
-        
-        let browser = Browser::new(launch_options)
-            .map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
 
-        let tab = browser.new_tab()
+        let browser =
+            Browser::new(launch_options).map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
+
+        let tab = browser
+            .new_tab()
             .map_err(|e| anyhow!("Failed to create new tab: {}", e))?;
-        
+
         tab.navigate_to(url)
             .map_err(|e| anyhow!("Failed to navigate: {}", e))?;
         tab.wait_until_navigated()
             .map_err(|e| anyhow!("Navigation timeout: {}", e))?;
-        
+
         std::thread::sleep(Duration::from_secs(2));
 
         // Use JavaScript to extract innerText from all matching elements
@@ -114,16 +117,18 @@ pub fn extract_text(url: &str, selector: &str) -> Result<Vec<String>> {
             "Array.from(document.querySelectorAll('{}')).map(el => el.innerText)",
             selector.replace("'", "\\'")
         );
-        let remote_object = tab.evaluate(&js_code, false)
+        let remote_object = tab
+            .evaluate(&js_code, false)
             .map_err(|e| anyhow!("Failed to evaluate JavaScript: {}", e))?;
-        
+
         match remote_object.value {
             Some(serde_json::Value::Array(arr)) => {
-                let texts: Vec<String> = arr.into_iter()
+                let texts: Vec<String> = arr
+                    .into_iter()
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect();
                 Ok(texts)
-            },
+            }
             _ => Ok(vec![]),
         }
     }
@@ -141,18 +146,19 @@ pub fn click_element(url: &str, selector: &str) -> Result<()> {
             .idle_browser_timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| anyhow!("Failed to create launch options: {}", e))?;
-        
-        let browser = Browser::new(launch_options)
-            .map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
 
-        let tab = browser.new_tab()
+        let browser =
+            Browser::new(launch_options).map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
+
+        let tab = browser
+            .new_tab()
             .map_err(|e| anyhow!("Failed to create new tab: {}", e))?;
-        
+
         tab.navigate_to(url)
             .map_err(|e| anyhow!("Failed to navigate: {}", e))?;
         tab.wait_until_navigated()
             .map_err(|e| anyhow!("Navigation timeout: {}", e))?;
-        
+
         std::thread::sleep(Duration::from_secs(2));
 
         // Use JavaScript to click the element
@@ -162,11 +168,11 @@ pub fn click_element(url: &str, selector: &str) -> Result<()> {
         );
         tab.evaluate(&js_code, false)
             .map_err(|e| anyhow!("Failed to click element: {}", e))?;
-        
+
         // Wait for navigation if any
         let _ = tab.wait_until_navigated();
         std::thread::sleep(Duration::from_secs(1));
-        
+
         Ok(())
     }
 }
@@ -183,18 +189,19 @@ pub fn fill_form(url: &str, selector: &str, value: &str) -> Result<()> {
             .idle_browser_timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| anyhow!("Failed to create launch options: {}", e))?;
-        
-        let browser = Browser::new(launch_options)
-            .map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
 
-        let tab = browser.new_tab()
+        let browser =
+            Browser::new(launch_options).map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
+
+        let tab = browser
+            .new_tab()
             .map_err(|e| anyhow!("Failed to create new tab: {}", e))?;
-        
+
         tab.navigate_to(url)
             .map_err(|e| anyhow!("Failed to navigate: {}", e))?;
         tab.wait_until_navigated()
             .map_err(|e| anyhow!("Navigation timeout: {}", e))?;
-        
+
         std::thread::sleep(Duration::from_secs(2));
 
         // Use JavaScript to fill the form field
@@ -205,7 +212,7 @@ pub fn fill_form(url: &str, selector: &str, value: &str) -> Result<()> {
         );
         tab.evaluate(&js_code, false)
             .map_err(|e| anyhow!("Failed to fill form: {}", e))?;
-        
+
         Ok(())
     }
 }
@@ -222,30 +229,29 @@ pub fn screenshot(url: &str, output_path: &str) -> Result<()> {
             .idle_browser_timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| anyhow!("Failed to create launch options: {}", e))?;
-        
-        let browser = Browser::new(launch_options)
-            .map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
 
-        let tab = browser.new_tab()
+        let browser =
+            Browser::new(launch_options).map_err(|e| anyhow!("Failed to launch browser: {}", e))?;
+
+        let tab = browser
+            .new_tab()
             .map_err(|e| anyhow!("Failed to create new tab: {}", e))?;
-        
+
         tab.navigate_to(url)
             .map_err(|e| anyhow!("Failed to navigate: {}", e))?;
         tab.wait_until_navigated()
             .map_err(|e| anyhow!("Navigation timeout: {}", e))?;
-        
+
         std::thread::sleep(Duration::from_secs(2));
 
-        let png_data = tab.capture_screenshot(
-            ScreenshotFormat::PNG,
-            None,
-            true,
-        ).map_err(|e| anyhow!("Failed to capture screenshot: {}", e))?;
-        
+        let png_data = tab
+            .capture_screenshot(ScreenshotFormat::PNG, None, true)
+            .map_err(|e| anyhow!("Failed to capture screenshot: {}", e))?;
+
         // Save to file
         fs::write(output_path, png_data)
             .map_err(|e| anyhow!("Failed to write screenshot: {}", e))?;
-        
+
         Ok(())
     }
 }
@@ -253,7 +259,7 @@ pub fn screenshot(url: &str, output_path: &str) -> Result<()> {
 /// MCP tools handler
 pub mod mcp_tools {
     use super::*;
-    
+
     pub fn handle_navigate_to_url(url: &str) -> serde_json::Value {
         match navigate_to_url(url) {
             Ok(html) => json!({
@@ -265,10 +271,10 @@ pub mod mcp_tools {
             Err(e) => json!({
                 "status": "error",
                 "message": format!("Navigation failed: {}", e)
-            })
+            }),
         }
     }
-    
+
     pub fn handle_extract_text(url: &str, selector: &str) -> serde_json::Value {
         match extract_text(url, selector) {
             Ok(texts) => json!({
@@ -281,10 +287,10 @@ pub mod mcp_tools {
             Err(e) => json!({
                 "status": "error",
                 "message": format!("Extraction failed: {}", e)
-            })
+            }),
         }
     }
-    
+
     pub fn handle_click_element(url: &str, selector: &str) -> serde_json::Value {
         match click_element(url, selector) {
             Ok(()) => json!({
@@ -296,10 +302,10 @@ pub mod mcp_tools {
             Err(e) => json!({
                 "status": "error",
                 "message": format!("Click failed: {}", e)
-            })
+            }),
         }
     }
-    
+
     pub fn handle_fill_form(url: &str, selector: &str, value: &str) -> serde_json::Value {
         match fill_form(url, selector, value) {
             Ok(()) => json!({
@@ -312,10 +318,10 @@ pub mod mcp_tools {
             Err(e) => json!({
                 "status": "error",
                 "message": format!("Form fill failed: {}", e)
-            })
+            }),
         }
     }
-    
+
     pub fn handle_screenshot(url: &str, output_path: &str) -> serde_json::Value {
         match screenshot(url, output_path) {
             Ok(()) => json!({
@@ -327,7 +333,7 @@ pub mod mcp_tools {
             Err(e) => json!({
                 "status": "error",
                 "message": format!("Screenshot failed: {}", e)
-            })
+            }),
         }
     }
 }

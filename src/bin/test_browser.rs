@@ -2,7 +2,7 @@ use synapsis::tools::browser_navigation;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing browser navigation...");
-    
+
     // Test 1: Navigate to example.com
     match browser_navigation::navigate_to_url("https://example.com") {
         Ok(html) => {
@@ -11,13 +11,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if html.contains("Example Domain") {
                 println!("  ✓ Found 'Example Domain' in HTML");
             }
-        },
+        }
         Err(e) => {
             println!("✗ Failed to navigate: {}", e);
             return Err(e.into());
         }
     }
-    
+
     // Test 2: Extract text from h1
     match browser_navigation::extract_text("https://example.com", "h1") {
         Ok(texts) => {
@@ -26,12 +26,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for (i, text) in texts.iter().enumerate() {
                 println!("  {}. {}", i + 1, text);
             }
-        },
+        }
         Err(e) => {
             println!("✗ Failed to extract text: {}", e);
         }
     }
-    
+
     println!("All tests completed!");
     Ok(())
 }

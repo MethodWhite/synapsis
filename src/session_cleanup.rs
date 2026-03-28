@@ -16,9 +16,9 @@
 //! init_session_cleanup(&db);
 //! ```
 
-use std::sync::Arc;
+use crate::core::session_cleanup::{SessionCleanupConfig, SessionCleanupJob};
 use crate::infrastructure::database::Database;
-use crate::core::session_cleanup::{SessionCleanupJob, SessionCleanupConfig};
+use std::sync::Arc;
 
 /// Default session timeout (5 minutes)
 pub const DEFAULT_SESSION_TIMEOUT_SECS: u64 = 300;
@@ -86,17 +86,17 @@ pub fn init_session_cleanup_with_config(
     config: SessionCleanupConfig,
 ) -> Arc<SessionCleanupJob> {
     let cleanup_job = Arc::new(SessionCleanupJob::new(db.clone(), config));
-    
+
     // Start the background job
     cleanup_job.start();
-    
+
     eprintln!(
         "[SessionCleanup] Initialized: running={}, timeout={}s, interval={}s",
         cleanup_job.is_running(),
         DEFAULT_SESSION_TIMEOUT_SECS,
         DEFAULT_CLEANUP_INTERVAL_SECS
     );
-    
+
     cleanup_job
 }
 
@@ -121,16 +121,19 @@ pub fn init_session_cleanup_with_config(
 /// // Normal cleanup (5 min timeout)
 /// let stats = manual_cleanup(&db, 300)?;
 /// ```
-pub fn manual_cleanup(db: &Arc<Database>, timeout_secs: u64) -> Result<crate::core::session_cleanup::CleanupStats, String> {
+pub fn manual_cleanup(
+    db: &Arc<Database>,
+    timeout_secs: u64,
+) -> Result<crate::core::session_cleanup::CleanupStats, String> {
     let config = SessionCleanupConfig {
         session_timeout_secs: timeout_secs,
         cleanup_interval_secs: 60,
         require_heartbeat: true,
         auto_end_sessions: true,
     };
-    
+
     let cleanup_job = SessionCleanupJob::new(db.clone(), config);
-    
+
     // Run cleanup once (blocking)
     futures::executor::block_on(cleanup_job.run_once())
 }
@@ -146,45 +149,49 @@ pub fn manual_cleanup(db: &Arc<Database>, timeout_secs: u64) -> Result<crate::co
 /// * `SessionCleanupStatus` - Current cleanup system status
 pub fn get_cleanup_status(db: &Arc<Database>) -> SessionCleanupStatus {
     use rusqlite::OptionalExtension;
-    
+
     let conn = db.get_conn();
-    
+
     // Count active sessions
-    let active_sessions: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM agent_sessions WHERE is_active = 1",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(0);
-    
+    let active_sessions: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM agent_sessions WHERE is_active = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
     // Count stale sessions (no heartbeat for 5+ minutes)
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
     let threshold = now - DEFAULT_SESSION_TIMEOUT_SECS as i64;
-    
-    let stale_sessions: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM agent_sessions 
+
+    let stale_sessions: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM agent_sessions 
          WHERE is_active = 1 
          AND (last_heartbeat IS NULL OR last_heartbeat < ?1)",
-        [threshold],
-        |row| row.get(0),
-    ).unwrap_or(0);
-    
+            [threshold],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
     // Count held locks
-    let held_locks: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM active_locks",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(0);
-    
+    let held_locks: i64 = conn
+        .query_row("SELECT COUNT(*) FROM active_locks", [], |row| row.get(0))
+        .unwrap_or(0);
+
     // Count pending tasks
-    let pending_tasks: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM task_queue WHERE status = 'pending'",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(0);
-    
+    let pending_tasks: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM task_queue WHERE status = 'pending'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
     SessionCleanupStatus {
         active_sessions,
         stale_sessions,
@@ -234,9 +241,11 @@ mod tests {
             held_locks: 3,
             pending_tasks: 10,
         };
-        
+
         let display = format!("{}", status);
         assert!(display.contains("Active sessions: 5"));
-        assert!(display.contains("Stale sessions: 2"));
+        assert!(display.contains("Stale sessions:  2")); // Note: two spaces for alignment
+        assert!(display.contains("Held locks:      3"));
+        assert!(display.contains("Pending tasks:   10"));
     }
 }

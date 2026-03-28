@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
@@ -142,6 +143,77 @@ impl EventBus {
     }
 }
 
+// Persistent EventBus using SQLite - shared across all MCP instances
+struct PersistentEventBus {
+    db: Arc<Database>,
+}
+
+struct PublishParams<'a> {
+    event_type: &'a str,
+    from: &'a str,
+    to: Option<&'a str>,
+    project: Option<&'a str>,
+    channel: &'a str,
+    content: &'a str,
+    priority: i32,
+}
+
+impl PersistentEventBus {
+    fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+
+    fn publish(&self, params: PublishParams) -> Result<i64, String> {
+        self.db
+            .publish_event(
+                params.event_type,
+                params.from,
+                params.to,
+                params.project,
+                params.channel,
+                params.content,
+                params.priority,
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    fn broadcast(
+        &self,
+        event_type: &str,
+        from: &str,
+        project: Option<&str>,
+        channel: &str,
+        content: &str,
+        priority: i32,
+    ) -> Result<i64, String> {
+        self.db
+            .broadcast_event(event_type, from, project, channel, content, priority)
+            .map_err(|e| e.to_string())
+    }
+
+    fn poll(
+        &self,
+        since: i64,
+        channel: Option<&str>,
+        project: Option<&str>,
+        limit: i32,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        self.db
+            .poll_events(since, channel, project, limit)
+            .map_err(|e| e.to_string())
+    }
+
+    fn get_pending_messages(&self, session_id: &str) -> Result<Vec<serde_json::Value>, String> {
+        self.db
+            .get_pending_messages_for_session(session_id)
+            .map_err(|e| e.to_string())
+    }
+
+    fn mark_read(&self, event_id: i64) -> Result<(), String> {
+        self.db.mark_event_read(event_id).map_err(|e| e.to_string())
+    }
+}
+
 pub struct McpServer {
     db: Arc<Database>,
     skills: Arc<SkillRegistry>,
@@ -151,9 +223,11 @@ pub struct McpServer {
     watchdog: Arc<FilesystemWatchdog>,
     client_name: Arc<RwLock<Option<String>>>,
     event_bus: Arc<EventBus>,
+    persistent_event_bus: Arc<PersistentEventBus>,
     plugin_manager: Arc<PluginManager>,
     crypto_provider: Arc<dyn CryptoProvider>,
     connections: Arc<Mutex<HashMap<String, ConnectionInfo>>>,
+    shutdown_requested: Arc<AtomicBool>,
 }
 
 impl McpServer {
@@ -167,8 +241,10 @@ impl McpServer {
             })
             .unwrap_or_else(|| PathBuf::from("./synapsis_plugins"));
 
+        let persistent_event_bus = Arc::new(PersistentEventBus::new(db.clone()));
+
         Self {
-            db,
+            db: db.clone(),
             skills: Arc::new(SkillRegistry::new()),
             agents: Arc::new(AgentRegistry::new()),
             orchestrator,
@@ -176,9 +252,11 @@ impl McpServer {
             watchdog: Arc::new(FilesystemWatchdog::new(Default::default())),
             client_name: Arc::new(RwLock::new(None)),
             event_bus: Arc::new(EventBus::new()),
+            persistent_event_bus,
             plugin_manager: Arc::new(PluginManager::new(plugin_dir)),
             crypto_provider: Arc::new(PqcryptoProvider::new()),
             connections: Arc::new(Mutex::new(HashMap::new())),
+            shutdown_requested: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -218,6 +296,9 @@ impl McpServer {
                 writeln!(stdout, "{}", resp_str)?;
                 stdout.flush()?;
             }
+            if self.shutdown_requested.load(Ordering::SeqCst) {
+                break;
+            }
         }
 
         Ok(())
@@ -236,14 +317,27 @@ impl McpServer {
                 )
             }
         };
+        let is_notification = request["id"].is_null();
         match self.handle_request(request) {
-            Ok(response) => serde_json::to_string(&response).ok(),
+            Ok(response) => {
+                if is_notification {
+                    // Notifications should not receive a response
+                    None
+                } else {
+                    serde_json::to_string(&response).ok()
+                }
+            }
             Err(e) => {
-                let err_resp = json!({
-                    "jsonrpc": "2.0",
-                    "error": { "code": -32603, "message": e.to_string() }
-                });
-                serde_json::to_string(&err_resp).ok()
+                if is_notification {
+                    // Errors in notifications are not sent back
+                    None
+                } else {
+                    let err_resp = json!({
+                        "jsonrpc": "2.0",
+                        "error": { "code": -32603, "message": e.to_string() }
+                    });
+                    serde_json::to_string(&err_resp).ok()
+                }
             }
         }
     }
@@ -251,6 +345,14 @@ impl McpServer {
     fn handle_request(&self, request: Value) -> Result<Value> {
         let method = request["method"].as_str().unwrap_or("");
         let id = &request["id"];
+
+        // Update connection activity
+        if let Some(client_name) = self.client_name.read().unwrap().as_ref() {
+            let mut connections = self.connections.lock().unwrap();
+            if let Some(conn) = connections.get_mut(client_name) {
+                conn.last_activity = Instant::now();
+            }
+        }
 
         match method {
             "initialize" => {
@@ -296,6 +398,16 @@ impl McpServer {
                     }
                 }))
             }
+            "initialized" => Ok(json!(null)), // notification, no response needed
+            "shutdown" => {
+                self.shutdown_requested.store(true, Ordering::SeqCst);
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": null
+                }))
+            }
+            "$/cancelRequest" => Ok(json!(null)), // ignore
             "tools/list" => self.list_tools(id),
             "tools/call" => self.call_tool(id, &request["params"]),
             "resources/list" => Ok(json!({
@@ -843,23 +955,54 @@ impl McpServer {
                     },
                     {
                         "name": "event_poll",
-                        "description": "Poll for new events since timestamp",
+                        "description": "Poll for new events since timestamp (shared across all MCP instances)",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "since": { "type": "integer" }
-                            }
+                                "since": { "type": "integer", "description": "Poll events created after this Unix timestamp" },
+                                "channel": { "type": "string", "description": "Filter by channel (default: 'global')" },
+                                "project": { "type": "string", "description": "Filter by project" },
+                                "limit": { "type": "integer", "default": 100, "description": "Max events to return" }
+                            },
+                            "required": ["since"]
                         }
                     },
                     {
                         "name": "get_pending_messages",
-                        "description": "Get pending messages for session",
+                        "description": "Get pending direct messages for session",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "session_id": { "type": "string" }
                             },
                             "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "event_ack",
+                        "description": "Mark an event as read",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "event_id": { "type": "integer" }
+                            },
+                            "required": ["event_id"]
+                        }
+                    },
+                    {
+                        "name": "broadcast",
+                        "description": "Broadcast message to all sessions in a channel/project (inter-agent communication)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string", "description": "Your session ID" },
+                                "content": { "type": "string", "description": "Message content (JSON recommended for structured data)" },
+                                "project": { "type": "string", "description": "Target project (optional)" },
+                                "channel": { "type": "string", "default": "global", "description": "Channel name (all sessions in this channel receive the message)" },
+                                "priority": { "type": "integer", "default": 0, "description": "Priority: 0=normal, 1=high, 2=critical" },
+                                "type": { "type": "string", "default": "broadcast", "description": "Event type: broadcast, status_update, coordination, etc." }
+                            },
+                            "required": ["session_id", "content"]
                         }
                     },
                     {
@@ -1387,29 +1530,34 @@ impl McpServer {
                 let session_id = args["session_id"].as_str().unwrap_or("");
                 let to = args["to"].as_str().unwrap_or("");
                 let content = args["content"].as_str().unwrap_or("");
-                let event = Event {
-                    event_type: "message".to_string(),
-                    session_id: Some(session_id.to_string()),
-                    agent_type: None,
-                    project: None,
-                    from: Some(session_id.to_string()),
-                    to: Some(to.to_string()),
-                    content: Some(content.to_string()),
-                    task_id: None,
-                    skill_id: None,
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64,
+                let project = args.get("project").and_then(|v| v.as_str());
+
+                // Publish to persistent event bus (shared across all MCP instances)
+                let params = PublishParams {
+                    event_type: "message",
+                    from: session_id,
+                    to: Some(to),
+                    project,
+                    channel: "global",
+                    content,
+                    priority: 0,
                 };
-                self.event_bus.publish(event);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": "Message sent" }]
-                    }
-                }))
+                let event_id = self.persistent_event_bus.publish(params);
+
+                match event_id {
+                    Ok(_) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": "Message sent" }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": e }
+                    })),
+                }
             }
             "agents_active" => {
                 let project = args["project"].as_str();
@@ -1431,7 +1579,7 @@ impl McpServer {
             "task_delegate" => {
                 let task_id = args["task_id"].as_str().unwrap_or("");
                 let to_agent = args["to_agent"].as_str().unwrap_or("");
-                if self.orchestrator.assign_task(&task_id, &to_agent) {
+                if self.orchestrator.assign_task(task_id, to_agent) {
                     Ok(json!({
                         "jsonrpc": "2.0",
                         "id": id,
@@ -1533,25 +1681,107 @@ impl McpServer {
             }
             "event_poll" => {
                 let since = args["since"].as_i64().unwrap_or(0);
-                let events = self.event_bus.poll(since);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("{:?}", events) }]
-                    }
-                }))
+                let channel = args.get("channel").and_then(|v| v.as_str());
+                let project = args.get("project").and_then(|v| v.as_str());
+                let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(100) as i32;
+
+                let events = self
+                    .persistent_event_bus
+                    .poll(since, channel, project, limit);
+
+                match events {
+                    Ok(events) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "events": events,
+                            "count": events.len()
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": e }
+                    })),
+                }
             }
             "get_pending_messages" => {
                 let session_id = args["session_id"].as_str().unwrap_or("");
-                let messages = self.event_bus.get_pending_messages(session_id);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("{:?}", messages) }]
-                    }
-                }))
+                let messages = self.persistent_event_bus.get_pending_messages(session_id);
+
+                match messages {
+                    Ok(messages) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "messages": messages,
+                            "count": messages.len()
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": e }
+                    })),
+                }
+            }
+            "event_ack" => {
+                let event_id = args["event_id"].as_i64();
+                match event_id {
+                    Some(id) => match self.persistent_event_bus.mark_read(id) {
+                        Ok(_) => Ok(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "content": [{ "type": "text", "text": "Event marked as read" }]
+                            }
+                        })),
+                        Err(e) => Ok(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": { "code": -32603, "message": e }
+                        })),
+                    },
+                    None => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32602, "message": "Missing event_id parameter" }
+                    })),
+                }
+            }
+            "broadcast" => {
+                let session_id = args["session_id"].as_str().unwrap_or("");
+                let content = args["content"].as_str().unwrap_or("");
+                let project = args.get("project").and_then(|v| v.as_str());
+                let channel = args
+                    .get("channel")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("global");
+                let priority = args.get("priority").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                let event_type = args
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("broadcast");
+
+                // Broadcast to all sessions in the channel/project
+                let event_id = self
+                    .persistent_event_bus
+                    .broadcast(event_type, session_id, project, channel, content, priority);
+
+                match event_id {
+                    Ok(id) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": format!("Broadcast sent to channel '{}' (event_id: {})", channel, id) }]
+                        }
+                    })),
+                    Err(e) => Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": e }
+                    })),
+                }
             }
             "plugin_load" => {
                 let path = args["path"].as_str().unwrap_or("");

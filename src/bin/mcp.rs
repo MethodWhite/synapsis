@@ -6,8 +6,8 @@
 use std::io::{BufRead, Write};
 use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
-use synapsis::presentation::mcp::tcp;
 use synapsis::presentation::mcp::secure_tcp;
+use synapsis::presentation::mcp::tcp;
 
 struct Bridge {
     server_url: String,
@@ -47,9 +47,12 @@ impl Bridge {
         }
 
         if self.secure {
-            let client = self.secure_client.as_mut()
+            let client = self
+                .secure_client
+                .as_mut()
                 .ok_or("Secure client not initialized")?;
-            client.send(request)
+            client
+                .send(request)
                 .map_err(|e| format!("Secure send failed: {}", e).into())
         } else {
             let mut stream = TcpStream::connect(&self.server_url)?;
@@ -78,7 +81,7 @@ fn start_tcp_server(secure: bool, addr: &str) -> Result<Child, Box<dyn std::erro
     }
     cmd.arg("--tcp-addr").arg(addr);
     cmd.stdout(Stdio::null()).stderr(Stdio::null());
-    
+
     let child = cmd.spawn()?;
     std::thread::sleep(std::time::Duration::from_millis(500));
     Ok(child)
@@ -99,7 +102,10 @@ fn run_local_mcp() {
 fn run_tcp_server(addr: &str, secure: bool) {
     let db = std::sync::Arc::new(synapsis::infrastructure::database::Database::new());
     let orchestrator = std::sync::Arc::new(synapsis::core::orchestrator::Orchestrator::new());
-    let server = std::sync::Arc::new(synapsis::presentation::mcp::McpServer::new(db, orchestrator));
+    let server = std::sync::Arc::new(synapsis::presentation::mcp::McpServer::new(
+        db,
+        orchestrator,
+    ));
     server.init();
 
     if secure {
@@ -123,11 +129,14 @@ fn run_bridge_mode(server_url: &str, auto_start: bool, secure: bool) {
     eprintln!("║  For local use, run without --bridge flag                ║");
     eprintln!("║  For multi-client TCP, use --tcp flag instead            ║");
     eprintln!("╚══════════════════════════════════════════════════════════╝");
-    
+
     let _tcp_server: Option<Child> = if auto_start {
         match start_tcp_server(secure, server_url) {
             Ok(child) => {
-                println!("[Bridge] Started TCP server at {} (secure: {})", server_url, secure);
+                println!(
+                    "[Bridge] Started TCP server at {} (secure: {})",
+                    server_url, secure
+                );
                 Some(child)
             }
             Err(e) => {
@@ -201,9 +210,13 @@ fn main() {
                 println!("Synapsis MCP Server");
                 println!();
                 println!("Usage:");
-                println!("  synapsis mcp              Start MCP server (local stdio mode) - RECOMMENDED");
+                println!(
+                    "  synapsis mcp              Start MCP server (local stdio mode) - RECOMMENDED"
+                );
                 println!("  synapsis mcp --tcp        Start MCP TCP server (multi-client/remote)");
-                println!("  synapsis mcp --tcp-addr ADDR  TCP server address (default: 127.0.0.1:7439)");
+                println!(
+                    "  synapsis mcp --tcp-addr ADDR  TCP server address (default: 127.0.0.1:7439)"
+                );
                 println!("  synapsis mcp --secure     Use secure PQC encryption (TCP only)");
                 println!("  synapsis mcp --insecure   Use plaintext TCP (insecure)");
                 println!();
@@ -244,7 +257,11 @@ fn main() {
         );
         eprintln!(
             "║  Security: {}                                        ║",
-            if secure { "PQC Encrypted" } else { "Insecure (Plaintext)" }
+            if secure {
+                "PQC Encrypted"
+            } else {
+                "Insecure (Plaintext)"
+            }
         );
     } else if tcp_mode {
         eprintln!(
@@ -253,7 +270,11 @@ fn main() {
         );
         eprintln!(
             "║  Security: {}                                        ║",
-            if secure { "PQC Encrypted" } else { "Insecure (Plaintext)" }
+            if secure {
+                "PQC Encrypted"
+            } else {
+                "Insecure (Plaintext)"
+            }
         );
     } else {
         eprintln!("║  MCP Memory Server (Local Mode - RECOMMENDED)       ║");

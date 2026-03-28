@@ -235,7 +235,9 @@ impl Tui {
 mod tui_impl {
     use super::*;
     use crossterm::{
-        event::{self, DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEventKind},
+        event::{
+            self, DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEventKind, KeyModifiers,
+        },
         execute,
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     };
@@ -247,11 +249,17 @@ mod tui_impl {
         Frame, Terminal,
     };
     use std::io;
+    use std::io::Write;
 
     impl Tui {
         pub fn run(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
             enable_raw_mode()?;
             let mut stdout = io::stdout();
+
+            // Set terminal window title for Hyprland window rules (ANSI escape sequence)
+            print!("\x1b]2;Synapsis TUI\x07");
+            io::stdout().flush().unwrap_or(());
+
             execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
             let backend = CrosstermBackend::new(stdout);
             let mut terminal = Terminal::new(backend)?;
@@ -283,6 +291,7 @@ mod tui_impl {
 
                 if let event::Event::Key(key) = event::read()? {
                     if key.kind == KeyEventKind::Press {
+                        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                         match self.state.mode {
                             AppMode::Timeline => match key.code {
                                 KeyCode::Char('q') => self.state.mode = AppMode::ConfirmQuit,
@@ -327,12 +336,12 @@ mod tui_impl {
                                 KeyCode::Char('0') => {
                                     self.state.selected_index = 0;
                                 }
-                                KeyCode::Ctrl('d') => {
+                                KeyCode::Char('d') if ctrl => {
                                     let max = self.state.observations.len().saturating_sub(1);
                                     self.state.selected_index =
                                         (self.state.selected_index + 10).min(max);
                                 }
-                                KeyCode::Ctrl('u') => {
+                                KeyCode::Char('u') if ctrl => {
                                     self.state.selected_index =
                                         self.state.selected_index.saturating_sub(10);
                                 }
@@ -584,8 +593,7 @@ mod tui_impl {
             let block = Block::default()
                 .title(format!(" {} ", title))
                 .title_style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-                .borders(Borders::ALL)
-                .style(Style::new().bg(Color::DarkGray));
+                .borders(Borders::ALL);
 
             f.render_widget(block, area);
 
@@ -642,8 +650,7 @@ mod tui_impl {
         fn render_add_observation(&self, f: &mut Frame, area: Rect) {
             let block = Block::default()
                 .title(" Enter observation ")
-                .borders(Borders::ALL)
-                .style(Style::new().bg(Color::Black));
+                .borders(Borders::ALL);
 
             f.render_widget(block, area);
 
@@ -765,15 +772,9 @@ mod tui_impl {
 
         fn render_stats(&self, f: &mut Frame, area: Rect) {
             if let Some(stats) = &self.state.stats {
-                let obs_count = stats["total_observations"]
-                    .as_i64()
-                    .unwrap_or(0)
-                    .to_string();
-                let sess_count = stats["total_sessions"].as_i64().unwrap_or(0).to_string();
-                let storage_size = format!(
-                    "{} bytes",
-                    stats["storage_size_bytes"].as_i64().unwrap_or(0)
-                );
+                let obs_count = stats.total_observations.to_string();
+                let sess_count = stats.total_sessions.to_string();
+                let storage_size = format!("{} bytes", stats.storage_size_bytes);
 
                 let rows = [
                     Row::new(["Total Observations", obs_count.as_str()]),
@@ -898,12 +899,14 @@ mod tui_impl {
             } else {
                 "🔴 Disconnected"
             };
+            let agents_count = status.active_agents.to_string();
+            let tasks_count = status.pending_tasks.to_string();
 
             let rows = [
                 Row::new(["MCP Server", mcp_status]),
                 Row::new(["TCP Server", tcp_status]),
-                Row::new(["Active Agents", &status.active_agents.to_string()]),
-                Row::new(["Pending Tasks", &status.pending_tasks.to_string()]),
+                Row::new(["Active Agents", &agents_count]),
+                Row::new(["Pending Tasks", &tasks_count]),
             ];
 
             let table = Table::new(
@@ -923,8 +926,7 @@ mod tui_impl {
         fn render_confirm_quit(&self, f: &mut Frame, area: Rect) {
             let block = Block::default()
                 .title(" Confirm Quit ")
-                .borders(Borders::ALL)
-                .style(Style::new().bg(Color::Black));
+                .borders(Borders::ALL);
 
             f.render_widget(block, area);
 
@@ -951,7 +953,7 @@ mod tui_impl {
                 )
             };
 
-            let text = Paragraph::new(msg).style(Style::new().fg(Color::DarkGray));
+            let text = Paragraph::new(msg).style(Style::new().fg(Color::Gray));
 
             f.render_widget(text, area);
         }
