@@ -1,0 +1,41 @@
+# Docker ignore for Synapsis
+# ===========================
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+target/
+**/target/
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+coverage/
+*.gcno
+*.gcda
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (optional - include if needed in container)
+# docs/
+# *.md
+
+# Scripts (optional - include if needed in container)
+# scripts/
+
+# Test files (optional - include if needed in container)
+# tests/
+# benches/

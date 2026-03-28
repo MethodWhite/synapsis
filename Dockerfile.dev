@@ -1,0 +1,57 @@
+# Synapsis Development Dockerfile
+# =================================
+# Optimized for fast builds and development workflow
+
+FROM rust:1.88-bookworm
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # Build essentials
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    # SQLCipher dependencies
+    libsqlcipher-dev \
+    # Additional tools
+    git \
+    curl \
+    vim \
+    watch \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
+
+# Install cargo-watch for hot-reload
+RUN cargo install cargo-watch
+
+# Install cargo-audit for security auditing
+RUN cargo install cargo-audit
+
+# Install cargo-tarpaulin for code coverage
+RUN cargo install cargo-tarpaulin
+
+# Set working directory
+WORKDIR /app
+
+# Copy only Cargo files first for better caching
+COPY Cargo.toml Cargo.lock ./
+
+# Create dummy source to build dependencies
+RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src
+
+# Now copy the actual source code
+COPY . .
+
+# Build the project
+RUN cargo build --release
+
+# Default command (can be overridden)
+CMD ["cargo", "watch", "-x", "build --release"]
+
+# Expose ports
+EXPOSE 7438  # MCP TCP port
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD cargo check || exit 1
