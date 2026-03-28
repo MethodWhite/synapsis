@@ -432,4 +432,4 @@ See [LICENSE](LICENSE) file for details.
 
 *Last updated: 2026-03-28*
 
-**PQC Transparency:** CRYSTALS-Kyber-512 ✅ Production Ready | CRYSTALS-Dilithium ⚠️ Library Available (Not in Main Flow)
+**PQC Transparency:** CRYSTALS-Kyber-512 ✅ Production | CRYSTALS-Dilithium-2 ✅ Integrated (Digital Signatures)

@@ -34,3 +34,9 @@ pub mod audit_log {
 pub mod zero_trust {
     pub use crate::core::zero_trust::*;
 }
+
+// PQC Digital Signatures with CRYSTALS-Dilithium (local module)
+#[cfg(feature = "security")]
+pub mod dilithium {
+    include!("core/dilithium_signature.rs");
+}
