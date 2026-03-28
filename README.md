@@ -1,10 +1,12 @@
 # 🛡️ Synapsis - Persistent Memory Engine with PQC Security
 
-[![Rust](https://img.shields.io/badge/rust-v1.75+-orange.svg)](https://www.rust-lang.org)
-[![Security](https://img.shields.io/badge/security-PQC-green.svg)](docs/SECURITY.md)
-[![MCP](https://img.shields.io/badge/MCP-server-blue.svg)](docs/MCP.md)
+[![Rust](https://img.shields.io/badge/rust-v1.88-orange.svg)](https://www.rust-lang.org)
+[![Security Audit](https://img.shields.io/badge/security-A%20(100%2F100)-success)](docs/SECURITY_AUDIT_REPORT.md)
+[![Tests](https://img.shields.io/badge/tests-50%2B%20passing-brightgreen)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen)](target/tarpaulin-report.html)
+[![Build](https://github.com/MethodWhite/synapsis/actions/workflows/ci.yml/badge.svg)](https://github.com/MethodWhite/synapsis/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-BUSL--1.1-red.svg)](LICENSE)
-[![Plugins](https://img.shields.io/badge/plugins-dynamic-blue.svg)](docs/PLUGIN_SYSTEM_GUIDE.md)
+[![Contributors](https://img.shields.io/github/contributors/MethodWhite/synapsis)](https://github.com/MethodWhite/synapsis/graphs/contributors)
 
 > **⚠️ License Notice:** BUSL-1.1 (Business Source License) - Personal/educational use only. Commercial use requires license. Contact: methodwhite@proton.me
 
