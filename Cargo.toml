@@ -109,6 +109,8 @@ tempfile = "3.10"
 pqcrypto-kyber = "0.8.1"
 pqcrypto-traits = "0.3.5"
 criterion = "0.5"
+sha2 = "0.10"
+hmac = "0.12"
 
 [[bench]]
 name = "kyber_benchmarks"

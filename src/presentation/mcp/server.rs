@@ -1109,12 +1109,24 @@ impl McpServer {
             "memory_search" => {
                 let query = args["query"].as_str().unwrap_or("");
                 let params = SearchParams::new(query);
-                let _results = self.db.search_observations(&params)?;
+                let results = self.db.search_observations(&params)?;
+                
+                let formatted_results: Vec<String> = results.iter()
+                    .map(|obs| format!("- [{}] {}", obs.observation_type, obs.title))
+                    .collect();
+                
+                let response = if formatted_results.is_empty() {
+                    format!("No results found for query: '{}'.", query)
+                } else {
+                    format!("Found {} results for query: '{}':\n{}", 
+                        results.len(), query, formatted_results.join("\n"))
+                };
+                
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
                     "result": {
-                        "content": [{ "type": "text", "text": format!("Found 3 results for query: {}.", query) }]
+                        "content": [{ "type": "text", "text": response }]
                     }
                 }))
             }
@@ -1175,16 +1187,45 @@ impl McpServer {
                     }
                 }))
             }
-            "memory_timeline" => Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": { "content": [{ "type": "text", "text": "Timeline: No observations found." }] }
-            })),
-            "memory_stats" => Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": { "content": [{ "type": "text", "text": "Observations: 0" }] }
-            })),
+            "memory_timeline" => {
+                let limit = args["limit"].as_i64().unwrap_or(20) as usize;
+                let observations = self.db.get_recent_observations(limit)?;
+                
+                let formatted: Vec<String> = observations.iter()
+                    .map(|obs| format!("- {} (Session: {})", obs.title, obs.session_id))
+                    .collect();
+                
+                let response = if formatted.is_empty() {
+                    "Timeline: No observations found.".to_string()
+                } else {
+                    format!("Timeline ({} most recent):\n{}", observations.len(), formatted.join("\n"))
+                };
+                
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": { "content": [{ "type": "text", "text": response }] }
+                }))
+            }
+            "memory_stats" => {
+                let stats = self.db.get_stats()?;
+                Ok(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": { 
+                        "content": [{ 
+                            "type": "text", 
+                            "text": format!(
+                                "Observations: {}\nSessions: {}\nAgents: {}\nTasks: {}",
+                                stats.get("observations").unwrap_or(&"0".to_string()),
+                                stats.get("sessions").unwrap_or(&"0".to_string()),
+                                stats.get("agents").unwrap_or(&"0".to_string()),
+                                stats.get("tasks").unwrap_or(&"0".to_string())
+                            )
+                        }] 
+                    }
+                }))
+            }
             "agent_register" | "agent_list" => Ok(json!({
                 "jsonrpc": "2.0",
                 "id": id,
