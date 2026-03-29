@@ -1110,18 +1110,28 @@ impl McpServer {
                 let query = args["query"].as_str().unwrap_or("");
                 let params = SearchParams::new(query);
                 let results = self.db.search_observations(&params)?;
-                
-                let formatted_results: Vec<String> = results.iter()
-                    .map(|obs| format!("- [{}] {}", obs.observation_type, obs.title))
+
+                let formatted_results: Vec<String> = results
+                    .iter()
+                    .map(|obs| {
+                        format!(
+                            "- [{}] {}",
+                            obs.observation.observation_type, obs.observation.title
+                        )
+                    })
                     .collect();
-                
+
                 let response = if formatted_results.is_empty() {
                     format!("No results found for query: '{}'.", query)
                 } else {
-                    format!("Found {} results for query: '{}':\n{}", 
-                        results.len(), query, formatted_results.join("\n"))
+                    format!(
+                        "Found {} results for query: '{}':\n{}",
+                        results.len(),
+                        query,
+                        formatted_results.join("\n")
+                    )
                 };
-                
+
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1188,19 +1198,30 @@ impl McpServer {
                 }))
             }
             "memory_timeline" => {
-                let limit = args["limit"].as_i64().unwrap_or(20) as usize;
-                let observations = self.db.get_recent_observations(limit)?;
-                
-                let formatted: Vec<String> = observations.iter()
-                    .map(|obs| format!("- {} (Session: {})", obs.title, obs.session_id))
+                let limit = args["limit"].as_i64().unwrap_or(20) as i32;
+                let params = SearchParams::new("").with_limit(limit);
+                let observations = self.db.search_observations(&params)?;
+
+                let formatted: Vec<String> = observations
+                    .iter()
+                    .map(|obs| {
+                        format!(
+                            "- {} (Session: {})",
+                            obs.observation.title, obs.observation.session_id
+                        )
+                    })
                     .collect();
-                
+
                 let response = if formatted.is_empty() {
                     "Timeline: No observations found.".to_string()
                 } else {
-                    format!("Timeline ({} most recent):\n{}", observations.len(), formatted.join("\n"))
+                    format!(
+                        "Timeline ({} most recent):\n{}",
+                        observations.len(),
+                        formatted.join("\n")
+                    )
                 };
-                
+
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -1212,17 +1233,17 @@ impl McpServer {
                 Ok(json!({
                     "jsonrpc": "2.0",
                     "id": id,
-                    "result": { 
-                        "content": [{ 
-                            "type": "text", 
+                    "result": {
+                        "content": [{
+                            "type": "text",
                             "text": format!(
-                                "Observations: {}\nSessions: {}\nAgents: {}\nTasks: {}",
-                                stats.get("observations").unwrap_or(&"0".to_string()),
-                                stats.get("sessions").unwrap_or(&"0".to_string()),
-                                stats.get("agents").unwrap_or(&"0".to_string()),
-                                stats.get("tasks").unwrap_or(&"0".to_string())
+                                "Observations: {}\nSessions: {}\nActive Agents: {}\nPending Tasks: {}",
+                                stats.get("observations").unwrap_or(&serde_json::Value::from(0)),
+                                stats.get("agent_sessions").unwrap_or(&serde_json::Value::from(0)),
+                                stats.get("active_agents").unwrap_or(&serde_json::Value::from(0)),
+                                stats.get("pending_tasks").unwrap_or(&serde_json::Value::from(0))
                             )
-                        }] 
+                        }]
                     }
                 }))
             }

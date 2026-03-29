@@ -309,8 +309,8 @@ fn test_context_value_from_conversions() {
     let n: ContextValue = 42i64.into();
     assert!(matches!(n, ContextValue::Number(42.0)));
 
-    let f: ContextValue = 2.718f64.into();
-    assert!(matches!(f, ContextValue::Number(2.718)));
+    let f: ContextValue = f64::consts::E.into();
+    assert!(matches!(f, ContextValue::Number(f64::consts::E)));
 
     let b: ContextValue = true.into();
     assert!(matches!(b, ContextValue::Boolean(true)));
