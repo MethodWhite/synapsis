@@ -191,7 +191,7 @@ fn cmd_poll(args: &[String]) {
 
     use synapsis_core::infrastructure::database::Database;
 
-    let db = Database::new();
+    let _db = Database::new();
 
     let events: Vec<serde_json::Value> = vec![];
     if events.is_empty() {
