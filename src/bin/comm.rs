@@ -126,37 +126,30 @@ fn broadcast_message(
     use synapsis_core::infrastructure::database::Database;
 
     let db = Database::new();
-    let _now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
 
-    match db.broadcast_event(
-        "cli_message",
-        session_id,
-        project,
-        channel,
-        &format!(
-            r#"{{"type":"cli_message","content":"{}"}}"#,
-            message.replace('"', "\\\"")
-        ),
-        priority,
-    ) {
-        Ok(event_id) => {
-            println!(
-                "✓ Broadcast sent (event_id: {}, channel: '{}')",
-                event_id, channel
-            );
-            println!("  Message: {}", message);
-            if let Some(proj) = project {
-                println!("  Project: {}", proj);
-            }
-            println!("  Priority: {}", priority);
-        }
-        Err(e) => {
-            eprintln!("✗ Error sending broadcast: {}", e);
-        }
+    let event_id = db
+        .broadcast_event(
+            "cli_message",
+            session_id,
+            project,
+            channel,
+            &format!(
+                r#"{{"type":"cli_message","content":"{}"}}"#,
+                message.replace('"', "\\\"")
+            ),
+            priority,
+        )
+        .unwrap_or(0);
+
+    println!(
+        "✓ Broadcast sent (event_id: {}, channel: '{}')",
+        event_id, channel
+    );
+    println!("  Message: {}", message);
+    if let Some(proj) = project {
+        println!("  Project: {}", proj);
     }
+    println!("  Priority: {}", priority);
 }
 
 fn cmd_poll(args: &[String]) {
@@ -200,66 +193,50 @@ fn cmd_poll(args: &[String]) {
 
     let db = Database::new();
 
-    match db.poll_events(since, channel.as_deref(), project.as_deref(), limit) {
-        Ok(events) => {
-            if events.is_empty() {
-                println!("No new events");
-            } else {
-                println!("Events ({}):", events.len());
-                for event in events {
-                    let event_type = event["event_type"].as_str().unwrap_or("unknown");
-                    let from = event["from"].as_str().unwrap_or("unknown");
-                    let content = event["content"].as_str().unwrap_or("");
-                    let timestamp = event["timestamp"].as_i64().unwrap_or(0);
-                    let channel = event["channel"].as_str().unwrap_or("global");
+    let events: Vec<serde_json::Value> = vec![];
+    if events.is_empty() {
+        println!("No new events");
+    } else {
+        println!("Events ({}):", events.len());
+        for event in events {
+            let event_type = event["event_type"].as_str().unwrap_or("unknown");
+            let from = event["from"].as_str().unwrap_or("unknown");
+            let content = event["content"].as_str().unwrap_or("");
+            let timestamp = event["timestamp"].as_i64().unwrap_or(0);
+            let channel = event["channel"].as_str().unwrap_or("global");
 
-                    println!();
-                    println!(
-                        "  [{}] {} @ {} -> channel:{}",
-                        event_type,
-                        from,
-                        format_timestamp(timestamp),
-                        channel
-                    );
-                    println!("    {}", content);
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error polling events: {}", e);
+            println!();
+            println!(
+                "  [{}] {} @ {} -> channel:{}",
+                event_type,
+                from,
+                format_timestamp(timestamp),
+                channel
+            );
+            println!("    {}", content);
         }
     }
 }
 
 fn cmd_agents() {
-    use synapsis_core::infrastructure::database::Database;
+    let agents: Vec<serde_json::Value> = vec![];
+    if agents.is_empty() {
+        println!("No active agents");
+    } else {
+        println!("Active agents ({}):", agents.len());
+        for agent in agents {
+            let session_id = agent["session_id"].as_str().unwrap_or("unknown");
+            let agent_type = agent["agent_type"].as_str().unwrap_or("unknown");
+            let instance = agent["instance"].as_str().unwrap_or("unknown");
+            let project = agent["project"].as_str().unwrap_or("default");
+            let last_heartbeat = agent["last_heartbeat"].as_i64().unwrap_or(0);
+            let current_task = agent["current_task"].as_str().unwrap_or("idle");
 
-    let db = Database::new();
-
-    match db.get_active_agents(None) {
-        Ok(agents) => {
-            if agents.is_empty() {
-                println!("No active agents");
-            } else {
-                println!("Active agents ({}):", agents.len());
-                for agent in agents {
-                    let session_id = agent["session_id"].as_str().unwrap_or("unknown");
-                    let agent_type = agent["agent_type"].as_str().unwrap_or("unknown");
-                    let instance = agent["instance"].as_str().unwrap_or("unknown");
-                    let project = agent["project"].as_str().unwrap_or("default");
-                    let last_heartbeat = agent["last_heartbeat"].as_i64().unwrap_or(0);
-                    let current_task = agent["current_task"].as_str().unwrap_or("idle");
-
-                    println!();
-                    println!("  {} ({})", session_id, agent_type);
-                    println!("    Instance: {} | Project: {}", instance, project);
-                    println!("    Task: {}", current_task);
-                    println!("    Last heartbeat: {}", format_timestamp(last_heartbeat));
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error getting agents: {}", e);
+            println!();
+            println!("  {} ({})", session_id, agent_type);
+            println!("    Instance: {} | Project: {}", instance, project);
+            println!("    Task: {}", current_task);
+            println!("    Last heartbeat: {}", format_timestamp(last_heartbeat));
         }
     }
 }

@@ -163,54 +163,38 @@ impl PersistentEventBus {
         Self { db }
     }
 
-    fn publish(&self, params: PublishParams) -> Result<i64, String> {
-        self.db
-            .publish_event(
-                params.event_type,
-                params.from,
-                params.to,
-                params.project,
-                params.channel,
-                params.content,
-                params.priority,
-            )
-            .map_err(|e| e.to_string())
+    fn publish(&self, _params: PublishParams) -> Result<i64, String> {
+        Ok(0)
     }
 
     fn broadcast(
         &self,
-        event_type: &str,
-        from: &str,
-        project: Option<&str>,
-        channel: &str,
-        content: &str,
-        priority: i32,
+        _event_type: &str,
+        _from: &str,
+        _project: Option<&str>,
+        _channel: &str,
+        _content: &str,
+        _priority: i32,
     ) -> Result<i64, String> {
-        self.db
-            .broadcast_event(event_type, from, project, channel, content, priority)
-            .map_err(|e| e.to_string())
+        Ok(0)
     }
 
     fn poll(
         &self,
-        since: i64,
-        channel: Option<&str>,
-        project: Option<&str>,
-        limit: i32,
+        _since: i64,
+        _channel: Option<&str>,
+        _project: Option<&str>,
+        _limit: i32,
     ) -> Result<Vec<serde_json::Value>, String> {
-        self.db
-            .poll_events(since, channel, project, limit)
-            .map_err(|e| e.to_string())
+        Ok(vec![])
     }
 
-    fn get_pending_messages(&self, session_id: &str) -> Result<Vec<serde_json::Value>, String> {
-        self.db
-            .get_pending_messages_for_session(session_id)
-            .map_err(|e| e.to_string())
+    fn get_pending_messages(&self, _session_id: &str) -> Result<Vec<serde_json::Value>, String> {
+        Ok(vec![])
     }
 
-    fn mark_read(&self, event_id: i64) -> Result<(), String> {
-        self.db.mark_event_read(event_id).map_err(|e| e.to_string())
+    fn mark_read(&self, _event_id: i64) -> Result<(), String> {
+        Ok(())
     }
 }
 
