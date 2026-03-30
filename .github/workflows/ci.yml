@@ -17,15 +17,15 @@ jobs:
     timeout-minutes: 30
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Install Rust toolchain
-      uses: dtolnay/rust@1.88
+      uses: dtolnay/rust@stable
       with:
         components: rustfmt, clippy
     
     - name: Cache cargo registry
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry
@@ -56,10 +56,10 @@ jobs:
     timeout-minutes: 20
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Install Rust toolchain
-      uses: dtolnay/rust@1.88
+      uses: dtolnay/rust@stable
       with:
         components: rustfmt, clippy
     
@@ -78,10 +78,10 @@ jobs:
     timeout-minutes: 15
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Install Rust toolchain
-      uses: dtolnay/rust@1.88
+      uses: dtolnay/rust@stable
     
     - name: Install cargo-audit
       run: cargo install cargo-audit
@@ -101,10 +101,10 @@ jobs:
     timeout-minutes: 20
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Install Rust toolchain
-      uses: dtolnay/rust@1.88
+      uses: dtolnay/rust@stable
     
     - name: Run Kyber verification script
       run: |
