@@ -72,7 +72,7 @@ regex = "1"
 env_logger = "0.11"
 
 # Async
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.38", features = ["full"] }
 futures = "0.3"
 warp = "0.3"
 

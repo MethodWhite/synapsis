@@ -3,7 +3,7 @@
 //! Allows sending broadcast messages and checking events from command line
 
 use std::env;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -153,35 +153,35 @@ fn broadcast_message(
 }
 
 fn cmd_poll(args: &[String]) {
-    let mut since = 0i64;
-    let mut channel = None;
-    let mut project = None;
-    let mut limit = 20;
+    let mut _since = 0i64;
+    let mut _channel = None;
+    let mut _project = None;
+    let mut _limit = 20;
 
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--since" | "-s" => {
                 if i + 1 < args.len() {
-                    since = args[i + 1].parse().unwrap_or(0);
+                    _since = args[i + 1].parse().unwrap_or(0);
                     i += 2;
                 }
             }
             "--channel" | "-c" => {
                 if i + 1 < args.len() {
-                    channel = Some(args[i + 1].clone());
+                    _channel = Some(args[i + 1].clone());
                     i += 2;
                 }
             }
             "--project" | "-p" => {
                 if i + 1 < args.len() {
-                    project = Some(args[i + 1].clone());
+                    _project = Some(args[i + 1].clone());
                     i += 2;
                 }
             }
             "--limit" | "-l" => {
                 if i + 1 < args.len() {
-                    limit = args[i + 1].parse().unwrap_or(20);
+                    _limit = args[i + 1].parse().unwrap_or(20);
                     i += 2;
                 }
             }

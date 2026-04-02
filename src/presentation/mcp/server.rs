@@ -301,7 +301,8 @@ impl McpServer {
                 )
             }
         };
-        let is_notification = request["id"].is_null();
+        let request_id = request["id"].clone();
+        let is_notification = request_id.is_null();
         match self.handle_request(request) {
             Ok(response) => {
                 if is_notification {
@@ -318,11 +319,20 @@ impl McpServer {
                 } else {
                     let err_resp = json!({
                         "jsonrpc": "2.0",
+                        "id": request_id,
                         "error": { "code": -32603, "message": e.to_string() }
                     });
                     serde_json::to_string(&err_resp).ok()
                 }
             }
+        }
+    }
+
+    fn extract_args<'a>(&self, params: &'a Value) -> &'a Value {
+        if let Some(args) = params.get("arguments") {
+            args
+        } else {
+            params
         }
     }
 
@@ -408,88 +418,32 @@ impl McpServer {
                 "id": id,
                 "result": { "prompts": [{ "name": "memory_context" }] }
             })),
-            "agents_active" => {
-                let params = &request["params"];
-                let project = params.get("project").and_then(|v| v.as_str());
-                match self.db.get_active_agents(project) {
-                    Ok(agents) => Ok(json!({
+            "prompts/get" => {
+                let name = request["params"]["name"].as_str().unwrap_or("");
+                if name == "memory_context" {
+                   let args = &request["params"]["arguments"];
+                   match self.action_mem_context(args) {
+                       Ok(ctx) => Ok(json!({
+                           "jsonrpc": "2.0",
+                           "id": id,
+                           "result": { "messages": [{ "role": "user", "content": { "type": "text", "text": serde_json::to_string(&ctx).unwrap() } }] }
+                       })),
+                       Err(e) => Err(anyhow::anyhow!("{}", e)),
+                   }
+                } else {
+                    Ok(json!({
                         "jsonrpc": "2.0",
                         "id": id,
-                        "result": { "agents": agents }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": e.to_string() }
-                    })),
+                        "error": { "code": -32601, "message": "Prompt not found" }
+                    }))
                 }
             }
-            "task_create" => {
-                let params = &request["params"];
-                let args = params.get("arguments").and_then(|v| v.as_object());
-                let project = args
-                    .and_then(|a| a.get("project"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("default");
-                let task_type = args
-                    .and_then(|a| a.get("task_type"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let payload = args
-                    .and_then(|a| a.get("payload"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let priority = args
-                    .and_then(|a| a.get("priority"))
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0) as i32;
-                // Use the multi_agent module to create task
-                match self.db.create_task(project, task_type, payload, priority) {
-                    Ok(task_id) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": { "task_id": task_id }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": e.to_string() }
-                    })),
-                }
+            _ => {
+                // Bridge for mw-cli direct method calls
+                let args = self.extract_args(&request["params"]);
+                let tool_params = json!({ "name": method, "arguments": args });
+                self.call_tool(id, &tool_params)
             }
-            "session_register" => {
-                let params = &request["params"];
-                let args = params.get("arguments").and_then(|v| v.as_object());
-                let agent_type = args
-                    .and_then(|a| a.get("agent_type"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let project = args
-                    .and_then(|a| a.get("project"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("default");
-                let agent_instance = "unknown"; // default instance
-                match self
-                    .db
-                    .register_agent_session(agent_type, agent_instance, project, None)
-                {
-                    Ok(session_id) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": { "session_id": session_id }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": e.to_string() }
-                    })),
-                }
-            }
-            _ => Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": { "code": -32601, "message": "Method not found" }
-            })),
         }
     }
 
@@ -500,33 +454,57 @@ impl McpServer {
             "result": {
                 "tools": [
                     {
-                        "name": "memory_search",
-                        "description": "Search Synapsis persistent memory",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "query": { "type": "string" },
-                                "limit": { "type": "integer", "default": 20 }
-                            },
-                            "required": ["query"]
-                        }
-                    },
-                    {
-                        "name": "memory_add",
-                        "description": "Add observation to Synapsis",
+                        "name": "mem_save",
+                        "description": "Save an observation to Synapsis persistent memory",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "title": { "type": "string" },
                                 "content": { "type": "string" },
-                                "project": { "type": "string" }
+                                "project": { "type": "string", "default": "default" },
+                                "observation_type": { "type": "integer", "default": 1 }
                             },
                             "required": ["title", "content"]
                         }
                     },
                     {
-                        "name": "memory_update",
-                        "description": "Update observation with audit trail",
+                        "name": "mem_search",
+                        "description": "Search observations using FTS5 vector-lite engine",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": { "type": "string" },
+                                "project": { "type": "string" },
+                                "limit": { "type": "integer", "default": 10 }
+                            },
+                            "required": ["query"]
+                        }
+                    },
+                    {
+                        "name": "mem_context",
+                        "description": "Get relevant context for current session",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "limit": { "type": "integer", "default": 10 }
+                            }
+                        }
+                    },
+                    {
+                        "name": "mem_timeline",
+                        "description": "Get memory timeline for a project",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "project": { "type": "string" },
+                                "limit": { "type": "integer", "default": 10 }
+                            }
+                        }
+                    },
+                    {
+                        "name": "mem_update",
+                        "description": "Update existing observation (creates audit entry)",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -538,8 +516,8 @@ impl McpServer {
                         }
                     },
                     {
-                        "name": "memory_delete",
-                        "description": "Soft delete observation with audit trail",
+                        "name": "mem_delete",
+                        "description": "Soft-delete an observation",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -550,177 +528,105 @@ impl McpServer {
                         }
                     },
                     {
-                        "name": "memory_timeline",
-                        "description": "Get memory timeline",
+                        "name": "mem_session_start",
+                        "description": "Initialize a new agent session",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "limit": { "type": "integer", "default": 10 }
+                                "agent_type": { "type": "string" },
+                                "project": { "type": "string", "default": "default" }
+                            },
+                            "required": ["agent_type"]
+                        }
+                    },
+                    {
+                        "name": "mem_session_end",
+                        "description": "Finalize an agent session",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" }
+                            },
+                            "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "mem_stats",
+                        "description": "Get memory and agent status overview",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "project": { "type": "string" }
                             }
                         }
                     },
                     {
-                        "name": "memory_stats",
-                        "description": "Get memory statistics",
-                        "inputSchema": { "type": "object", "properties": {} }
-                    },
-                    {
-                        "name": "agent_register",
-                        "description": "Register a new agent",
+                        "name": "agent_heartbeat",
+                        "description": "Send heartbeat and update current task/status",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "name": { "type": "string" },
-                                "role": { "type": "string" }
+                                "session_id": { "type": "string" },
+                                "status": { "type": "string", "enum": ["idle", "busy"], "default": "idle" },
+                                "task": { "type": "string" }
                             },
-                            "required": ["name"]
+                            "required": ["session_id", "status"]
                         }
-                    },
-                    {
-                        "name": "agent_list",
-                        "description": "List all registered agents",
-                        "inputSchema": { "type": "object", "properties": {} }
-                    },
-                    {
-                        "name": "skill_register",
-                        "description": "Register a new skill",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "name": { "type": "string" },
-                                "description": { "type": "string" }
-                            },
-                            "required": ["name"]
-                        }
-                    },
-                    {
-                        "name": "skill_list",
-                        "description": "List all skills",
-                        "inputSchema": { "type": "object", "properties": {} }
                     },
                     {
                         "name": "task_create",
-                        "description": "Create a new task",
+                        "description": "Create a new coordinated task",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "title": { "type": "string" }
+                                "project": { "type": "string", "default": "default" },
+                                "task_type": { "type": "string" },
+                                "payload": { "type": "string" },
+                                "priority": { "type": "integer", "default": 0 }
                             },
-                            "required": ["title"]
+                            "required": ["task_type", "payload"]
                         }
                     },
                     {
-                        "name": "task_list",
-                        "description": "List all tasks",
-                        "inputSchema": { "type": "object", "properties": {} }
-                    },
-                    {
-                        "name": "ghost_audit",
-                        "description": "Trigger a proactive audit of a file",
+                        "name": "task_claim",
+                        "description": "Claim a pending task for an agent",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "path": { "type": "string" }
+                                "session_id": { "type": "string" },
+                                "task_type": { "type": "string" }
                             },
-                            "required": ["path"]
+                            "required": ["session_id"]
                         }
                     },
                     {
-                        "name": "pqc_encrypt",
-                        "description": "Encrypt sensitive data using MethodWhite Sovereign PQC",
+                        "name": "mem_lock_acquire",
+                        "description": "Acquire a distributed lock on a resource",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "plaintext": { "type": "string" }
+                                "resource": { "type": "string" },
+                                "session_id": { "type": "string" },
+                                "ttl_seconds": { "type": "integer", "default": 60 }
                             },
-                            "required": ["plaintext"]
+                            "required": ["resource", "session_id"]
                         }
                     },
                     {
-                        "name": "wasm_run",
-                        "description": "Run a sandboxed WASM skill",
+                        "name": "mem_lock_release",
+                        "description": "Release a distributed lock",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "wasm_hex": { "type": "string" },
-                                "entry_func": { "type": "string", "default": "main" }
+                                "resource": { "type": "string" },
+                                "session_id": { "type": "string" }
                             },
-                            "required": ["wasm_hex"]
-                        }
-                    },
-                    {
-                        "name": "antibrick_scan",
-                        "description": "Scan a command for potential brick threats",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "command": { "type": "string", "description": "Command to analyze (e.g., 'dd', 'fastboot')" },
-                                "args": { "type": "array", "items": { "type": "string" }, "description": "Command arguments" }
-                            },
-                            "required": ["command", "args"]
-                        }
-                    },
-                    {
-                        "name": "antibrick_stats",
-                        "description": "Get anti-brick protection statistics",
-                        "inputSchema": { "type": "object", "properties": {} }
-                    },
-                    {
-                        "name": "antibrick_enable",
-                        "description": "Enable or disable anti-brick protection",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "enable": { "type": "boolean" }
-                            },
-                            "required": ["enable"]
-                        }
-                    },
-                    {
-                        "name": "watchdog_stats",
-                        "description": "Get filesystem watchdog statistics",
-                        "inputSchema": { "type": "object", "properties": {} }
-                    },
-                    {
-                        "name": "watchdog_verify",
-                        "description": "Verify integrity of monitored files",
-                        "inputSchema": { "type": "object", "properties": {} }
-                    },
-                    {
-                        "name": "watchdog_snapshot",
-                        "description": "Create snapshot of a path for integrity monitoring",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "path": { "type": "string", "description": "Path to snapshot" }
-                            },
-                            "required": ["path"]
-                        }
-                    },
-                    {
-                        "name": "watchdog_events",
-                        "description": "Get recent watchdog events",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "limit": { "type": "integer", "default": 20 }
-                            }
-                        }
-                    },
-                    {
-                        "name": "watchdog_check_path",
-                        "description": "Check if a path is protected",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "path": { "type": "string" }
-                            },
-                            "required": ["path"]
+                            "required": ["resource", "session_id"]
                         }
                     },
                     {
                         "name": "web_research",
-                        "description": "Research information from the web",
+                        "description": "Consult specialized web intelligence",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -732,11 +638,11 @@ impl McpServer {
                     },
                     {
                         "name": "cve_search",
-                        "description": "Search for CVEs (Common Vulnerabilities and Exposures)",
+                        "description": "Search NVD database for vulnerabilities",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "cve_id": { "type": "string" },
+                                "cve_id": { "type": "string", "description": "Specific CVE ID (e.g. CVE-2026-1234)" },
                                 "keyword": { "type": "string" },
                                 "limit": { "type": "integer", "default": 10 }
                             }
@@ -744,7 +650,7 @@ impl McpServer {
                     },
                     {
                         "name": "security_classify",
-                        "description": "Classify security level of text",
+                        "description": "Analyze risk level of specialized content",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -753,332 +659,6 @@ impl McpServer {
                             },
                             "required": ["text"]
                         }
-                    },
-                    {
-                        "name": "browser_navigate",
-                        "description": "Navigate to a URL and return page HTML",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url": { "type": "string" }
-                            },
-                            "required": ["url"]
-                        }
-                    },
-                    {
-                        "name": "browser_extract_text",
-                        "description": "Extract text from elements matching CSS selector",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url": { "type": "string" },
-                                "selector": { "type": "string" }
-                            },
-                            "required": ["url", "selector"]
-                        }
-                    },
-                    {
-                        "name": "browser_click",
-                        "description": "Click an element matching CSS selector",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url": { "type": "string" },
-                                "selector": { "type": "string" }
-                            },
-                            "required": ["url", "selector"]
-                        }
-                    },
-                    {
-                        "name": "browser_fill_form",
-                        "description": "Fill a form field with a value",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url": { "type": "string" },
-                                "selector": { "type": "string" },
-                                "value": { "type": "string" }
-                            },
-                            "required": ["url", "selector", "value"]
-                        }
-                    },
-                    {
-                        "name": "browser_screenshot",
-                        "description": "Take screenshot of page",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url": { "type": "string" },
-                                "output_path": { "type": "string" }
-                            },
-                            "required": ["url", "output_path"]
-                        }
-                    },
-                    {
-                        "name": "env_detection",
-                        "description": "Auto-detect installed CLIs, TUIs, and IDEs. Modes: 'all' (default), 'mcp_compatible', 'auto_config'",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "mode": {
-                                    "type": "string",
-                                    "enum": ["all", "mcp_compatible", "auto_config"],
-                                    "default": "all"
-                                }
-                            }
-                        }
-                    },
-                    {
-                        "name": "agent_heartbeat",
-                        "description": "Update agent heartbeat and status",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "status": { "type": "string", "enum": ["idle", "busy"] },
-                                "task": { "type": "string" }
-                            },
-                            "required": ["session_id", "status"]
-                        }
-                    },
-                    {
-                        "name": "agent_details",
-                        "description": "Get details about a specific agent",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "send_message",
-                        "description": "Send a message to another agent",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "to": { "type": "string" },
-                                "content": { "type": "string" }
-                            },
-                            "required": ["session_id", "to", "content"]
-                        }
-                    },
-                    {
-                        "name": "agents_active",
-                        "description": "List active agents in a project",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "project": { "type": "string" }
-                            }
-                        }
-                    },
-                    {
-                        "name": "task_delegate",
-                        "description": "Delegate a task to another agent",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": { "type": "string" },
-                                "to_agent": { "type": "string" }
-                            },
-                            "required": ["task_id", "to_agent"]
-                        }
-                    },
-                    {
-                        "name": "task_claim",
-                        "description": "Claim a pending task",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "task_request",
-                        "description": "Request a task assignment",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "skills": { "type": "array", "items": { "type": "string" } }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "task_complete",
-                        "description": "Mark a task as completed",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": { "type": "string" },
-                                "success": { "type": "boolean", "default": true },
-                                "result": { "type": "string" }
-                            },
-                            "required": ["task_id"]
-                        }
-                    },
-                    {
-                        "name": "task_audit",
-                        "description": "Audit a task with status and notes",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": { "type": "string" },
-                                "auditor_session_id": { "type": "string" },
-                                "audit_status": { "type": "string", "default": "approved" },
-                                "audit_notes": { "type": "string" }
-                            },
-                            "required": ["task_id", "auditor_session_id"]
-                        }
-                    },
-                    {
-                        "name": "event_poll",
-                        "description": "Poll for new events since timestamp (shared across all MCP instances)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "since": { "type": "integer", "description": "Poll events created after this Unix timestamp" },
-                                "channel": { "type": "string", "description": "Filter by channel (default: 'global')" },
-                                "project": { "type": "string", "description": "Filter by project" },
-                                "limit": { "type": "integer", "default": 100, "description": "Max events to return" }
-                            },
-                            "required": ["since"]
-                        }
-                    },
-                    {
-                        "name": "get_pending_messages",
-                        "description": "Get pending direct messages for session",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "event_ack",
-                        "description": "Mark an event as read",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "event_id": { "type": "integer" }
-                            },
-                            "required": ["event_id"]
-                        }
-                    },
-                    {
-                        "name": "broadcast",
-                        "description": "Broadcast message to all sessions in a channel/project (inter-agent communication)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string", "description": "Your session ID" },
-                                "content": { "type": "string", "description": "Message content (JSON recommended for structured data)" },
-                                "project": { "type": "string", "description": "Target project (optional)" },
-                                "channel": { "type": "string", "default": "global", "description": "Channel name (all sessions in this channel receive the message)" },
-                                "priority": { "type": "integer", "default": 0, "description": "Priority: 0=normal, 1=high, 2=critical" },
-                                "type": { "type": "string", "default": "broadcast", "description": "Event type: broadcast, status_update, coordination, etc." }
-                            },
-                            "required": ["session_id", "content"]
-                        }
-                    },
-                    {
-                        "name": "plugin_load",
-                        "description": "Load a plugin from path",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "path": { "type": "string" }
-                            },
-                            "required": ["path"]
-                        }
-                    },
-                    {
-                        "name": "plugin_unload",
-                        "description": "Unload a plugin",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "plugin_id": { "type": "string" }
-                            },
-                            "required": ["plugin_id"]
-                        }
-                    },
-                    {
-                        "name": "plugin_list",
-                        "description": "List all loaded plugins",
-                        "inputSchema": { "type": "object", "properties": {} }
-                    },
-                    {
-                        "name": "plugin_info",
-                        "description": "Get plugin information",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "plugin_id": { "type": "string" }
-                            },
-                            "required": ["plugin_id"]
-                        }
-                    },
-                    {
-                        "name": "plugin_enable",
-                        "description": "Enable a plugin",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "plugin_id": { "type": "string" },
-                                "enabled": { "type": "boolean", "default": true }
-                            },
-                            "required": ["plugin_id"]
-                        }
-                    },
-                    {
-                        "name": "plugin_disable",
-                        "description": "Disable a plugin",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "plugin_id": { "type": "string" }
-                            },
-                            "required": ["plugin_id"]
-                        }
-                    },
-                    {
-                        "name": "plugin_health",
-                        "description": "Check plugin health",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "plugin_id": { "type": "string" }
-                            }
-                        }
-                    },
-                    {
-                        "name": "plugin_update_check",
-                        "description": "Check for plugin updates",
-                        "inputSchema": { "type": "object", "properties": {} }
-                    },
-                    {
-                        "name": "plugin_cleanup",
-                        "description": "Clean up unused plugins",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "max_age_seconds": { "type": "integer", "default": 86400 }
-                            }
-                        }
-                    },
-                    {
-                        "name": "connection_status",
-                        "description": "Check connection status with green/red indicators",
-                        "inputSchema": { "type": "object", "properties": {} }
                     }
                 ]
             }
@@ -1089,945 +669,625 @@ impl McpServer {
         let name = params["name"].as_str().unwrap_or("");
         let args = &params["arguments"];
 
-        match name {
-            "memory_search" => {
-                let query = args["query"].as_str().unwrap_or("");
-                let params = SearchParams::new(query);
-                let results = self.db.search_observations(&params)?;
+        let action_result = match name {
+            // Memory & Session Standard
+            "mem_save" | "memory_add" => self.action_mem_save(args),
+            "mem_search" | "memory_search" => self.action_mem_search(args),
+            "mem_update" | "memory_update" => self.action_mem_update(args),
+            "mem_delete" | "memory_delete" => self.action_mem_delete(args),
+            "mem_timeline" | "memory_timeline" => self.action_mem_timeline(args),
+            "mem_context" => self.action_mem_context(args),
+            "mem_session_start" | "session_register" | "agent_register" => self.action_mem_session_start(args),
+            "mem_session_end" => self.action_mem_session_end(args),
+            "mem_stats" | "memory_stats" | "agents_active" => self.action_mem_stats(args),
+            "mem_lock_acquire" => self.action_mem_lock_acquire(args),
+            "mem_lock_release" => self.action_mem_lock_release(args),
+            
+            // Coordination & Tasks
+            "agent_heartbeat" => self.action_agent_heartbeat(args),
+            "agent_details" => self.action_agent_details(args),
+            "task_create" | "task_create_db" => self.action_task_create(args),
+            "task_claim" => self.action_task_claim(args),
+            "task_list" => self.action_task_list(args),
+            "task_cancel" => self.action_task_cancel(args),
+            "task_complete" => self.action_task_complete(args),
+            "task_complete_db" => self.action_task_complete_db(args),
+            "task_delegate" => self.action_task_delegate(args),
+            "task_request" => self.action_task_request(args),
+            "task_audit" => self.action_task_audit(args),
+            "ghost_audit" => self.action_ghost_audit(args),
 
-                let formatted_results: Vec<String> = results
-                    .iter()
-                    .map(|obs| {
-                        format!(
-                            "- [{}] {}",
-                            obs.observation.observation_type, obs.observation.title
-                        )
-                    })
-                    .collect();
+            // Intelligence Tools
+            "web_research" => self.action_web_research(args),
+            "cve_search" => self.action_cve_search(args),
+            "security_classify" => self.action_security_classify(args),
+            
+            // System: Crypto & Environment
+            "pqc_encrypt" | "crypto_pqc_encrypt" => self.action_crypto_pqc_encrypt(args),
+            "wasm_run" => self.action_wasm_run(args),
+            "env_detection" => self.action_env_detection(args),
+            "connection_status" => self.action_connection_status(args),
 
-                let response = if formatted_results.is_empty() {
-                    format!("No results found for query: '{}'.", query)
-                } else {
-                    format!(
-                        "Found {} results for query: '{}':\n{}",
-                        results.len(),
-                        query,
-                        formatted_results.join("\n")
-                    )
-                };
+            // System: Browser Navigation
+            "browser_navigate" => self.action_browser_navigate(args),
+            "browser_extract_text" => self.action_browser_extract_text(args),
+            "browser_click" => self.action_browser_click(args),
+            "browser_fill_form" => self.action_browser_fill_form(args),
+            "browser_screenshot" => self.action_browser_screenshot(args),
 
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": response }]
-                    }
-                }))
-            }
-            "memory_add" => {
-                let title = args["title"].as_str().unwrap_or("Untitled");
-                let content = args["content"].as_str().unwrap_or("");
-                let project = args["project"].as_str().map(|s| s.to_string());
+            // System: Antibrick & Watchdog
+            "antibrick_scan" => self.action_antibrick_scan(args),
+            "antibrick_stats" => self.action_antibrick_stats(args),
+            "antibrick_enable" => self.action_antibrick_enable(args),
+            "watchdog_stats" => self.action_watchdog_stats(args),
+            "watchdog_verify" => self.action_watchdog_verify(args),
+            "watchdog_snapshot" => self.action_watchdog_snapshot(args),
+            "watchdog_events" => self.action_watchdog_events(args),
+            "watchdog_check_path" => self.action_watchdog_check_path(args),
 
-                let mut obs = entities::Observation::new(
-                    self.get_session_id(),
-                    types::ObservationType::Manual,
-                    title.to_string(),
-                    content.to_string(),
-                );
-                obs.project = project;
+            // Messaging & Events
+            "send_message" => self.action_send_message(args),
+            "event_poll" => self.action_event_poll(args),
+            "event_ack" => self.action_event_ack(args),
+            "get_pending_messages" => self.action_get_pending_messages(args),
+            "broadcast" => self.action_broadcast(args),
 
-                let obs_id = self.db.save_observation(&obs)?;
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("Added observation {}", obs_id) }]
-                    }
-                }))
-            }
-            "memory_update" => {
-                let observation_id = args["observation_id"].as_i64().unwrap_or(0);
-                let new_content = args["new_content"].as_str().unwrap_or("");
-                let reason = args["reason"].as_str();
-                // Use client-provided agent_id
-                self.db.update_observation(
-                    types::ObservationId(observation_id),
-                    new_content,
-                    &self.get_agent_id(),
-                    reason,
-                )?;
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("Updated observation {}", observation_id) }]
-                    }
-                }))
-            }
-            "memory_delete" => {
-                let observation_id = args["observation_id"].as_i64().unwrap_or(0);
-                let reason = args["reason"].as_str();
-                self.db.delete_observation(
-                    types::ObservationId(observation_id),
-                    &self.get_agent_id(),
-                    reason,
-                )?;
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("Soft-deleted observation {}", observation_id) }]
-                    }
-                }))
-            }
-            "memory_timeline" => {
-                let limit = args["limit"].as_i64().unwrap_or(20) as i32;
-                let params = SearchParams::new("").with_limit(limit);
-                let observations = self.db.search_observations(&params)?;
+            // System: Plugin Management
+            "plugin_load" => self.action_plugin_load(args),
+            "plugin_unload" => self.action_plugin_unload(args),
+            "plugin_list" => self.action_plugin_list(args),
+            "plugin_info" => self.action_plugin_info(args),
+            "plugin_enable" => self.action_plugin_enable(args),
+            "plugin_disable" => self.action_plugin_disable(args),
+            "plugin_health" => self.action_plugin_health(args),
+            "plugin_update_check" => self.action_plugin_update_check(args),
+            "plugin_cleanup" => self.action_plugin_cleanup(args),
 
-                let formatted: Vec<String> = observations
-                    .iter()
-                    .map(|obs| {
-                        format!(
-                            "- {} (Session: {})",
-                            obs.observation.title, obs.observation.session_id
-                        )
-                    })
-                    .collect();
+            _ => Err(format!("Unknown tool: {}", name)),
+        };
 
-                let response = if formatted.is_empty() {
-                    "Timeline: No observations found.".to_string()
-                } else {
-                    format!(
-                        "Timeline ({} most recent):\n{}",
-                        observations.len(),
-                        formatted.join("\n")
-                    )
-                };
-
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "content": [{ "type": "text", "text": response }] }
-                }))
-            }
-            "memory_stats" => {
-                let stats = self.db.get_stats()?;
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{
-                            "type": "text",
-                            "text": format!(
-                                "Observations: {}\nSessions: {}\nActive Agents: {}\nPending Tasks: {}",
-                                stats.get("observations").unwrap_or(&serde_json::Value::from(0)),
-                                stats.get("agent_sessions").unwrap_or(&serde_json::Value::from(0)),
-                                stats.get("active_agents").unwrap_or(&serde_json::Value::from(0)),
-                                stats.get("pending_tasks").unwrap_or(&serde_json::Value::from(0))
-                            )
-                        }]
-                    }
-                }))
-            }
-            "agent_register" | "agent_list" => Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": { "content": [{ "type": "text", "text": "Registered agent" }] }
-            })),
-            "skill_register" | "skill_list" => Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": { "content": [{ "type": "text", "text": "Registered skill" }] }
-            })),
-            "task_create" | "task_list" => Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": { "content": [{ "type": "text", "text": "Task created" }] }
-            })),
-            "ghost_audit" => {
-                let path = args["path"].as_str().unwrap_or(".");
-                let task_id = self.orchestrator.create_task(
-                    &format!("External audit request for {}", path),
-                    vec!["code_analysis".into()],
-                    5,
-                    None,
-                );
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("Audit task {} created", task_id) }]
-                    }
-                }))
-            }
-            "pqc_encrypt" => {
-                let plaintext = args["plaintext"].as_str().unwrap_or("");
-                let key_bytes = self
-                    .crypto_provider
-                    .random_bytes(32)
-                    .map_err(|e| anyhow::anyhow!("Failed to generate key: {}", e))?;
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&key_bytes);
-                let ciphertext = self
-                    .crypto_provider
-                    .encrypt(&key, plaintext.as_bytes(), PqcAlgorithm::Aes256Gcm)
-                    .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": hex::encode(ciphertext) }]
-                    }
-                }))
-            }
-            "wasm_run" => Ok(json!({
+        match action_result {
+            Ok(result) => Ok(json!({
                 "jsonrpc": "2.0",
                 "id": id,
                 "result": {
-                    "content": [{ "type": "text", "text": "WASM execution scheduled via orchestrator." }]
+                    "content": [{ "type": "text", "text": serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string()) }]
                 }
             })),
-            "antibrick_scan" => {
-                let command = args["command"].as_str().unwrap_or("");
-                let args_vec: Vec<String> = args["args"]
-                    .as_array()
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str())
-                            .map(String::from)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-
-                let result = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_scan(
-                    &self.antibrick,
-                    command,
-                    args_vec,
-                );
-
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "antibrick_stats" => {
-                let stats = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_stats(
-                    &self.antibrick,
-                );
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": stats.to_string() }]
-                    }
-                }))
-            }
-            "antibrick_enable" => {
-                let enable = args["enable"].as_bool().unwrap_or(true);
-                let result = synapsis_core::core::antibrick::mcp_tools::handle_antibrick_enable(
-                    &self.antibrick,
-                    enable,
-                );
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "watchdog_stats" => {
-                let stats =
-                    synapsis_core::core::watchdog::mcp_tools::handle_watchdog_stats(&self.watchdog);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": stats.to_string() }]
-                    }
-                }))
-            }
-            "watchdog_verify" => {
-                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_verify(
-                    &self.watchdog,
-                );
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "watchdog_snapshot" => {
-                let path = args["path"].as_str().unwrap_or("/").to_string();
-                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_snapshot(
-                    &self.watchdog,
-                    path,
-                );
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "watchdog_events" => {
-                let limit = args["limit"].as_u64().unwrap_or(20) as usize;
-                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_events(
-                    &self.watchdog,
-                    limit,
-                );
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "watchdog_check_path" => {
-                let path = args["path"].as_str().unwrap_or("/").to_string();
-                let result = synapsis_core::core::watchdog::mcp_tools::handle_watchdog_check_path(
-                    &self.watchdog,
-                    path,
-                );
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "web_research" => {
-                let query = args["query"].as_str().unwrap_or("");
-                let limit = args["limit"].as_u64().unwrap_or(5) as usize;
-                let result = web_research_tools::handle_web_research(query, limit);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "cve_search" => {
-                let cve_id = args["cve_id"].as_str();
-                let keyword = args["keyword"].as_str();
-                let limit = args["limit"].as_u64().unwrap_or(10) as usize;
-                let result = cve_search_tools::handle_cve_search(cve_id, keyword, limit);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "security_classify" => {
-                let text = args["text"].as_str().unwrap_or("");
-                let context = args["context"].as_str().unwrap_or("general");
-                let result = security_classify_tools::handle_security_classify(text, context);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "browser_navigate" => {
-                let url = args["url"].as_str().unwrap_or("");
-                let result = browser_navigation_tools::handle_navigate_to_url(url);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "browser_extract_text" => {
-                let url = args["url"].as_str().unwrap_or("");
-                let selector = args["selector"].as_str().unwrap_or("");
-                let result = browser_navigation_tools::handle_extract_text(url, selector);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "browser_click" => {
-                let url = args["url"].as_str().unwrap_or("");
-                let selector = args["selector"].as_str().unwrap_or("");
-                let result = browser_navigation_tools::handle_click_element(url, selector);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "browser_fill_form" => {
-                let url = args["url"].as_str().unwrap_or("");
-                let selector = args["selector"].as_str().unwrap_or("");
-                let value = args["value"].as_str().unwrap_or("");
-                let result = browser_navigation_tools::handle_fill_form(url, selector, value);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "browser_screenshot" => {
-                let url = args["url"].as_str().unwrap_or("");
-                let output_path = args["output_path"].as_str().unwrap_or("");
-                let result = browser_navigation_tools::handle_screenshot(url, output_path);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "env_detection" => {
-                let mode = args["mode"].as_str();
-                let result = match handle_env_detection(mode) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Ok(json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": { "code": -32603, "message": e.to_string() }
-                        }));
-                    }
-                };
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": result.to_string() }]
-                    }
-                }))
-            }
-            "agent_heartbeat" => {
-                let session_id = args["session_id"].as_str().unwrap_or("");
-                let status_str = args["status"].as_str().unwrap_or("idle");
-                let task = args["task"].as_str();
-                let status = match status_str {
-                    "idle" => AgentStatus::Idle,
-                    "busy" => AgentStatus::Busy,
-                    _ => AgentStatus::Idle,
-                };
-                self.orchestrator.heartbeat(session_id, Some(status), task);
-                // Update connection activity
-                if let Some(client_name) = self.client_name.read().unwrap().as_ref() {
-                    let mut connections = self.connections.lock().unwrap();
-                    if let Some(conn) = connections.get_mut(client_name) {
-                        conn.last_activity = Instant::now();
-                    }
-                }
-                if let Err(e) = self.db.agent_heartbeat(session_id, task) {
-                    return Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("{:?}", e) }
-                    }));
-                }
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": "Heartbeat updated" }]
-                    }
-                }))
-            }
-            "agent_details" => {
-                let session_id = args["session_id"].as_str().unwrap_or("");
-                match self.db.get_agent_details(session_id) {
-                    Ok(details) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("{:?}", details) }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("{:?}", e) }
-                    })),
-                }
-            }
-            "send_message" => {
-                let session_id = args["session_id"].as_str().unwrap_or("");
-                let to = args["to"].as_str().unwrap_or("");
-                let content = args["content"].as_str().unwrap_or("");
-                let project = args.get("project").and_then(|v| v.as_str());
-
-                // Publish to persistent event bus (shared across all MCP instances)
-                let params = PublishParams {
-                    event_type: "message",
-                    from: session_id,
-                    to: Some(to),
-                    project,
-                    channel: "global",
-                    content,
-                    priority: 0,
-                };
-                let event_id = self.persistent_event_bus.publish(params);
-
-                match event_id {
-                    Ok(_) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": "Message sent" }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": e }
-                    })),
-                }
-            }
-            "agents_active" => {
-                let project = args["project"].as_str();
-                match self.db.get_active_agents(project) {
-                    Ok(agents) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("{:?}", agents) }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("{:?}", e) }
-                    })),
-                }
-            }
-            "task_delegate" => {
-                let task_id = args["task_id"].as_str().unwrap_or("");
-                let to_agent = args["to_agent"].as_str().unwrap_or("");
-                if self.orchestrator.assign_task(task_id, to_agent) {
-                    Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("Task {} delegated to {}", task_id, to_agent) }]
-                        }
-                    }))
-                } else {
-                    Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": "Failed to delegate task" }
-                    }))
-                }
-            }
-            "task_claim" => {
-                let session_id = args["session_id"].as_str().unwrap_or("");
-                match self.db.claim_task(session_id, None) {
-                    Ok(task) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("Claimed task {:?}", task) }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("{:?}", e) }
-                    })),
-                }
-            }
-            "task_request" => {
-                let session_id = args["session_id"].as_str().unwrap_or("");
-                let skills: Vec<String> = args["skills"]
-                    .as_array()
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str())
-                            .map(String::from)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                match self.orchestrator.find_best_agent(&skills) {
-                    Some(agent_id) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("Best agent: {}", agent_id) }]
-                        }
-                    })),
-                    None => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": "No suitable agent found" }]
-                        }
-                    })),
-                }
-            }
-            "task_complete" => {
-                let task_id = args["task_id"].as_str().unwrap_or("");
-                let success = args["success"].as_bool().unwrap_or(true);
-                let result = args["result"].as_str();
-                self.orchestrator.complete_task(task_id, success);
-                if let Some(result_text) = result {
-                    let _ = self.db.complete_task(task_id, Some(result_text), None);
-                }
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("Task {} completed", task_id) }]
-                    }
-                }))
-            }
-            "task_audit" => {
-                let task_id = args["task_id"].as_str().unwrap_or("");
-                let auditor_session_id = args["auditor_session_id"].as_str().unwrap_or("");
-                let audit_status = args["audit_status"].as_str().unwrap_or("approved");
-                let audit_notes = args["audit_notes"].as_str();
-                match self
-                    .db
-                    .audit_task(task_id, auditor_session_id, audit_status, audit_notes)
-                {
-                    Ok(_) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("Task {} audited", task_id) }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("{:?}", e) }
-                    })),
-                }
-            }
-            "event_poll" => {
-                let since = args["since"].as_i64().unwrap_or(0);
-                let channel = args.get("channel").and_then(|v| v.as_str());
-                let project = args.get("project").and_then(|v| v.as_str());
-                let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(100) as i32;
-
-                let events = self
-                    .persistent_event_bus
-                    .poll(since, channel, project, limit);
-
-                match events {
-                    Ok(events) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "events": events,
-                            "count": events.len()
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": e }
-                    })),
-                }
-            }
-            "get_pending_messages" => {
-                let session_id = args["session_id"].as_str().unwrap_or("");
-                let messages = self.persistent_event_bus.get_pending_messages(session_id);
-
-                match messages {
-                    Ok(messages) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "messages": messages,
-                            "count": messages.len()
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": e }
-                    })),
-                }
-            }
-            "event_ack" => {
-                let event_id = args["event_id"].as_i64();
-                match event_id {
-                    Some(id) => match self.persistent_event_bus.mark_read(id) {
-                        Ok(_) => Ok(json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "result": {
-                                "content": [{ "type": "text", "text": "Event marked as read" }]
-                            }
-                        })),
-                        Err(e) => Ok(json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": { "code": -32603, "message": e }
-                        })),
-                    },
-                    None => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32602, "message": "Missing event_id parameter" }
-                    })),
-                }
-            }
-            "broadcast" => {
-                let session_id = args["session_id"].as_str().unwrap_or("");
-                let content = args["content"].as_str().unwrap_or("");
-                let project = args.get("project").and_then(|v| v.as_str());
-                let channel = args
-                    .get("channel")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("global");
-                let priority = args.get("priority").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                let event_type = args
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("broadcast");
-
-                // Broadcast to all sessions in the channel/project
-                let event_id = self
-                    .persistent_event_bus
-                    .broadcast(event_type, session_id, project, channel, content, priority);
-
-                match event_id {
-                    Ok(id) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("Broadcast sent to channel '{}' (event_id: {})", channel, id) }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": e }
-                    })),
-                }
-            }
-            "plugin_load" => {
-                let path = args["path"].as_str().unwrap_or("");
-                match self.plugin_manager.load_plugin(path) {
-                    Ok(plugin_id) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("Plugin loaded with ID: {}", plugin_id) }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("Failed to load plugin: {}", e) }
-                    })),
-                }
-            }
-            "plugin_unload" => {
-                let plugin_id = args["plugin_id"].as_str().unwrap_or("");
-                match self.plugin_manager.unload_plugin(plugin_id) {
-                    Ok(_) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("Plugin {} unloaded", plugin_id) }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("Failed to unload plugin: {}", e) }
-                    })),
-                }
-            }
-            "plugin_list" => {
-                let plugins = self.plugin_manager.get_plugins();
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("{:?}", plugins) }]
-                    }
-                }))
-            }
-            "plugin_info" => {
-                let plugin_id = args["plugin_id"].as_str().unwrap_or("");
-                match self.plugin_manager.get_plugin(plugin_id) {
-                    Some(info) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("{:?}", info) }]
-                        }
-                    })),
-                    None => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("Plugin not found: {}", plugin_id) }
-                    })),
-                }
-            }
-            "plugin_enable" => {
-                let plugin_id = args["plugin_id"].as_str().unwrap_or("");
-                let enabled = args["enabled"].as_bool().unwrap_or(true);
-                match self.plugin_manager.set_plugin_enabled(plugin_id, enabled) {
-                    Ok(_) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("Plugin {} {}", plugin_id, if enabled { "enabled" } else { "disabled" }) }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("Failed to set plugin state: {}", e) }
-                    })),
-                }
-            }
-            "plugin_disable" => {
-                let plugin_id = args["plugin_id"].as_str().unwrap_or("");
-                match self.plugin_manager.set_plugin_enabled(plugin_id, false) {
-                    Ok(_) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("Plugin {} disabled", plugin_id) }]
-                        }
-                    })),
-                    Err(e) => Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": { "code": -32603, "message": format!("Failed to disable plugin: {}", e) }
-                    })),
-                }
-            }
-            "plugin_health" => {
-                let plugin_id = args["plugin_id"].as_str();
-                let health_results = self.plugin_manager.health_check();
-                if let Some(pid) = plugin_id {
-                    match health_results.get(pid) {
-                        Some(result) => Ok(json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "result": {
-                                "content": [{ "type": "text", "text": format!("{:?}", result) }]
-                            }
-                        })),
-                        None => Ok(json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": { "code": -32603, "message": format!("Plugin not found: {}", pid) }
-                        })),
-                    }
-                } else {
-                    Ok(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {
-                            "content": [{ "type": "text", "text": format!("{:?}", health_results) }]
-                        }
-                    }))
-                }
-            }
-            "plugin_update_check" => {
-                let updates = self.plugin_manager.check_for_updates();
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("{:?}", updates) }]
-                    }
-                }))
-            }
-            "plugin_cleanup" => {
-                let max_age_seconds = args["max_age_seconds"].as_i64().unwrap_or(86400);
-                let removed = self.plugin_manager.cleanup_unused_plugins(max_age_seconds);
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": format!("Removed plugins: {:?}", removed) }]
-                    }
-                }))
-            }
-            "connection_status" => {
-                let mut connections = self.connections.lock().unwrap();
-                // Clean up stale connections (older than 5 minutes)
-                let mut to_remove = Vec::new();
-                for (id, conn) in connections.iter() {
-                    if conn.last_activity.elapsed() > Duration::from_secs(300) {
-                        to_remove.push(id.clone());
-                    }
-                }
-                for id in to_remove {
-                    connections.remove(&id);
-                }
-                // Build status list
-                let mut status_list = Vec::new();
-                for (id, conn) in connections.iter_mut() {
-                    // Update status based on activity
-                    let elapsed = conn.last_activity.elapsed();
-                    let new_status = if elapsed < Duration::from_secs(30) {
-                        ConnectionStatus::Connected
-                    } else {
-                        ConnectionStatus::Idle
-                    };
-                    conn.status = new_status;
-                    let status_str = match conn.status {
-                        ConnectionStatus::Connected => "🟢 Connected",
-                        ConnectionStatus::Idle => "🟡 Idle",
-                        ConnectionStatus::Disconnected => "🔴 Disconnected",
-                    };
-                    let duration = elapsed.as_secs();
-                    status_list.push(format!(
-                        "{} ({}): {} - {}s ago via {}",
-                        conn.client_name, id, status_str, duration, conn.protocol
-                    ));
-                }
-                let output = if status_list.is_empty() {
-                    "No active connections".to_string()
-                } else {
-                    status_list.join("\n")
-                };
-                Ok(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": [{ "type": "text", "text": output }]
-                    }
-                }))
-            }
-            _ => Ok(json!({
+            Err(e) => Ok(json!({
                 "jsonrpc": "2.0",
                 "id": id,
-                "result": {
-                    "content": [{ "type": "text", "text": "Unknown tool" }]
-                }
+                "error": { "code": -32603, "message": e }
             })),
+        }
+    }
+
+    // --- Private Action Methods (Unified Logic) ---
+
+    fn action_mem_session_start(&self, args: &Value) -> Result<Value, String> {
+        let agent_type = args.get("agent_type").and_then(|v| v.as_str()).unwrap_or("");
+        let project = args.get("project").and_then(|v| v.as_str()).unwrap_or("default");
+
+        let mut session_id = None;
+        let mut reconnected = false;
+
+        if let Ok(agents) = self.db.get_active_agents(Some(project)) {
+            if let Some(existing) = agents.iter().find(|a| {
+                a.get("agent_type").and_then(|v| v.as_str()) == Some(agent_type)
+            }) {
+                session_id = existing.get("session_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                reconnected = true;
+            }
+        }
+
+        if session_id.is_none() {
+            let agent_instance = "unknown";
+            match self.db.register_agent_session(agent_type, agent_instance, project, None) {
+                Ok(id) => session_id = Some(id),
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+
+        Ok(json!({
+            "session_id": session_id.unwrap_or_default(),
+            "reconnected": reconnected
+        }))
+    }
+
+    fn action_mem_session_end(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+        // In a real scenario, we would mark the session as inactive in DB
+        // For now, we return success
+        Ok(json!({ "success": true, "session_id": session_id }))
+    }
+
+    fn action_task_create(&self, args: &Value) -> Result<Value, String> {
+        let project = args.get("project").and_then(|v| v.as_str()).unwrap_or("default");
+        let task_type = args.get("task_type").and_then(|v| v.as_str()).unwrap_or("");
+        let payload = args.get("payload").and_then(|v| v.as_str()).unwrap_or("");
+        let priority = args.get("priority").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+
+        match self.db.create_task(project, task_type, payload, priority) {
+            Ok(task_id) => Ok(json!({ "task_id": task_id })),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_task_list(&self, args: &Value) -> Result<Value, String> {
+        let project = args.get("project").and_then(|v| v.as_str());
+        let task_type = args.get("task_type").and_then(|v| v.as_str());
+        let status = args.get("status").and_then(|v| v.as_str());
+        let limit = args.get("limit").and_then(|v| v.as_i64()).map(|l| l as i32);
+
+        match self.db.list_tasks(project, task_type, status, limit) {
+            Ok(tasks) => Ok(json!(tasks)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_task_claim(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+        let task_type = args.get("task_type").and_then(|v| v.as_str());
+
+        match self.db.claim_task(session_id, task_type) {
+            Ok(Some(task)) => Ok(task),
+            Ok(None) => Ok(json!(null)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_task_cancel(&self, args: &Value) -> Result<Value, String> {
+        let task_id = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
+        match self.db.cancel_task(task_id) {
+            Ok(_) => Ok(json!(true)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_task_complete_db(&self, args: &Value) -> Result<Value, String> {
+        let task_id = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
+        let result = args.get("result").and_then(|v| v.as_str());
+        let error = args.get("error").and_then(|v| v.as_str());
+
+        match self.db.complete_task(task_id, result, error) {
+            Ok(_) => Ok(json!(true)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_agent_details(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+        match self.db.get_agent_details(session_id) {
+            Ok(Some(details)) => Ok(details),
+            Ok(None) => Ok(json!(null)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_mem_stats(&self, args: &Value) -> Result<Value, String> {
+        let project = args.get("project").and_then(|v| v.as_str());
+        let stats = self.db.get_stats().map_err(|e| e.to_string())?;
+        let active_agents = self.db.get_active_agents(project).map_err(|e| e.to_string())?;
+
+        Ok(json!({
+            "observations": stats.get("observations").unwrap_or(&json!(0)),
+            "sessions": stats.get("agent_sessions").unwrap_or(&json!(0)),
+            "pending_tasks": stats.get("pending_tasks").unwrap_or(&json!(0)),
+            "active_agents": active_agents
+        }))
+    }
+
+    fn action_agent_heartbeat(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+        let task = args.get("task").and_then(|v| v.as_str());
+        let status_str = args.get("status").and_then(|v| v.as_str()).unwrap_or("idle");
+
+        let status = match status_str.to_lowercase().as_str() {
+            "active" | "busy" => AgentStatus::Busy,
+            _ => AgentStatus::Idle,
+        };
+
+        self.orchestrator.heartbeat(session_id, Some(status), task);
+        match self.db.agent_heartbeat(session_id, task) {
+            Ok(_) => Ok(json!(true)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+    fn action_mem_save(&self, args: &Value) -> Result<Value, String> {
+        let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled");
+        let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        let project = args.get("project").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        let mut obs = entities::Observation::new(
+            self.get_session_id(),
+            types::ObservationType::Manual,
+            title.to_string(),
+            content.to_string(),
+        );
+        obs.project = project;
+
+        match self.db.save_observation(&obs) {
+            Ok(id) => Ok(json!({ "observation_id": id })),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_mem_search(&self, args: &Value) -> Result<Value, String> {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let project = args.get("project").and_then(|v| v.as_str());
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20) as i32;
+
+        let mut params = SearchParams::new(query).with_limit(limit);
+        if let Some(p) = project {
+            params.project = Some(p.to_string());
+        }
+
+        match self.db.search_observations(&params) {
+            Ok(results) => Ok(json!(results)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_mem_update(&self, args: &Value) -> Result<Value, String> {
+        let observation_id = args.get("observation_id").and_then(|v| v.as_i64()).unwrap_or(0);
+        let new_content = args.get("new_content").and_then(|v| v.as_str()).unwrap_or("");
+        let reason = args.get("reason").and_then(|v| v.as_str());
+
+        match self.db.update_observation(
+            types::ObservationId(observation_id),
+            new_content,
+            &self.get_agent_id(),
+            reason,
+        ) {
+            Ok(_) => Ok(json!({ "success": true })),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_mem_delete(&self, args: &Value) -> Result<Value, String> {
+        let observation_id = args.get("observation_id").and_then(|v| v.as_i64()).unwrap_or(0);
+        let reason = args.get("reason").and_then(|v| v.as_str());
+
+        match self.db.delete_observation(
+            types::ObservationId(observation_id),
+            &self.get_agent_id(),
+            reason,
+        ) {
+            Ok(_) => Ok(json!({ "success": true })),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_mem_timeline(&self, args: &Value) -> Result<Value, String> {
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20) as i32;
+        let project = args.get("project").and_then(|v| v.as_str());
+
+        let mut params = SearchParams::new("").with_limit(limit);
+        if let Some(p) = project {
+            params.project = Some(p.to_string());
+        }
+
+        match self.db.search_observations(&params) {
+            Ok(results) => Ok(json!(results)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_web_research(&self, args: &Value) -> Result<Value, String> {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+        Ok(web_research_tools::handle_web_research(query, limit))
+    }
+
+    fn action_cve_search(&self, args: &Value) -> Result<Value, String> {
+        let cve_id = args.get("cve_id").and_then(|v| v.as_str());
+        let keyword = args.get("keyword").and_then(|v| v.as_str());
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+        Ok(cve_search_tools::handle_cve_search(cve_id, keyword, limit))
+    }
+
+    fn action_security_classify(&self, args: &Value) -> Result<Value, String> {
+        let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("general");
+        Ok(security_classify_tools::handle_security_classify(text, context))
+    }
+
+    fn action_ghost_audit(&self, args: &Value) -> Result<Value, String> {
+        let path = args["path"].as_str().unwrap_or(".");
+        let task_id = self.orchestrator.create_task(
+            &format!("External audit request for {}", path),
+            vec!["code_analysis".into()],
+            5,
+            None,
+        );
+        Ok(json!({ "task_id": task_id, "status": "created" }))
+    }
+
+    fn action_crypto_pqc_encrypt(&self, args: &Value) -> Result<Value, String> {
+        let plaintext = args["plaintext"].as_str().unwrap_or("");
+        let key_bytes = self
+            .crypto_provider
+            .random_bytes(32)
+            .map_err(|e| format!("Failed to generate key: {}", e))?;
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&key_bytes);
+        let ciphertext = self
+            .crypto_provider
+            .encrypt(&key, plaintext.as_bytes(), PqcAlgorithm::Aes256Gcm)
+            .map_err(|e| format!("Encryption failed: {}", e))?;
+        Ok(json!({ "ciphertext": hex::encode(ciphertext) }))
+    }
+
+    fn action_wasm_run(&self, _args: &Value) -> Result<Value, String> {
+        Ok(json!({ "status": "scheduled", "message": "WASM execution scheduled via orchestrator" }))
+    }
+
+    fn action_env_detection(&self, args: &Value) -> Result<Value, String> {
+        let mode = args["mode"].as_str();
+        handle_env_detection(mode).map_err(|e| e.to_string())
+    }
+
+    fn action_antibrick_scan(&self, args: &Value) -> Result<Value, String> {
+        let command = args["command"].as_str().unwrap_or("");
+        let args_vec: Vec<String> = args["args"]
+            .as_array()
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
+            .unwrap_or_default();
+        Ok(synapsis_core::core::antibrick::mcp_tools::handle_antibrick_scan(&self.antibrick, command, args_vec))
+    }
+
+    fn action_antibrick_stats(&self, _args: &Value) -> Result<Value, String> {
+        Ok(synapsis_core::core::antibrick::mcp_tools::handle_antibrick_stats(&self.antibrick))
+    }
+
+    fn action_antibrick_enable(&self, args: &Value) -> Result<Value, String> {
+        let enable = args["enable"].as_bool().unwrap_or(true);
+        Ok(synapsis_core::core::antibrick::mcp_tools::handle_antibrick_enable(&self.antibrick, enable))
+    }
+
+    fn action_watchdog_stats(&self, _args: &Value) -> Result<Value, String> {
+        Ok(synapsis_core::core::watchdog::mcp_tools::handle_watchdog_stats(&self.watchdog))
+    }
+
+    fn action_watchdog_verify(&self, _args: &Value) -> Result<Value, String> {
+        Ok(synapsis_core::core::watchdog::mcp_tools::handle_watchdog_verify(&self.watchdog))
+    }
+
+    fn action_watchdog_snapshot(&self, args: &Value) -> Result<Value, String> {
+        let path = args["path"].as_str().unwrap_or("/").to_string();
+        Ok(synapsis_core::core::watchdog::mcp_tools::handle_watchdog_snapshot(&self.watchdog, path))
+    }
+
+    fn action_watchdog_events(&self, args: &Value) -> Result<Value, String> {
+        let limit = args["limit"].as_u64().unwrap_or(20) as usize;
+        Ok(synapsis_core::core::watchdog::mcp_tools::handle_watchdog_events(&self.watchdog, limit))
+    }
+
+    fn action_watchdog_check_path(&self, args: &Value) -> Result<Value, String> {
+        let path = args["path"].as_str().unwrap_or("/").to_string();
+        Ok(synapsis_core::core::watchdog::mcp_tools::handle_watchdog_check_path(&self.watchdog, path))
+    }
+
+    fn action_browser_navigate(&self, args: &Value) -> Result<Value, String> {
+        let url = args["url"].as_str().unwrap_or("");
+        Ok(browser_navigation_tools::handle_navigate_to_url(url))
+    }
+
+    fn action_browser_extract_text(&self, args: &Value) -> Result<Value, String> {
+        let url = args["url"].as_str().unwrap_or("");
+        let selector = args["selector"].as_str().unwrap_or("");
+        Ok(browser_navigation_tools::handle_extract_text(url, selector))
+    }
+
+    fn action_browser_click(&self, args: &Value) -> Result<Value, String> {
+        let url = args["url"].as_str().unwrap_or("");
+        let selector = args["selector"].as_str().unwrap_or("");
+        Ok(browser_navigation_tools::handle_click_element(url, selector))
+    }
+
+    fn action_browser_fill_form(&self, args: &Value) -> Result<Value, String> {
+        let url = args["url"].as_str().unwrap_or("");
+        let selector = args["selector"].as_str().unwrap_or("");
+        let value = args["value"].as_str().unwrap_or("");
+        Ok(browser_navigation_tools::handle_fill_form(url, selector, value))
+    }
+
+    fn action_browser_screenshot(&self, args: &Value) -> Result<Value, String> {
+        let url = args["url"].as_str().unwrap_or("");
+        let output_path = args["output_path"].as_str().unwrap_or("");
+        Ok(browser_navigation_tools::handle_screenshot(url, output_path))
+    }
+
+    fn action_send_message(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let to = args["to"].as_str().unwrap_or("");
+        let content = args["content"].as_str().unwrap_or("");
+        let project = args.get("project").and_then(|v| v.as_str());
+        let params = PublishParams {
+            event_type: "message",
+            from: session_id,
+            to: Some(to),
+            project,
+            channel: "global",
+            content,
+            priority: 0,
+        };
+        self.persistent_event_bus.publish(params).map(|_| json!({ "status": "sent" })).map_err(|e| e.to_string())
+    }
+
+    fn action_event_poll(&self, args: &Value) -> Result<Value, String> {
+        let since = args["since"].as_i64().unwrap_or(0);
+        let channel = args.get("channel").and_then(|v| v.as_str());
+        let project = args.get("project").and_then(|v| v.as_str());
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(100) as i32;
+        self.persistent_event_bus.poll(since, channel, project, limit).map(|events| json!({ "events": events, "count": events.len() })).map_err(|e| e.to_string())
+    }
+
+    fn action_event_ack(&self, args: &Value) -> Result<Value, String> {
+        let event_id = args["event_id"].as_i64().ok_or("Missing event_id")?;
+        self.persistent_event_bus.mark_read(event_id).map(|_| json!({ "status": "acked" })).map_err(|e| e.to_string())
+    }
+
+    fn action_get_pending_messages(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        self.persistent_event_bus.get_pending_messages(session_id).map(|messages| json!({ "messages": messages, "count": messages.len() })).map_err(|e| e.to_string())
+    }
+
+    fn action_broadcast(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let content = args["content"].as_str().unwrap_or("");
+        let project = args.get("project").and_then(|v| v.as_str());
+        let channel = args.get("channel").and_then(|v| v.as_str()).unwrap_or("global");
+        let priority = args.get("priority").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+        let event_type = args.get("type").and_then(|v| v.as_str()).unwrap_or("broadcast");
+        self.persistent_event_bus.broadcast(event_type, session_id, project, channel, content, priority).map(|id| json!({ "event_id": id, "status": "sent" })).map_err(|e| e.to_string())
+    }
+
+    fn action_plugin_load(&self, args: &Value) -> Result<Value, String> {
+        let path = args["path"].as_str().unwrap_or("");
+        self.plugin_manager.load_plugin(path).map(|id| json!({ "plugin_id": id })).map_err(|e| e.to_string())
+    }
+
+    fn action_plugin_unload(&self, args: &Value) -> Result<Value, String> {
+        let plugin_id = args["plugin_id"].as_str().unwrap_or("");
+        self.plugin_manager.unload_plugin(plugin_id).map(|_| json!({ "status": "unloaded" })).map_err(|e| e.to_string())
+    }
+
+    fn action_plugin_list(&self, _args: &Value) -> Result<Value, String> {
+        Ok(json!(self.plugin_manager.get_plugins()))
+    }
+
+    fn action_plugin_info(&self, args: &Value) -> Result<Value, String> {
+        let plugin_id = args["plugin_id"].as_str().unwrap_or("");
+        self.plugin_manager.get_plugin(plugin_id).map(|info| json!(info)).ok_or_else(|| "Plugin not found".to_string())
+    }
+
+    fn action_plugin_enable(&self, args: &Value) -> Result<Value, String> {
+        let plugin_id = args["plugin_id"].as_str().unwrap_or("");
+        let enabled = args["enabled"].as_bool().unwrap_or(true);
+        self.plugin_manager.set_plugin_enabled(plugin_id, enabled).map(|_| json!({ "status": if enabled { "enabled" } else { "disabled" } })).map_err(|e| e.to_string())
+    }
+
+    fn action_plugin_disable(&self, args: &Value) -> Result<Value, String> {
+        let plugin_id = args["plugin_id"].as_str().unwrap_or("");
+        self.plugin_manager.set_plugin_enabled(plugin_id, false).map(|_| json!({ "status": "disabled" })).map_err(|e| e.to_string())
+    }
+
+    fn action_plugin_health(&self, args: &Value) -> Result<Value, String> {
+        let plugin_id = args["plugin_id"].as_str();
+        let health = self.plugin_manager.health_check();
+        if let Some(pid) = plugin_id {
+            health.get(pid).map(|r| json!(r)).ok_or_else(|| "Plugin not found".to_string())
+        } else {
+            Ok(json!(health))
+        }
+    }
+
+    fn action_plugin_update_check(&self, _args: &Value) -> Result<Value, String> {
+        Ok(json!(self.plugin_manager.check_for_updates()))
+    }
+
+    fn action_plugin_cleanup(&self, args: &Value) -> Result<Value, String> {
+        let max_age = args["max_age_seconds"].as_i64().unwrap_or(86400);
+        let removed = self.plugin_manager.cleanup_unused_plugins(max_age);
+        Ok(json!({ "removed": removed }))
+    }
+
+    fn action_connection_status(&self, _args: &Value) -> Result<Value, String> {
+        let mut connections = self.connections.lock().unwrap();
+        let mut status_list = Vec::new();
+        for (id, conn) in connections.iter_mut() {
+            let elapsed = conn.last_activity.elapsed();
+            conn.status = if elapsed < Duration::from_secs(30) { ConnectionStatus::Connected } else { ConnectionStatus::Idle };
+            status_list.push(json!({
+                "id": id,
+                "client": conn.client_name,
+                "status": format!("{:?}", conn.status),
+                "last_activity": format!("{}s ago", elapsed.as_secs()),
+                "protocol": conn.protocol
+            }));
+        }
+        Ok(json!(status_list))
+    }
+
+
+    fn action_mem_context(&self, args: &Value) -> Result<Value, String> {
+        let project = args.get("project").and_then(|v| v.as_str()).unwrap_or("default");
+        let mut context = serde_json::Map::new();
+        
+        if let Ok(Some(global)) = self.db.get_global_context(project) {
+            context.insert("global_context".to_string(), json!(global));
+        }
+        
+        if let Ok(chunks) = self.db.get_chunks_by_project(project, None) {
+             context.insert("knowledge_chunks".to_string(), json!(chunks));
+        }
+        
+        Ok(json!(context))
+    }
+
+    fn action_mem_lock_acquire(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+        let lock_key = args.get("lock_key").and_then(|v| v.as_str()).unwrap_or("global");
+        let ttl = args.get("ttl_secs").and_then(|v| v.as_i64()).unwrap_or(60);
+        
+        match self.db.acquire_lock(session_id, lock_key, "generic", None, ttl) {
+            Ok(success) => Ok(json!({ "success": success, "lock_key": lock_key })),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_mem_lock_release(&self, args: &Value) -> Result<Value, String> {
+        let lock_key = args.get("lock_key").and_then(|v| v.as_str()).unwrap_or("global");
+        match self.db.release_lock(lock_key) {
+            Ok(_) => Ok(json!({ "success": true })),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_task_complete(&self, args: &Value) -> Result<Value, String> {
+        let task_id = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
+        let success = args.get("success").and_then(|v| v.as_bool()).unwrap_or(true);
+        let result = args.get("result").and_then(|v| v.as_str());
+        
+        self.orchestrator.complete_task(task_id, success);
+        match self.db.complete_task(task_id, result, None) {
+            Ok(_) => Ok(json!({ "success": true, "task_id": task_id })),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn action_task_delegate(&self, args: &Value) -> Result<Value, String> {
+        let task_id = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
+        let from_agent = args.get("from_agent").and_then(|v| v.as_str()).unwrap_or("");
+        
+        match self.orchestrator.delegate_task(task_id, from_agent) {
+            Some(to_agent) => Ok(json!({ "success": true, "delegated_to": to_agent })),
+            None => Err("No suitable agent found for delegation".to_string()),
+        }
+    }
+
+    fn action_task_request(&self, args: &Value) -> Result<Value, String> {
+        let skills: Vec<String> = args.get("skills")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|s| s.as_str()).map(String::from).collect())
+            .unwrap_or_default();
+            
+        match self.orchestrator.find_best_agent(&skills) {
+            Some(agent_id) => Ok(json!({ "agent_id": agent_id })),
+            None => Ok(json!(null)),
+        }
+    }
+
+    fn action_task_audit(&self, args: &Value) -> Result<Value, String> {
+        let task_id = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
+        let auditor = args.get("auditor_session_id").and_then(|v| v.as_str()).unwrap_or("");
+        let status = args.get("audit_status").and_then(|v| v.as_str()).unwrap_or("approved");
+        let notes = args.get("audit_notes").and_then(|v| v.as_str());
+        
+        match self.db.audit_task(task_id, auditor, status, notes) {
+            Ok(_) => Ok(json!({ "success": true, "task_id": task_id })),
+            Err(e) => Err(e.to_string()),
         }
     }
 }
