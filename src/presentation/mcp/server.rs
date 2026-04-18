@@ -11,11 +11,18 @@ use std::sync::Mutex;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
+use crate::tools::auth_browser::mcp_tools as auth_browser_tools;
 use crate::tools::browser_navigation::mcp_tools as browser_navigation_tools;
 use crate::tools::cve_search::mcp_tools as cve_search_tools;
 use crate::tools::env_detection::handle_env_detection;
 use crate::tools::security_classify::mcp_tools as security_classify_tools;
 use crate::tools::web_research::mcp_tools as web_research_tools;
+
+// Plugins
+use crate::plugins::smart_browser::mcp_tools as smart_browser_tools;
+use crate::plugins::remote_control::mcp_tools as remote_control_tools;
+use crate::plugins::security_shield::mcp_tools as security_shield_tools;
+use crate::plugins::security_shield;
 use synapsis_core::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
 use synapsis_core::core::orchestrator::{AgentStatus, Orchestrator};
 use synapsis_core::core::watchdog::FilesystemWatchdog;
@@ -248,7 +255,11 @@ impl McpServer {
         self.skills.init().ok();
         self.agents.init().ok();
         self.watchdog.start_monitoring();
-        eprintln!("[MCP] Rust Server Initialized (watchdog started)");
+
+        // Initialize security shield default rules
+        security_shield::init_default_rules();
+
+        eprintln!("[MCP] Rust Server Initialized (watchdog + security shield started)");
     }
 
     fn get_agent_id(&self) -> String {
@@ -659,6 +670,445 @@ impl McpServer {
                             },
                             "required": ["text"]
                         }
+                    },
+                    {
+                        "name": "kino_predict",
+                        "description": "Get Kino lottery prediction using NUM-JEPA (M.A.T.E.R.I.A. engine)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "top": { "type": "integer", "default": 15, "description": "Number of top predictions" },
+                                "arch": { "type": "boolean", "default": false, "description": "Use full toroidal-hexagonal architecture" }
+                            }
+                        }
+                    },
+                    {
+                        "name": "kino_train",
+                        "description": "Trigger NUM-JEPA training for Kino prediction model",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "epochs": { "type": "integer", "default": 100, "description": "Number of training epochs" }
+                            }
+                        }
+                    },
+                    {
+                        "name": "kino_stats",
+                        "description": "Get Kino system statistics and analysis",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "materia_status",
+                        "description": "Get M.A.T.E.R.I.A. engine full system status",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "system_resources",
+                        "description": "Get GPU/RAM/CPU system resource usage",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "auth_screenshot",
+                        "description": "Take a screenshot of the current page in an authenticated session (useful for debugging login pages)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "output_path": { "type": "string" },
+                                "wait_seconds": { "type": "integer", "default": 5 }
+                            },
+                            "required": ["session_id", "output_path"]
+                        }
+                    },
+                    {
+                        "name": "auth_login_and_extract",
+                        "description": "Login to a website and extract visible text content in a single operation (SPA-friendly, ideal for Netacad, LMS platforms)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "url": { "type": "string", "description": "Target page URL to extract content from" },
+                                "session_id": { "type": "string" },
+                                "login_url": { "type": "string", "description": "Login page URL" },
+                                "login_selector_user": { "type": "string", "description": "CSS selector for username field" },
+                                "login_selector_pass": { "type": "string", "description": "CSS selector for password field" },
+                                "username": { "type": "string" },
+                                "password": { "type": "string" },
+                                "login_button_selector": { "type": "string", "description": "CSS selector for login button" },
+                                "wait_seconds": { "type": "integer", "default": 10, "description": "Seconds to wait for SPA rendering after navigation" }
+                            },
+                            "required": ["url", "session_id"]
+                        }
+                    },
+                    {
+                        "name": "auth_navigate",
+                        "description": "Navigate to a web page with authentication support (login, cookies, session persistence)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "url": { "type": "string" },
+                                "session_id": { "type": "string" },
+                                "login_url": { "type": "string" },
+                                "login_selector_user": { "type": "string" },
+                                "login_selector_pass": { "type": "string" },
+                                "username": { "type": "string" },
+                                "password": { "type": "string" },
+                                "login_button_selector": { "type": "string" }
+                            },
+                            "required": ["url", "session_id"]
+                        }
+                    },
+                    {
+                        "name": "auth_extract",
+                        "description": "Extract content from an authenticated browser session using CSS selectors",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "selector": { "type": "string" }
+                            },
+                            "required": ["session_id", "selector"]
+                        }
+                    },
+                    {
+                        "name": "auth_extract_text",
+                        "description": "Extract all visible text content from an authenticated session (SPA-friendly, waits for JS rendering)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "wait_seconds": { "type": "integer", "default": 8, "description": "Seconds to wait for SPA rendering" }
+                            },
+                            "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "auth_navigate_session",
+                        "description": "Navigate to a new URL within an existing authenticated session",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "url": { "type": "string" }
+                            },
+                            "required": ["session_id", "url"]
+                        }
+                    },
+                    {
+                        "name": "auth_clear_session",
+                        "description": "Clear/delete a saved browser authentication session",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" }
+                            },
+                            "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "auth_list_sessions",
+                        "description": "List all saved authenticated browser sessions",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "smart_navigate",
+                        "description": "Navigate to URL and analyze page like a human (finds forms, links, buttons automatically)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "url": { "type": "string" },
+                                "wait_seconds": { "type": "integer", "default": 5 }
+                            },
+                            "required": ["session_id", "url"]
+                        }
+                    },
+                    {
+                        "name": "smart_find_element",
+                        "description": "Find elements intelligently by text, role, or context (like a human searching for something on a page)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "search_query": { "type": "string", "description": "What to look for (e.g., 'login button', 'email field', 'submit')" },
+                                "element_type": { "type": "string", "default": "any", "description": "Filter by element type (button, input, link, etc.)" }
+                            },
+                            "required": ["session_id", "search_query"]
+                        }
+                    },
+                    {
+                        "name": "smart_click",
+                        "description": "Click an element with human-like timing (scrolls into view, waits for navigation)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "selector": { "type": "string" }
+                            },
+                            "required": ["session_id", "selector"]
+                        }
+                    },
+                    {
+                        "name": "smart_fill",
+                        "description": "Fill a form field by description (finds by label, placeholder, or name automatically)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "field_description": { "type": "string", "description": "Describe the field (e.g., 'email', 'password', 'search box')" },
+                                "value": { "type": "string" }
+                            },
+                            "required": ["session_id", "field_description", "value"]
+                        }
+                    },
+                    {
+                        "name": "smart_submit",
+                        "description": "Submit a form intelligently (finds submit button or submits form directly)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" }
+                            },
+                            "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "smart_screenshot",
+                        "description": "Take a screenshot of the current page for analysis or debugging",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" },
+                                "output_path": { "type": "string" }
+                            },
+                            "required": ["session_id", "output_path"]
+                        }
+                    },
+                    {
+                        "name": "smart_session_info",
+                        "description": "Get info about a smart browser session (current URL, title, action history)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": { "type": "string" }
+                            },
+                            "required": ["session_id"]
+                        }
+                    },
+                    {
+                        "name": "agent_register",
+                        "description": "Register a new agent in the system with capabilities",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "agent_id": { "type": "string" },
+                                "name": { "type": "string" },
+                                "capabilities": { "type": "array", "items": { "type": "string" } }
+                            },
+                            "required": ["agent_id", "name"]
+                        }
+                    },
+                    {
+                        "name": "agent_send_message",
+                        "description": "Send a secure message to another agent",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "from": { "type": "string" },
+                                "to": { "type": "string" },
+                                "content": { "type": "string" },
+                                "message_type": { "type": "string", "default": "command" },
+                                "priority": { "type": "integer", "default": 5 }
+                            },
+                            "required": ["from", "to", "content"]
+                        }
+                    },
+                    {
+                        "name": "agent_receive_messages",
+                        "description": "Receive pending messages for an agent",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "agent_id": { "type": "string" },
+                                "limit": { "type": "integer", "default": 10 }
+                            },
+                            "required": ["agent_id"]
+                        }
+                    },
+                    {
+                        "name": "agent_self_configure",
+                        "description": "Auto-configure agent settings from learned data",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "agent_id": { "type": "string" },
+                                "config_updates": { "type": "object" }
+                            },
+                            "required": ["agent_id"]
+                        }
+                    },
+                    {
+                        "name": "agent_self_heal",
+                        "description": "Detect and fix common system issues automatically",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "agent_add_heal_rule",
+                        "description": "Add a self-healing rule (trigger + condition + action)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "trigger_pattern": { "type": "string" },
+                                "condition": { "type": "string" },
+                                "action": { "type": "string" }
+                            },
+                            "required": ["trigger_pattern", "condition", "action"]
+                        }
+                    },
+                    {
+                        "name": "agent_learn",
+                        "description": "Learn from feedback to improve behavior over time",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "agent_id": { "type": "string" },
+                                "action": { "type": "string" },
+                                "result": { "type": "string" },
+                                "success": { "type": "boolean" }
+                            },
+                            "required": ["agent_id", "action", "result", "success"]
+                        }
+                    },
+                    {
+                        "name": "agent_execute_command",
+                        "description": "Execute a system command securely (with allowlist validation)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "command": { "type": "string" },
+                                "args": { "type": "array", "items": { "type": "string" } }
+                            },
+                            "required": ["command"]
+                        }
+                    },
+                    {
+                        "name": "agent_secure_read",
+                        "description": "Read a file securely (with path validation and size limits)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string" }
+                            },
+                            "required": ["path"]
+                        }
+                    },
+                    {
+                        "name": "agent_update_security_policy",
+                        "description": "Update the security policy (allowed/blocked commands, rate limits)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "updates": { "type": "object" }
+                            },
+                            "required": ["updates"]
+                        }
+                    },
+                    {
+                        "name": "agent_security_status",
+                        "description": "Get current security status (policy, registered agents, audit log)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "security_sanitize_input",
+                        "description": "Sanitize input against all known injection attacks (SQL, XSS, Command, RCE, etc.)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "input": { "type": "string" },
+                                "context": { "type": "string", "default": "general" }
+                            },
+                            "required": ["input"]
+                        }
+                    },
+                    {
+                        "name": "security_is_safe",
+                        "description": "Quick check if input is safe (no threats detected)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "input": { "type": "string" }
+                            },
+                            "required": ["input"]
+                        }
+                    },
+                    {
+                        "name": "security_monitor_network",
+                        "description": "Monitor network connections and detect suspicious activity",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "security_detect_lateral_movement",
+                        "description": "Scan for lateral movement attempts (SMB, WMI, auth brute force)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "security_detect_gap_attacks",
+                        "description": "Detect air gap crossing attempts (USB, Bluetooth, unusual interfaces)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "security_audit",
+                        "description": "Full security audit: lateral movement + gap attacks + network monitoring + risk assessment",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    },
+                    {
+                        "name": "security_threat_log",
+                        "description": "Get recent threat detections",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "limit": { "type": "integer", "default": 20 }
+                            }
+                        }
+                    },
+                    {
+                        "name": "security_events",
+                        "description": "Get recent security events",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "limit": { "type": "integer", "default": 20 }
+                            }
+                        }
                     }
                 ]
             }
@@ -677,7 +1127,7 @@ impl McpServer {
             "mem_delete" | "memory_delete" => self.action_mem_delete(args),
             "mem_timeline" | "memory_timeline" => self.action_mem_timeline(args),
             "mem_context" => self.action_mem_context(args),
-            "mem_session_start" | "session_register" | "agent_register" => self.action_mem_session_start(args),
+            "mem_session_start" | "session_register" => self.action_mem_session_start(args),
             "mem_session_end" => self.action_mem_session_end(args),
             "mem_stats" | "memory_stats" | "agents_active" => self.action_mem_stats(args),
             "mem_lock_acquire" => self.action_mem_lock_acquire(args),
@@ -701,6 +1151,13 @@ impl McpServer {
             "web_research" => self.action_web_research(args),
             "cve_search" => self.action_cve_search(args),
             "security_classify" => self.action_security_classify(args),
+
+            // M.A.T.E.R.I.A. NUM-JEPA
+            "kino_predict" => self.action_kino_predict(args),
+            "kino_train" => self.action_kino_train(args),
+            "kino_stats" => self.action_kino_stats(args),
+            "materia_status" => self.action_materia_status(args),
+            "system_resources" => self.action_system_resources(args),
             
             // System: Crypto & Environment
             "pqc_encrypt" | "crypto_pqc_encrypt" => self.action_crypto_pqc_encrypt(args),
@@ -714,6 +1171,48 @@ impl McpServer {
             "browser_click" => self.action_browser_click(args),
             "browser_fill_form" => self.action_browser_fill_form(args),
             "browser_screenshot" => self.action_browser_screenshot(args),
+
+            // System: Authenticated Browser
+            "auth_screenshot" => self.action_auth_screenshot(args),
+            "auth_login_and_extract" => self.action_auth_login_and_extract(args),
+            "auth_navigate" => self.action_auth_navigate(args),
+            "auth_extract" => self.action_auth_extract(args),
+            "auth_extract_text" => self.action_auth_extract_text(args),
+            "auth_navigate_session" => self.action_auth_navigate_session(args),
+            "auth_clear_session" => self.action_auth_clear_session(args),
+            "auth_list_sessions" => self.action_auth_list_sessions(args),
+
+            // Plugins: Smart Browser
+            "smart_navigate" => self.action_smart_navigate(args),
+            "smart_find_element" => self.action_smart_find_element(args),
+            "smart_click" => self.action_smart_click(args),
+            "smart_fill" => self.action_smart_fill(args),
+            "smart_submit" => self.action_smart_submit(args),
+            "smart_screenshot" => self.action_smart_screenshot(args),
+            "smart_session_info" => self.action_smart_session_info(args),
+
+            // Plugins: Remote Control
+            "agent_register" => self.action_agent_register(args),
+            "agent_send_message" => self.action_agent_send_message(args),
+            "agent_receive_messages" => self.action_agent_receive_messages(args),
+            "agent_self_configure" => self.action_agent_self_configure(args),
+            "agent_self_heal" => self.action_agent_self_heal(args),
+            "agent_add_heal_rule" => self.action_agent_add_heal_rule(args),
+            "agent_learn" => self.action_agent_learn(args),
+            "agent_execute_command" => self.action_agent_execute_command(args),
+            "agent_secure_read" => self.action_agent_secure_read(args),
+            "agent_update_security_policy" => self.action_agent_update_security_policy(args),
+            "agent_security_status" => self.action_agent_security_status(args),
+
+            // Plugins: Security Shield
+            "security_sanitize_input" => self.action_security_sanitize_input(args),
+            "security_is_safe" => self.action_security_is_safe(args),
+            "security_monitor_network" => self.action_security_monitor_network(args),
+            "security_detect_lateral_movement" => self.action_security_detect_lateral_movement(args),
+            "security_detect_gap_attacks" => self.action_security_detect_gap_attacks(args),
+            "security_audit" => self.action_security_audit(args),
+            "security_threat_log" => self.action_security_threat_log(args),
+            "security_events" => self.action_security_events(args),
 
             // System: Antibrick & Watchdog
             "antibrick_scan" => self.action_antibrick_scan(args),
@@ -1098,6 +1597,237 @@ impl McpServer {
         Ok(browser_navigation_tools::handle_screenshot(url, output_path))
     }
 
+    // Authenticated Browser Actions
+
+    fn action_auth_screenshot(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let output_path = args["output_path"].as_str().unwrap_or("/tmp/auth-screenshot.png");
+        let wait_seconds = args.get("wait_seconds").and_then(|v| v.as_u64());
+        Ok(auth_browser_tools::handle_auth_screenshot(session_id, output_path, wait_seconds))
+    }
+
+    fn action_auth_login_and_extract(&self, args: &Value) -> Result<Value, String> {
+        let url = args["url"].as_str().unwrap_or("");
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let login_url = args.get("login_url").and_then(|v| v.as_str());
+        let login_selector_user = args.get("login_selector_user").and_then(|v| v.as_str());
+        let login_selector_pass = args.get("login_selector_pass").and_then(|v| v.as_str());
+        let username = args.get("username").and_then(|v| v.as_str());
+        let password = args.get("password").and_then(|v| v.as_str());
+        let login_button_selector = args.get("login_button_selector").and_then(|v| v.as_str());
+        let wait_seconds = args.get("wait_seconds").and_then(|v| v.as_u64()).unwrap_or(10);
+        Ok(auth_browser_tools::handle_auth_login_and_extract(
+            url, session_id, login_url, login_selector_user,
+            login_selector_pass, username, password, login_button_selector, wait_seconds,
+        ))
+    }
+
+    fn action_auth_navigate(&self, args: &Value) -> Result<Value, String> {
+        let url = args["url"].as_str().unwrap_or("");
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let login_url = args.get("login_url").and_then(|v| v.as_str());
+        let login_selector_user = args.get("login_selector_user").and_then(|v| v.as_str());
+        let login_selector_pass = args.get("login_selector_pass").and_then(|v| v.as_str());
+        let username = args.get("username").and_then(|v| v.as_str());
+        let password = args.get("password").and_then(|v| v.as_str());
+        let login_button_selector = args.get("login_button_selector").and_then(|v| v.as_str());
+        Ok(auth_browser_tools::handle_auth_navigate(
+            url, session_id, login_url, login_selector_user,
+            login_selector_pass, username, password, login_button_selector,
+        ))
+    }
+
+    fn action_auth_extract(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let selector = args["selector"].as_str().unwrap_or("");
+        Ok(auth_browser_tools::handle_auth_extract(session_id, selector))
+    }
+
+    fn action_auth_extract_text(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let wait_seconds = args.get("wait_seconds").and_then(|v| v.as_u64());
+        Ok(auth_browser_tools::handle_auth_extract_text(session_id, wait_seconds))
+    }
+
+    fn action_auth_navigate_session(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let url = args["url"].as_str().unwrap_or("");
+        Ok(auth_browser_tools::handle_auth_navigate_session(session_id, url))
+    }
+
+    fn action_auth_clear_session(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        Ok(auth_browser_tools::handle_auth_clear_session(session_id))
+    }
+
+    fn action_auth_list_sessions(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+        Ok(auth_browser_tools::handle_auth_list_sessions())
+    }
+
+    // === Plugin Action Methods ===
+
+    // Smart Browser Actions
+    fn action_smart_navigate(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let url = args["url"].as_str().unwrap_or("");
+        let wait = args.get("wait_seconds").and_then(|v| v.as_u64());
+        Ok(smart_browser_tools::handle_smart_navigate(session_id, url, wait))
+    }
+
+    fn action_smart_find_element(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let search = args["search_query"].as_str().unwrap_or("");
+        let etype = args.get("element_type").and_then(|v| v.as_str());
+        Ok(smart_browser_tools::handle_smart_find(session_id, search, etype))
+    }
+
+    fn action_smart_click(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let selector = args["selector"].as_str().unwrap_or("");
+        Ok(smart_browser_tools::handle_smart_click(session_id, selector))
+    }
+
+    fn action_smart_fill(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let field = args["field_description"].as_str().unwrap_or("");
+        let value = args["value"].as_str().unwrap_or("");
+        Ok(smart_browser_tools::handle_smart_fill(session_id, field, value))
+    }
+
+    fn action_smart_submit(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        Ok(smart_browser_tools::handle_smart_submit(session_id))
+    }
+
+    fn action_smart_screenshot(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        let output_path = args["output_path"].as_str().unwrap_or("/tmp/smart-screenshot.png");
+        Ok(smart_browser_tools::handle_smart_screenshot(session_id, output_path))
+    }
+
+    fn action_smart_session_info(&self, args: &Value) -> Result<Value, String> {
+        let session_id = args["session_id"].as_str().unwrap_or("");
+        Ok(smart_browser_tools::handle_smart_session_info(session_id))
+    }
+
+    // Remote Control Actions
+    fn action_agent_register(&self, args: &Value) -> Result<Value, String> {
+        let agent_id = args["agent_id"].as_str().unwrap_or("");
+        let name = args["name"].as_str().unwrap_or("");
+        let caps = args.get("capabilities").and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<_>>());
+        Ok(remote_control_tools::handle_agent_register(agent_id, name, caps.as_deref()))
+    }
+
+    fn action_agent_send_message(&self, args: &Value) -> Result<Value, String> {
+        let from = args["from"].as_str().unwrap_or("");
+        let to = args["to"].as_str().unwrap_or("");
+        let content = args["content"].as_str().unwrap_or("");
+        let msg_type = args.get("message_type").and_then(|v| v.as_str()).unwrap_or("command");
+        let priority = args.get("priority").and_then(|v| v.as_u64()).unwrap_or(5) as u8;
+        Ok(remote_control_tools::handle_send_message(from, to, content, msg_type, priority))
+    }
+
+    fn action_agent_receive_messages(&self, args: &Value) -> Result<Value, String> {
+        let agent_id = args["agent_id"].as_str().unwrap_or("");
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as u32;
+        Ok(remote_control_tools::handle_receive_messages(agent_id, limit))
+    }
+
+    fn action_agent_self_configure(&self, args: &Value) -> Result<Value, String> {
+        let agent_id = args["agent_id"].as_str().unwrap_or("");
+        let default_config = json!({});
+        let config = args.get("config_updates").unwrap_or(&default_config);
+        Ok(remote_control_tools::handle_self_configure(agent_id, config))
+    }
+
+    fn action_agent_self_heal(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+        Ok(remote_control_tools::handle_self_heal())
+    }
+
+    fn action_agent_add_heal_rule(&self, args: &Value) -> Result<Value, String> {
+        let trigger = args.get("trigger_pattern").and_then(|v| v.as_str()).unwrap_or("");
+        let condition = args.get("condition").and_then(|v| v.as_str()).unwrap_or("");
+        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
+        Ok(remote_control_tools::handle_add_heal_rule(trigger, condition, action))
+    }
+
+    fn action_agent_learn(&self, args: &Value) -> Result<Value, String> {
+        let agent_id = args["agent_id"].as_str().unwrap_or("");
+        let action = args["action"].as_str().unwrap_or("");
+        let result = args["result"].as_str().unwrap_or("");
+        let success = args["success"].as_bool().unwrap_or(false);
+        Ok(remote_control_tools::handle_learn(agent_id, action, result, success))
+    }
+
+    fn action_agent_execute_command(&self, args: &Value) -> Result<Value, String> {
+        let command = args["command"].as_str().unwrap_or("");
+        let arg_arr = args.get("args").and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<_>>())
+            .unwrap_or_default();
+        Ok(remote_control_tools::handle_execute_command(command, &arg_arr))
+    }
+
+    fn action_agent_secure_read(&self, args: &Value) -> Result<Value, String> {
+        let path = args["path"].as_str().unwrap_or("");
+        Ok(remote_control_tools::handle_secure_read(path))
+    }
+
+    fn action_agent_update_security_policy(&self, args: &Value) -> Result<Value, String> {
+        let default_updates = json!({});
+        let updates = args.get("updates").unwrap_or(&default_updates);
+        Ok(remote_control_tools::handle_update_security_policy(updates))
+    }
+
+    fn action_agent_security_status(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+        Ok(remote_control_tools::handle_security_status())
+    }
+
+    // Security Shield Actions
+    fn action_security_sanitize_input(&self, args: &Value) -> Result<Value, String> {
+        let input = args["input"].as_str().unwrap_or("");
+        let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("general");
+        Ok(security_shield_tools::handle_sanitize_input(input, context))
+    }
+
+    fn action_security_is_safe(&self, args: &Value) -> Result<Value, String> {
+        let input = args["input"].as_str().unwrap_or("");
+        Ok(security_shield_tools::handle_is_safe(input))
+    }
+
+    fn action_security_monitor_network(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+        Ok(security_shield_tools::handle_monitor_network())
+    }
+
+    fn action_security_detect_lateral_movement(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+        Ok(security_shield_tools::handle_detect_lateral_movement())
+    }
+
+    fn action_security_detect_gap_attacks(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+        Ok(security_shield_tools::handle_detect_gap_attacks())
+    }
+
+    fn action_security_audit(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+        Ok(security_shield_tools::handle_security_audit())
+    }
+
+    fn action_security_threat_log(&self, args: &Value) -> Result<Value, String> {
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as u32;
+        Ok(security_shield_tools::handle_threat_log(limit))
+    }
+
+    fn action_security_events(&self, args: &Value) -> Result<Value, String> {
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as u32;
+        Ok(security_shield_tools::handle_security_events(limit))
+    }
+
     fn action_send_message(&self, args: &Value) -> Result<Value, String> {
         let session_id = args["session_id"].as_str().unwrap_or("");
         let to = args["to"].as_str().unwrap_or("");
@@ -1284,10 +2014,150 @@ impl McpServer {
         let auditor = args.get("auditor_session_id").and_then(|v| v.as_str()).unwrap_or("");
         let status = args.get("audit_status").and_then(|v| v.as_str()).unwrap_or("approved");
         let notes = args.get("audit_notes").and_then(|v| v.as_str());
-        
+
         match self.db.audit_task(task_id, auditor, status, notes) {
             Ok(_) => Ok(json!({ "success": true, "task_id": task_id })),
             Err(e) => Err(e.to_string()),
         }
+    }
+
+    // --- M.A.T.E.R.I.A. NUM-JEPA Actions ---
+
+    fn run_materia_script(&self, script: &str, script_args: &[&str]) -> Result<Value, String> {
+        let script_path = format!("/home/methodwhite/MATERIA/scripts/{}", script);
+        let mut cmd = std::process::Command::new("python3");
+        cmd.arg(&script_path).args(script_args);
+        cmd.env("PYTHONIOENCODING", "utf-8");
+
+        let output = cmd
+            .output()
+            .map_err(|e| format!("Failed to execute {}: {}", script, e))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        let mut result = serde_json::Map::new();
+        result.insert("exit_code".to_string(), Value::Number(serde_json::Number::from(output.status.code().unwrap_or(-1))));
+        if !stdout.trim().is_empty() {
+            // Try to parse stdout as JSON first
+            if let Ok(parsed) = serde_json::from_str::<Value>(stdout.trim()) {
+                result.insert("output".to_string(), parsed);
+            } else {
+                result.insert("output".to_string(), Value::String(stdout.trim().to_string()));
+            }
+        }
+        if !stderr.trim().is_empty() {
+            result.insert("stderr".to_string(), Value::String(stderr.trim().to_string()));
+        }
+        result.insert("success".to_string(), Value::Bool(output.status.success()));
+
+        Ok(Value::Object(result))
+    }
+
+    fn action_kino_predict(&self, args: &Value) -> Result<Value, String> {
+        let mut cmd_args = vec!["predict"];
+        if let Some(top) = args.get("top").and_then(|v| v.as_i64()) {
+            cmd_args.push("--top");
+            cmd_args.push(Box::leak(top.to_string().into_boxed_str()));
+        }
+        if args.get("arch").and_then(|v| v.as_bool()).unwrap_or(false) {
+            cmd_args.push("--arch");
+        }
+        self.run_materia_script("kino_predict.py", &cmd_args)
+    }
+
+    fn action_kino_train(&self, args: &Value) -> Result<Value, String> {
+        let mut cmd_args = vec!["train"];
+        if let Some(epochs) = args.get("epochs").and_then(|v| v.as_i64()) {
+            cmd_args.push("--epochs");
+            cmd_args.push(Box::leak(epochs.to_string().into_boxed_str()));
+        }
+        self.run_materia_script("kino_predict.py", &cmd_args)
+    }
+
+    fn action_kino_stats(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+        self.run_materia_script("kino_predict.py", &["stats"])
+    }
+
+    fn action_materia_status(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+        self.run_materia_script("kino_predict.py", &["status"])
+    }
+
+    fn action_system_resources(&self, args: &Value) -> Result<Value, String> {
+        let _ = args;
+
+        // GPU info via nvidia-smi
+        let gpu_info = std::process::Command::new("nvidia-smi")
+            .args(["--query-gpu=index,name,memory.used,memory.total,utilization.gpu,utilization.memory,temperature.gpu", "--format=csv,noheader,nounits"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok());
+
+        // RAM info
+        let ram_info = std::process::Command::new("free")
+            .args(["-m"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok());
+
+        // CPU info
+        let cpu_info = std::process::Command::new("nproc")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string());
+
+        let load_avg = std::fs::read_to_string("/proc/loadavg")
+            .ok()
+            .map(|s| s.trim().to_string());
+
+        let mut result = serde_json::Map::new();
+
+        if let Some(gpu) = gpu_info {
+            let mut gpus = Vec::new();
+            for line in gpu.lines() {
+                let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+                if parts.len() >= 7 {
+                    let mut gpu_obj = serde_json::Map::new();
+                    gpu_obj.insert("id".to_string(), Value::String(parts[0].to_string()));
+                    gpu_obj.insert("name".to_string(), Value::String(parts[1].to_string()));
+                    if let Ok(mem_used) = parts[2].parse::<f64>() {
+                        gpu_obj.insert("memory_used_mb".to_string(), Value::Number(serde_json::Number::from_f64(mem_used).unwrap_or(serde_json::Number::from(0))));
+                    }
+                    if let Ok(mem_total) = parts[3].parse::<f64>() {
+                        gpu_obj.insert("memory_total_mb".to_string(), Value::Number(serde_json::Number::from_f64(mem_total).unwrap_or(serde_json::Number::from(0))));
+                    }
+                    if let Ok(util_gpu) = parts[4].parse::<f64>() {
+                        gpu_obj.insert("gpu_utilization_pct".to_string(), Value::Number(serde_json::Number::from_f64(util_gpu).unwrap_or(serde_json::Number::from(0))));
+                    }
+                    if let Ok(util_mem) = parts[5].parse::<f64>() {
+                        gpu_obj.insert("memory_utilization_pct".to_string(), Value::Number(serde_json::Number::from_f64(util_mem).unwrap_or(serde_json::Number::from(0))));
+                    }
+                    if let Ok(temp) = parts[6].parse::<f64>() {
+                        gpu_obj.insert("temperature_c".to_string(), Value::Number(serde_json::Number::from_f64(temp).unwrap_or(serde_json::Number::from(0))));
+                    }
+                    gpus.push(Value::Object(gpu_obj));
+                }
+            }
+            result.insert("gpus".to_string(), Value::Array(gpus));
+        } else {
+            result.insert("gpus".to_string(), Value::String("nvidia-smi not available".to_string()));
+        }
+
+        if let Some(ram) = ram_info {
+            result.insert("ram_free_m".to_string(), Value::String(ram));
+        }
+
+        if let Some(cpus) = cpu_info {
+            result.insert("cpu_cores".to_string(), Value::String(cpus.trim().to_string()));
+        }
+
+        if let Some(load) = load_avg {
+            result.insert("load_avg".to_string(), Value::String(load));
+        }
+
+        Ok(Value::Object(result))
     }
 }
