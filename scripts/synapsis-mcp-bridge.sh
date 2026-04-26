@@ -2,7 +2,7 @@
 # Synapsis MCP Bridge - Connect any MCP client to Synapsis TCP server
 # Usage: ./synapsis-mcp-bridge.sh [--url HOST:PORT]
 
-SYNAPSIS_URL="${SYNAPSIS_URL:-127.0.0.1:7438}"
+SYNAPSIS_URL="${SYNAPSIS_URL:-127.0.0.1:7439}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in

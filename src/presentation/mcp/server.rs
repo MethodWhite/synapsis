@@ -464,652 +464,123 @@ impl McpServer {
             "id": id,
             "result": {
                 "tools": [
-                    {
-                        "name": "mem_save",
-                        "description": "Save an observation to Synapsis persistent memory",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "title": { "type": "string" },
-                                "content": { "type": "string" },
-                                "project": { "type": "string", "default": "default" },
-                                "observation_type": { "type": "integer", "default": 1 }
-                            },
-                            "required": ["title", "content"]
-                        }
-                    },
-                    {
-                        "name": "mem_search",
-                        "description": "Search observations using FTS5 vector-lite engine",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "query": { "type": "string" },
-                                "project": { "type": "string" },
-                                "limit": { "type": "integer", "default": 10 }
-                            },
-                            "required": ["query"]
-                        }
-                    },
-                    {
-                        "name": "mem_context",
-                        "description": "Get relevant context for current session",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "limit": { "type": "integer", "default": 10 }
-                            }
-                        }
-                    },
-                    {
-                        "name": "mem_timeline",
-                        "description": "Get memory timeline for a project",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "project": { "type": "string" },
-                                "limit": { "type": "integer", "default": 10 }
-                            }
-                        }
-                    },
-                    {
-                        "name": "mem_update",
-                        "description": "Update existing observation (creates audit entry)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "observation_id": { "type": "integer" },
-                                "new_content": { "type": "string" },
-                                "reason": { "type": "string" }
-                            },
-                            "required": ["observation_id", "new_content"]
-                        }
-                    },
-                    {
-                        "name": "mem_delete",
-                        "description": "Soft-delete an observation",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "observation_id": { "type": "integer" },
-                                "reason": { "type": "string" }
-                            },
-                            "required": ["observation_id"]
-                        }
-                    },
-                    {
-                        "name": "mem_session_start",
-                        "description": "Initialize a new agent session",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "agent_type": { "type": "string" },
-                                "project": { "type": "string", "default": "default" }
-                            },
-                            "required": ["agent_type"]
-                        }
-                    },
-                    {
-                        "name": "mem_session_end",
-                        "description": "Finalize an agent session",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "mem_stats",
-                        "description": "Get memory and agent status overview",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "project": { "type": "string" }
-                            }
-                        }
-                    },
-                    {
-                        "name": "agent_heartbeat",
-                        "description": "Send heartbeat and update current task/status",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "status": { "type": "string", "enum": ["idle", "busy"], "default": "idle" },
-                                "task": { "type": "string" }
-                            },
-                            "required": ["session_id", "status"]
-                        }
-                    },
-                    {
-                        "name": "task_create",
-                        "description": "Create a new coordinated task",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "project": { "type": "string", "default": "default" },
-                                "task_type": { "type": "string" },
-                                "payload": { "type": "string" },
-                                "priority": { "type": "integer", "default": 0 }
-                            },
-                            "required": ["task_type", "payload"]
-                        }
-                    },
-                    {
-                        "name": "task_claim",
-                        "description": "Claim a pending task for an agent",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "task_type": { "type": "string" }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "mem_lock_acquire",
-                        "description": "Acquire a distributed lock on a resource",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "resource": { "type": "string" },
-                                "session_id": { "type": "string" },
-                                "ttl_seconds": { "type": "integer", "default": 60 }
-                            },
-                            "required": ["resource", "session_id"]
-                        }
-                    },
-                    {
-                        "name": "mem_lock_release",
-                        "description": "Release a distributed lock",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "resource": { "type": "string" },
-                                "session_id": { "type": "string" }
-                            },
-                            "required": ["resource", "session_id"]
-                        }
-                    },
-                    {
-                        "name": "web_research",
-                        "description": "Consult specialized web intelligence",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "query": { "type": "string" },
-                                "limit": { "type": "integer", "default": 5 }
-                            },
-                            "required": ["query"]
-                        }
-                    },
-                    {
-                        "name": "cve_search",
-                        "description": "Search NVD database for vulnerabilities",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "cve_id": { "type": "string", "description": "Specific CVE ID (e.g. CVE-2026-1234)" },
-                                "keyword": { "type": "string" },
-                                "limit": { "type": "integer", "default": 10 }
-                            }
-                        }
-                    },
-                    {
-                        "name": "security_classify",
-                        "description": "Analyze risk level of specialized content",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "text": { "type": "string" },
-                                "context": { "type": "string", "default": "general" }
-                            },
-                            "required": ["text"]
-                        }
-                    },
-                    {
-                        "name": "kino_predict",
-                        "description": "Get Kino lottery prediction using NUM-JEPA (M.A.T.E.R.I.A. engine)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "top": { "type": "integer", "default": 15, "description": "Number of top predictions" },
-                                "arch": { "type": "boolean", "default": false, "description": "Use full toroidal-hexagonal architecture" }
-                            }
-                        }
-                    },
-                    {
-                        "name": "kino_train",
-                        "description": "Trigger NUM-JEPA training for Kino prediction model",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "epochs": { "type": "integer", "default": 100, "description": "Number of training epochs" }
-                            }
-                        }
-                    },
-                    {
-                        "name": "kino_stats",
-                        "description": "Get Kino system statistics and analysis",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "materia_status",
-                        "description": "Get M.A.T.E.R.I.A. engine full system status",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "system_resources",
-                        "description": "Get GPU/RAM/CPU system resource usage",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "auth_screenshot",
-                        "description": "Take a screenshot of the current page in an authenticated session (useful for debugging login pages)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "output_path": { "type": "string" },
-                                "wait_seconds": { "type": "integer", "default": 5 }
-                            },
-                            "required": ["session_id", "output_path"]
-                        }
-                    },
-                    {
-                        "name": "auth_login_and_extract",
-                        "description": "Login to a website and extract visible text content in a single operation (SPA-friendly, ideal for Netacad, LMS platforms)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url": { "type": "string", "description": "Target page URL to extract content from" },
-                                "session_id": { "type": "string" },
-                                "login_url": { "type": "string", "description": "Login page URL" },
-                                "login_selector_user": { "type": "string", "description": "CSS selector for username field" },
-                                "login_selector_pass": { "type": "string", "description": "CSS selector for password field" },
-                                "username": { "type": "string" },
-                                "password": { "type": "string" },
-                                "login_button_selector": { "type": "string", "description": "CSS selector for login button" },
-                                "wait_seconds": { "type": "integer", "default": 10, "description": "Seconds to wait for SPA rendering after navigation" }
-                            },
-                            "required": ["url", "session_id"]
-                        }
-                    },
-                    {
-                        "name": "auth_navigate",
-                        "description": "Navigate to a web page with authentication support (login, cookies, session persistence)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url": { "type": "string" },
-                                "session_id": { "type": "string" },
-                                "login_url": { "type": "string" },
-                                "login_selector_user": { "type": "string" },
-                                "login_selector_pass": { "type": "string" },
-                                "username": { "type": "string" },
-                                "password": { "type": "string" },
-                                "login_button_selector": { "type": "string" }
-                            },
-                            "required": ["url", "session_id"]
-                        }
-                    },
-                    {
-                        "name": "auth_extract",
-                        "description": "Extract content from an authenticated browser session using CSS selectors",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "selector": { "type": "string" }
-                            },
-                            "required": ["session_id", "selector"]
-                        }
-                    },
-                    {
-                        "name": "auth_extract_text",
-                        "description": "Extract all visible text content from an authenticated session (SPA-friendly, waits for JS rendering)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "wait_seconds": { "type": "integer", "default": 8, "description": "Seconds to wait for SPA rendering" }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "auth_navigate_session",
-                        "description": "Navigate to a new URL within an existing authenticated session",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "url": { "type": "string" }
-                            },
-                            "required": ["session_id", "url"]
-                        }
-                    },
-                    {
-                        "name": "auth_clear_session",
-                        "description": "Clear/delete a saved browser authentication session",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "auth_list_sessions",
-                        "description": "List all saved authenticated browser sessions",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "smart_navigate",
-                        "description": "Navigate to URL and analyze page like a human (finds forms, links, buttons automatically)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "url": { "type": "string" },
-                                "wait_seconds": { "type": "integer", "default": 5 }
-                            },
-                            "required": ["session_id", "url"]
-                        }
-                    },
-                    {
-                        "name": "smart_find_element",
-                        "description": "Find elements intelligently by text, role, or context (like a human searching for something on a page)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "search_query": { "type": "string", "description": "What to look for (e.g., 'login button', 'email field', 'submit')" },
-                                "element_type": { "type": "string", "default": "any", "description": "Filter by element type (button, input, link, etc.)" }
-                            },
-                            "required": ["session_id", "search_query"]
-                        }
-                    },
-                    {
-                        "name": "smart_click",
-                        "description": "Click an element with human-like timing (scrolls into view, waits for navigation)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "selector": { "type": "string" }
-                            },
-                            "required": ["session_id", "selector"]
-                        }
-                    },
-                    {
-                        "name": "smart_fill",
-                        "description": "Fill a form field by description (finds by label, placeholder, or name automatically)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "field_description": { "type": "string", "description": "Describe the field (e.g., 'email', 'password', 'search box')" },
-                                "value": { "type": "string" }
-                            },
-                            "required": ["session_id", "field_description", "value"]
-                        }
-                    },
-                    {
-                        "name": "smart_submit",
-                        "description": "Submit a form intelligently (finds submit button or submits form directly)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "smart_screenshot",
-                        "description": "Take a screenshot of the current page for analysis or debugging",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" },
-                                "output_path": { "type": "string" }
-                            },
-                            "required": ["session_id", "output_path"]
-                        }
-                    },
-                    {
-                        "name": "smart_session_info",
-                        "description": "Get info about a smart browser session (current URL, title, action history)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": { "type": "string" }
-                            },
-                            "required": ["session_id"]
-                        }
-                    },
-                    {
-                        "name": "agent_register",
-                        "description": "Register a new agent in the system with capabilities",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "agent_id": { "type": "string" },
-                                "name": { "type": "string" },
-                                "capabilities": { "type": "array", "items": { "type": "string" } }
-                            },
-                            "required": ["agent_id", "name"]
-                        }
-                    },
-                    {
-                        "name": "agent_send_message",
-                        "description": "Send a secure message to another agent",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "from": { "type": "string" },
-                                "to": { "type": "string" },
-                                "content": { "type": "string" },
-                                "message_type": { "type": "string", "default": "command" },
-                                "priority": { "type": "integer", "default": 5 }
-                            },
-                            "required": ["from", "to", "content"]
-                        }
-                    },
-                    {
-                        "name": "agent_receive_messages",
-                        "description": "Receive pending messages for an agent",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "agent_id": { "type": "string" },
-                                "limit": { "type": "integer", "default": 10 }
-                            },
-                            "required": ["agent_id"]
-                        }
-                    },
-                    {
-                        "name": "agent_self_configure",
-                        "description": "Auto-configure agent settings from learned data",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "agent_id": { "type": "string" },
-                                "config_updates": { "type": "object" }
-                            },
-                            "required": ["agent_id"]
-                        }
-                    },
-                    {
-                        "name": "agent_self_heal",
-                        "description": "Detect and fix common system issues automatically",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "agent_add_heal_rule",
-                        "description": "Add a self-healing rule (trigger + condition + action)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "trigger_pattern": { "type": "string" },
-                                "condition": { "type": "string" },
-                                "action": { "type": "string" }
-                            },
-                            "required": ["trigger_pattern", "condition", "action"]
-                        }
-                    },
-                    {
-                        "name": "agent_learn",
-                        "description": "Learn from feedback to improve behavior over time",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "agent_id": { "type": "string" },
-                                "action": { "type": "string" },
-                                "result": { "type": "string" },
-                                "success": { "type": "boolean" }
-                            },
-                            "required": ["agent_id", "action", "result", "success"]
-                        }
-                    },
-                    {
-                        "name": "agent_execute_command",
-                        "description": "Execute a system command securely (with allowlist validation)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "command": { "type": "string" },
-                                "args": { "type": "array", "items": { "type": "string" } }
-                            },
-                            "required": ["command"]
-                        }
-                    },
-                    {
-                        "name": "agent_secure_read",
-                        "description": "Read a file securely (with path validation and size limits)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "path": { "type": "string" }
-                            },
-                            "required": ["path"]
-                        }
-                    },
-                    {
-                        "name": "agent_update_security_policy",
-                        "description": "Update the security policy (allowed/blocked commands, rate limits)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "updates": { "type": "object" }
-                            },
-                            "required": ["updates"]
-                        }
-                    },
-                    {
-                        "name": "agent_security_status",
-                        "description": "Get current security status (policy, registered agents, audit log)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "security_sanitize_input",
-                        "description": "Sanitize input against all known injection attacks (SQL, XSS, Command, RCE, etc.)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "input": { "type": "string" },
-                                "context": { "type": "string", "default": "general" }
-                            },
-                            "required": ["input"]
-                        }
-                    },
-                    {
-                        "name": "security_is_safe",
-                        "description": "Quick check if input is safe (no threats detected)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "input": { "type": "string" }
-                            },
-                            "required": ["input"]
-                        }
-                    },
-                    {
-                        "name": "security_monitor_network",
-                        "description": "Monitor network connections and detect suspicious activity",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "security_detect_lateral_movement",
-                        "description": "Scan for lateral movement attempts (SMB, WMI, auth brute force)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "security_detect_gap_attacks",
-                        "description": "Detect air gap crossing attempts (USB, Bluetooth, unusual interfaces)",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "security_audit",
-                        "description": "Full security audit: lateral movement + gap attacks + network monitoring + risk assessment",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "security_threat_log",
-                        "description": "Get recent threat detections",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "limit": { "type": "integer", "default": 20 }
-                            }
-                        }
-                    },
-                    {
-                        "name": "security_events",
-                        "description": "Get recent security events",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "limit": { "type": "integer", "default": 20 }
-                            }
-                        }
-                    }
+                    // Memory Tools
+                    { "name": "mem_save", "description": "Save an observation to Synapsis persistent memory", "inputSchema": { "type": "object", "properties": { "title": { "type": "string" }, "content": { "type": "string" }, "project": { "type": "string" } }, "required": ["title", "content"] } },
+                    { "name": "mem_search", "description": "Search observations using FTS5 vector-lite engine", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "project": { "type": "string" }, "limit": { "type": "integer" } }, "required": ["query"] } },
+                    { "name": "mem_update", "description": "Update existing observation (creates audit entry)", "inputSchema": { "type": "object", "properties": { "observation_id": { "type": "integer" }, "new_content": { "type": "string" }, "reason": { "type": "string" } }, "required": ["observation_id", "new_content"] } },
+                    { "name": "mem_delete", "description": "Soft-delete an observation", "inputSchema": { "type": "object", "properties": { "observation_id": { "type": "integer" }, "reason": { "type": "string" } }, "required": ["observation_id"] } },
+                    { "name": "mem_timeline", "description": "Get memory timeline for a project", "inputSchema": { "type": "object", "properties": { "project": { "type": "string" }, "limit": { "type": "integer" } } } },
+                    { "name": "mem_context", "description": "Get relevant context for current session", "inputSchema": { "type": "object", "properties": { "project": { "type": "string" }, "limit": { "type": "integer" } } } },
+                    { "name": "mem_session_start", "description": "Initialize a new agent session", "inputSchema": { "type": "object", "properties": { "agent_type": { "type": "string" }, "project": { "type": "string" } }, "required": ["agent_type"] } },
+                    { "name": "mem_session_end", "description": "Finalize an agent session", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" } }, "required": ["session_id"] } },
+                    { "name": "mem_stats", "description": "Get memory and agent status overview", "inputSchema": { "type": "object", "properties": { "project": { "type": "string" } } } },
+                    { "name": "mem_lock_acquire", "description": "Acquire a distributed lock on a resource", "inputSchema": { "type": "object", "properties": { "resource": { "type": "string" }, "session_id": { "type": "string" }, "ttl_seconds": { "type": "integer" } }, "required": ["resource", "session_id"] } },
+                    { "name": "mem_lock_release", "description": "Release a distributed lock", "inputSchema": { "type": "object", "properties": { "resource": { "type": "string" }, "session_id": { "type": "string" } }, "required": ["resource", "session_id"] } },
+
+                    // Coordination & Task Tools
+                    { "name": "agent_heartbeat", "description": "Send heartbeat and update current task/status", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" }, "status": { "type": "string", "enum": ["idle", "busy"] }, "task": { "type": "string" } }, "required": ["session_id", "status"] } },
+                    { "name": "agent_details", "description": "Get agent details and status", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" } }, "required": ["session_id"] } },
+                    { "name": "task_create", "description": "Create a new coordinated task", "inputSchema": { "type": "object", "properties": { "task_type": { "type": "string" }, "payload": { "type": "string" }, "priority": { "type": "integer" }, "project": { "type": "string" } }, "required": ["task_type", "payload"] } },
+                    { "name": "task_claim", "description": "Claim a pending task for an agent", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" }, "task_type": { "type": "string" } }, "required": ["session_id"] } },
+                    { "name": "task_list", "description": "List all tasks with filtering", "inputSchema": { "type": "object", "properties": { "project": { "type": "string" }, "status": { "type": "string" }, "task_type": { "type": "string" }, "limit": { "type": "integer" } } } },
+                    { "name": "task_cancel", "description": "Cancel a pending or active task", "inputSchema": { "type": "object", "properties": { "task_id": { "type": "string" } }, "required": ["task_id"] } },
+                    { "name": "task_complete", "description": "Mark a task as completed", "inputSchema": { "type": "object", "properties": { "task_id": { "type": "string" }, "success": { "type": "boolean" }, "result": { "type": "string" }, "error": { "type": "string" } }, "required": ["task_id"] } },
+                    { "name": "task_delegate", "description": "Delegate task to another agent", "inputSchema": { "type": "object", "properties": { "task_id": { "type": "string" }, "from_agent": { "type": "string" } }, "required": ["task_id", "from_agent"] } },
+                    { "name": "task_request", "description": "Request best agent for skills", "inputSchema": { "type": "object", "properties": { "skills": { "type": "array", "items": { "type": "string" } } }, "required": ["skills"] } },
+                    { "name": "task_audit", "description": "Audit a completed task", "inputSchema": { "type": "object", "properties": { "task_id": { "type": "string" }, "auditor_session_id": { "type": "string" }, "audit_status": { "type": "string" }, "audit_notes": { "type": "string" } }, "required": ["task_id", "auditor_session_id"] } },
+                    { "name": "ghost_audit", "description": "Request external audit of a path", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+
+                    // Intelligence Tools
+                    { "name": "web_research", "description": "Consult specialized web intelligence", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "limit": { "type": "integer" } }, "required": ["query"] } },
+                    { "name": "cve_search", "description": "Search NVD database for vulnerabilities", "inputSchema": { "type": "object", "properties": { "cve_id": { "type": "string" }, "keyword": { "type": "string" }, "limit": { "type": "integer" } } } },
+                    { "name": "security_classify", "description": "Analyze risk level of specialized content", "inputSchema": { "type": "object", "properties": { "text": { "type": "string" }, "context": { "type": "string" } }, "required": ["text"] } },
+
+                    // M.A.T.E.R.I.A. Tools (NUM-JEPA)
+                    { "name": "kino_predict", "description": "Get Kino lottery prediction using NUM-JEPA", "inputSchema": { "type": "object", "properties": { "top": { "type": "integer" }, "arch": { "type": "boolean" } } } },
+                    { "name": "kino_train", "description": "Trigger NUM-JEPA training for Kino model", "inputSchema": { "type": "object", "properties": { "epochs": { "type": "integer" } } } },
+                    { "name": "kino_stats", "description": "Get Kino system statistics", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "materia_status", "description": "Get M.A.T.E.R.I.A. engine status", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "system_resources", "description": "Get GPU/RAM/CPU system usage", "inputSchema": { "type": "object", "properties": {} } },
+
+                    // System: Crypto & Env
+                    { "name": "pqc_encrypt", "description": "Post-Quantum encrypted data (AES-256-GCM)", "inputSchema": { "type": "object", "properties": { "plaintext": { "type": "string" } }, "required": ["plaintext"] } },
+                    { "name": "wasm_run", "description": "Run WASM module securely", "inputSchema": { "type": "object", "properties": { "module_path": { "type": "string" } }, "required": ["module_path"] } },
+                    { "name": "env_detection", "description": "Detect execution environment", "inputSchema": { "type": "object", "properties": { "mode": { "type": "string" } } } },
+                    { "name": "connection_status", "description": "Get all active client connections", "inputSchema": { "type": "object", "properties": {} } },
+
+                    // Browser Navigation Tools
+                    { "name": "browser_navigate", "description": "Navigate to a URL", "inputSchema": { "type": "object", "properties": { "url": { "type": "string" } }, "required": ["url"] } },
+                    { "name": "browser_extract_text", "description": "Extract all text from current page", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "browser_click", "description": "Click element by selector", "inputSchema": { "type": "object", "properties": { "selector": { "type": "string" } }, "required": ["selector"] } },
+                    { "name": "browser_fill_form", "description": "Fill form field", "inputSchema": { "type": "object", "properties": { "selector": { "type": "string" }, "value": { "type": "string" } }, "required": ["selector", "value"] } },
+                    { "name": "browser_screenshot", "description": "Take screenshot", "inputSchema": { "type": "object", "properties": { "output_path": { "type": "string" } }, "required": ["output_path"] } },
+
+                    // Authenticated Browser Tools
+                    { "name": "auth_screenshot", "description": "Screenshot in auth session", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" }, "output_path": { "type": "string" } }, "required": ["session_id", "output_path"] } },
+                    { "name": "auth_login_and_extract", "description": "Login and extract content", "inputSchema": { "type": "object", "properties": { "url": { "type": "string" }, "session_id": { "type": "string" }, "username": { "type": "string" }, "password": { "type": "string" } }, "required": ["url", "session_id"] } },
+                    { "name": "auth_navigate", "description": "Navigate with auth support", "inputSchema": { "type": "object", "properties": { "url": { "type": "string" }, "session_id": { "type": "string" } }, "required": ["url", "session_id"] } },
+                    { "name": "auth_extract", "description": "Extract with CSS selectors", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" }, "selector": { "type": "string" } }, "required": ["session_id", "selector"] } },
+                    { "name": "auth_clear_session", "description": "Clear auth session", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" } }, "required": ["session_id"] } },
+                    { "name": "auth_list_sessions", "description": "List all auth sessions", "inputSchema": { "type": "object", "properties": {} } },
+
+                    // Smart Browser Tools
+                    { "name": "smart_navigate", "description": "Intelligent URL navigation", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" }, "url": { "type": "string" }, "wait_seconds": { "type": "integer" } }, "required": ["session_id", "url"] } },
+                    { "name": "smart_find_element", "description": "Find element by context", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" }, "search_query": { "type": "string" }, "element_type": { "type": "string" } }, "required": ["session_id", "search_query"] } },
+                    { "name": "smart_click", "description": "Human-like click", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" }, "selector": { "type": "string" } }, "required": ["session_id", "selector"] } },
+                    { "name": "smart_fill", "description": "Fill field by description", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" }, "field_description": { "type": "string" }, "value": { "type": "string" } }, "required": ["session_id", "field_description", "value"] } },
+                    { "name": "smart_submit", "description": "Smart form submission", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" } }, "required": ["session_id"] } },
+                    { "name": "smart_screenshot", "description": "Screenshot for analysis", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" }, "output_path": { "type": "string" } }, "required": ["session_id", "output_path"] } },
+                    { "name": "smart_session_info", "description": "Get smart session info", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" } }, "required": ["session_id"] } },
+
+                    // Remote Control & Agent Management
+                    { "name": "agent_register", "description": "Register a new agent", "inputSchema": { "type": "object", "properties": { "agent_id": { "type": "string" }, "name": { "type": "string" }, "capabilities": { "type": "array" } }, "required": ["agent_id", "name"] } },
+                    { "name": "agent_send_message", "description": "Send message to agent", "inputSchema": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" }, "content": { "type": "string" }, "message_type": { "type": "string" } }, "required": ["from", "to", "content"] } },
+                    { "name": "agent_receive_messages", "description": "Receive agent messages", "inputSchema": { "type": "object", "properties": { "agent_id": { "type": "string" }, "limit": { "type": "integer" } }, "required": ["agent_id"] } },
+                    { "name": "agent_self_configure", "description": "Auto-configure agent", "inputSchema": { "type": "object", "properties": { "agent_id": { "type": "string" }, "config_updates": { "type": "object" } }, "required": ["agent_id"] } },
+                    { "name": "agent_self_heal", "description": "Detect and fix issues", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "agent_add_heal_rule", "description": "Add self-healing rule", "inputSchema": { "type": "object", "properties": { "trigger_pattern": { "type": "string" }, "condition": { "type": "string" }, "action": { "type": "string" } }, "required": ["trigger_pattern", "condition", "action"] } },
+                    { "name": "agent_learn", "description": "Learn from feedback", "inputSchema": { "type": "object", "properties": { "agent_id": { "type": "string" }, "action": { "type": "string" }, "result": { "type": "string" }, "success": { "type": "boolean" } }, "required": ["agent_id", "action", "result", "success"] } },
+                    { "name": "agent_execute_command", "description": "Execute command securely", "inputSchema": { "type": "object", "properties": { "command": { "type": "string" }, "args": { "type": "array" } }, "required": ["command"] } },
+                    { "name": "agent_secure_read", "description": "Read file securely", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+                    { "name": "agent_update_security_policy", "description": "Update security policy", "inputSchema": { "type": "object", "properties": { "updates": { "type": "object" } }, "required": ["updates"] } },
+                    { "name": "agent_security_status", "description": "Get security status", "inputSchema": { "type": "object", "properties": {} } },
+
+                    // Security Shield Tools
+                    { "name": "security_sanitize_input", "description": "Sanitize against injections", "inputSchema": { "type": "object", "properties": { "input": { "type": "string" }, "context": { "type": "string" } }, "required": ["input"] } },
+                    { "name": "security_is_safe", "description": "Quick safety check", "inputSchema": { "type": "object", "properties": { "input": { "type": "string" } }, "required": ["input"] } },
+                    { "name": "security_monitor_network", "description": "Monitor network activity", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "security_detect_lateral_movement", "description": "Scan for lateral movement", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "security_detect_gap_attacks", "description": "Scan for gap attacks", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "security_audit", "description": "Full security audit", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "security_threat_log", "description": "Get recent threats", "inputSchema": { "type": "object", "properties": { "limit": { "type": "integer" } } } },
+                    { "name": "security_events", "description": "Get security events", "inputSchema": { "type": "object", "properties": { "limit": { "type": "integer" } } } },
+
+                    // Antibrick & Watchdog
+                    { "name": "antibrick_scan", "description": "Scan command for bricks", "inputSchema": { "type": "object", "properties": { "command": { "type": "string" }, "args": { "type": "array" } }, "required": ["command"] } },
+                    { "name": "antibrick_stats", "description": "Antibrick statistics", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "antibrick_enable", "description": "Enable/disable antibrick", "inputSchema": { "type": "object", "properties": { "enable": { "type": "boolean" } }, "required": ["enable"] } },
+                    { "name": "watchdog_stats", "description": "Watchdog statistics", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "watchdog_verify", "description": "Verify file integrity", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "watchdog_snapshot", "description": "Take filesystem snapshot", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+                    { "name": "watchdog_events", "description": "Get watchdog events", "inputSchema": { "type": "object", "properties": { "limit": { "type": "integer" } } } },
+                    { "name": "watchdog_check_path", "description": "Check path protection", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+
+                    // Messaging & Events
+                    { "name": "send_message", "description": "Send persistent message", "inputSchema": { "type": "object", "properties": { "to": { "type": "string" }, "content": { "type": "string" }, "session_id": { "type": "string" }, "project": { "type": "string" } }, "required": ["to", "content"] } },
+                    { "name": "event_poll", "description": "Poll persistent events", "inputSchema": { "type": "object", "properties": { "since": { "type": "integer" }, "channel": { "type": "string" }, "project": { "type": "string" }, "limit": { "type": "integer" } } } },
+                    { "name": "event_ack", "description": "Acknowledge event", "inputSchema": { "type": "object", "properties": { "event_id": { "type": "integer" } }, "required": ["event_id"] } },
+                    { "name": "get_pending_messages", "description": "Get pending messages", "inputSchema": { "type": "object", "properties": { "session_id": { "type": "string" } }, "required": ["session_id"] } },
+                    { "name": "broadcast", "description": "Broadcast to channel", "inputSchema": { "type": "object", "properties": { "content": { "type": "string" }, "session_id": { "type": "string" }, "channel": { "type": "string" } }, "required": ["content"] } },
+
+                    // Plugin Management
+                    { "name": "plugin_load", "description": "Load dynamic plugin", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+                    { "name": "plugin_unload", "description": "Unload dynamic plugin", "inputSchema": { "type": "object", "properties": { "plugin_id": { "type": "string" } }, "required": ["plugin_id"] } },
+                    { "name": "plugin_list", "description": "List loaded plugins", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "plugin_info", "description": "Get plugin metadata", "inputSchema": { "type": "object", "properties": { "plugin_id": { "type": "string" } }, "required": ["plugin_id"] } },
+                    { "name": "plugin_enable", "description": "Enable/disable plugin", "inputSchema": { "type": "object", "properties": { "plugin_id": { "type": "string" }, "enabled": { "type": "boolean" } }, "required": ["plugin_id"] } },
+                    { "name": "plugin_health", "description": "Plugin health check", "inputSchema": { "type": "object", "properties": { "plugin_id": { "type": "string" } } } },
+                    { "name": "plugin_update_check", "description": "Check for updates", "inputSchema": { "type": "object", "properties": {} } },
+                    { "name": "plugin_cleanup", "description": "Cleanup unused plugins", "inputSchema": { "type": "object", "properties": { "max_age_seconds": { "type": "integer" } } } }
                 ]
             }
         }))
@@ -1120,52 +591,51 @@ impl McpServer {
         let args = &params["arguments"];
 
         let action_result = match name {
-            // Memory & Session Standard
-            "mem_save" | "memory_add" => self.action_mem_save(args),
-            "mem_search" | "memory_search" => self.action_mem_search(args),
-            "mem_update" | "memory_update" => self.action_mem_update(args),
-            "mem_delete" | "memory_delete" => self.action_mem_delete(args),
-            "mem_timeline" | "memory_timeline" => self.action_mem_timeline(args),
+            // Memory & Session
+            "mem_save" => self.action_mem_save(args),
+            "mem_search" => self.action_mem_search(args),
+            "mem_update" => self.action_mem_update(args),
+            "mem_delete" => self.action_mem_delete(args),
+            "mem_timeline" => self.action_mem_timeline(args),
             "mem_context" => self.action_mem_context(args),
-            "mem_session_start" | "session_register" => self.action_mem_session_start(args),
+            "mem_session_start" => self.action_mem_session_start(args),
             "mem_session_end" => self.action_mem_session_end(args),
-            "mem_stats" | "memory_stats" | "agents_active" => self.action_mem_stats(args),
+            "mem_stats" => self.action_mem_stats(args),
             "mem_lock_acquire" => self.action_mem_lock_acquire(args),
             "mem_lock_release" => self.action_mem_lock_release(args),
             
             // Coordination & Tasks
             "agent_heartbeat" => self.action_agent_heartbeat(args),
             "agent_details" => self.action_agent_details(args),
-            "task_create" | "task_create_db" => self.action_task_create(args),
+            "task_create" => self.action_task_create(args),
             "task_claim" => self.action_task_claim(args),
             "task_list" => self.action_task_list(args),
             "task_cancel" => self.action_task_cancel(args),
             "task_complete" => self.action_task_complete(args),
-            "task_complete_db" => self.action_task_complete_db(args),
             "task_delegate" => self.action_task_delegate(args),
             "task_request" => self.action_task_request(args),
             "task_audit" => self.action_task_audit(args),
             "ghost_audit" => self.action_ghost_audit(args),
 
-            // Intelligence Tools
+            // Intelligence
             "web_research" => self.action_web_research(args),
             "cve_search" => self.action_cve_search(args),
             "security_classify" => self.action_security_classify(args),
 
-            // M.A.T.E.R.I.A. NUM-JEPA
+            // M.A.T.E.R.I.A.
             "kino_predict" => self.action_kino_predict(args),
             "kino_train" => self.action_kino_train(args),
             "kino_stats" => self.action_kino_stats(args),
             "materia_status" => self.action_materia_status(args),
             "system_resources" => self.action_system_resources(args),
             
-            // System: Crypto & Environment
+            // System: Crypto & Env
             "pqc_encrypt" | "crypto_pqc_encrypt" => self.action_crypto_pqc_encrypt(args),
             "wasm_run" => self.action_wasm_run(args),
             "env_detection" => self.action_env_detection(args),
             "connection_status" => self.action_connection_status(args),
 
-            // System: Browser Navigation
+            // System: Browser
             "browser_navigate" => self.action_browser_navigate(args),
             "browser_extract_text" => self.action_browser_extract_text(args),
             "browser_click" => self.action_browser_click(args),
@@ -1177,8 +647,6 @@ impl McpServer {
             "auth_login_and_extract" => self.action_auth_login_and_extract(args),
             "auth_navigate" => self.action_auth_navigate(args),
             "auth_extract" => self.action_auth_extract(args),
-            "auth_extract_text" => self.action_auth_extract_text(args),
-            "auth_navigate_session" => self.action_auth_navigate_session(args),
             "auth_clear_session" => self.action_auth_clear_session(args),
             "auth_list_sessions" => self.action_auth_list_sessions(args),
 
@@ -1225,8 +693,8 @@ impl McpServer {
             "watchdog_check_path" => self.action_watchdog_check_path(args),
 
             // Messaging & Events
-            "send_message" => self.action_send_message(args),
-            "event_poll" => self.action_event_poll(args),
+            "send_message" | "msg_send" => self.action_send_message(args),
+            "event_poll" | "msg_poll" => self.action_event_poll(args),
             "event_ack" => self.action_event_ack(args),
             "get_pending_messages" => self.action_get_pending_messages(args),
             "broadcast" => self.action_broadcast(args),
@@ -1539,7 +1007,7 @@ impl McpServer {
         Ok(synapsis_core::core::antibrick::mcp_tools::handle_antibrick_stats(&self.antibrick))
     }
 
-    fn action_antibrick_enable(&self, args: &Value) -> Result<Value, String> {
+fn action_antibrick_enable(&self, args: &Value) -> Result<Value, String> {
         let enable = args["enable"].as_bool().unwrap_or(true);
         Ok(synapsis_core::core::antibrick::mcp_tools::handle_antibrick_enable(&self.antibrick, enable))
     }

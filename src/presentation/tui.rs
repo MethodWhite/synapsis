@@ -46,7 +46,6 @@ pub struct TuiState {
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionStatus {
     pub mcp_connected: bool,
-    pub tcp_connected: bool,
     pub active_agents: usize,
     pub pending_tasks: usize,
 }
@@ -146,10 +145,9 @@ impl Tui {
         Ok(())
     }
 
-    pub fn update_connection_status(&mut self, mcp: bool, tcp: bool, agents: usize, tasks: usize) {
+    pub fn update_connection_status(&mut self, mcp: bool, agents: usize, tasks: usize) {
         self.state.connection_status = ConnectionStatus {
             mcp_connected: mcp,
-            tcp_connected: tcp,
             active_agents: agents,
             pending_tasks: tasks,
         };
@@ -213,7 +211,6 @@ impl Tui {
 
             self.state.connection_status = ConnectionStatus {
                 mcp_connected: true,
-                tcp_connected: true,
                 active_agents,
                 pending_tasks,
             };
@@ -894,17 +891,11 @@ mod tui_impl {
             } else {
                 "🔴 Disconnected"
             };
-            let tcp_status = if status.tcp_connected {
-                "🟢 Connected"
-            } else {
-                "🔴 Disconnected"
-            };
             let agents_count = status.active_agents.to_string();
             let tasks_count = status.pending_tasks.to_string();
 
             let rows = [
                 Row::new(["MCP Server", mcp_status]),
-                Row::new(["TCP Server", tcp_status]),
                 Row::new(["Active Agents", &agents_count]),
                 Row::new(["Pending Tasks", &tasks_count]),
             ];

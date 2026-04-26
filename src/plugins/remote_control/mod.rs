@@ -24,7 +24,7 @@ lazy_static! {
     static ref AGENT_REGISTRY: Mutex<HashMap<String, AgentIdentity>> = Mutex::new(HashMap::new());
     static ref MESSAGE_QUEUE: Mutex<Vec<AgentMessage>> = Mutex::new(Vec::new());
     static ref SECURITY_POLICY: Mutex<SecurityPolicy> = Mutex::new(SecurityPolicy {
-        allowed_commands: vec!["ls".into(), "cat".into(), "echo".into(), "whoami".into(), "uname".into(), "df".into(), "free".into(), "ps".into()],
+        allowed_commands: vec!["ls".into(), "cat".into(), "echo".into(), "whoami".into(), "uname".into(), "df".into(), "free".into(), "ps".into(), "adb".into()],
         blocked_commands: vec!["rm -rf /".into(), "mkfs".into(), "dd".into(), "fdisk".into(), "chmod 777".into()],
         max_file_size: 100 * 1024 * 1024,
         allowed_paths: vec!["/home".into(), "/tmp".into(), "/var/log".into()],

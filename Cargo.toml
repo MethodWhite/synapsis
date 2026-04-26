@@ -25,10 +25,6 @@ name = "synapsis-mcp"
 path = "src/bin/mcp.rs"
 
 #[[bin]]
-#name = "synapsis-server"
-#path = "src/bin/server.rs"
-
-#[[bin]]
 #name = "synapsis-ollama"
 #path = "src/bin/ollama.rs"
 
