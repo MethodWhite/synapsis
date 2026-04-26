@@ -5,7 +5,7 @@
 
 use std::env;
 use synapsis::infrastructure::skills::{
-    ActivationId, Skill, SkillActivation, SkillCategory, SkillId, SkillRegistry,
+    Skill, SkillCategory, SkillId, SkillRegistry,
 };
 
 fn test_registry() -> SkillRegistry {
@@ -168,7 +168,7 @@ mod skills_tests {
             SkillCategory::Coding,
         );
 
-        let id1 = registry.register(skill1);
+        let _id1 = registry.register(skill1);
         let id2 = registry.register(skill2);
 
         registry.disable(&id2);
