@@ -15,6 +15,7 @@ use crate::tools::auth_browser::mcp_tools as auth_browser_tools;
 use crate::tools::browser_navigation::mcp_tools as browser_navigation_tools;
 use crate::tools::cve_search::mcp_tools as cve_search_tools;
 use crate::tools::env_detection::handle_env_detection;
+use crate::tools::os_search::mcp_tools as os_search_tools;
 use crate::tools::security_classify::mcp_tools as security_classify_tools;
 use crate::tools::web_research::mcp_tools as web_research_tools;
 
@@ -219,6 +220,7 @@ pub struct McpServer {
     crypto_provider: Arc<dyn CryptoProvider>,
     connections: Arc<Mutex<HashMap<String, ConnectionInfo>>>,
     shutdown_requested: Arc<AtomicBool>,
+    updater: Arc<crate::app_core::updater::AutoUpdater>,
 }
 
 impl McpServer {
@@ -248,6 +250,7 @@ impl McpServer {
             crypto_provider: Arc::new(PqcryptoProvider::new()),
             connections: Arc::new(Mutex::new(HashMap::new())),
             shutdown_requested: Arc::new(AtomicBool::new(false)),
+            updater: Arc::new(crate::app_core::updater::AutoUpdater::new(db.clone())),
         }
     }
 
@@ -494,6 +497,7 @@ impl McpServer {
                     { "name": "web_research", "description": "Consult specialized web intelligence", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "limit": { "type": "integer" } }, "required": ["query"] } },
                     { "name": "cve_search", "description": "Search NVD database for vulnerabilities", "inputSchema": { "type": "object", "properties": { "cve_id": { "type": "string" }, "keyword": { "type": "string" }, "limit": { "type": "integer" } } } },
                     { "name": "security_classify", "description": "Analyze risk level of specialized content", "inputSchema": { "type": "object", "properties": { "text": { "type": "string" }, "context": { "type": "string" } }, "required": ["text"] } },
+                    { "name": "os_search", "description": "Search file systems across Local, Android (ADB), or Remote (SSH)", "inputSchema": { "type": "object", "properties": { "target": { "type": "string", "enum": ["local", "adb", "ssh"] }, "path": { "type": "string" }, "pattern": { "type": "string" }, "ssh_target": { "type": "string" } }, "required": ["target", "path", "pattern"] } },
 
                     // M.A.T.E.R.I.A. Tools (NUM-JEPA)
                     { "name": "kino_predict", "description": "Get Kino lottery prediction using NUM-JEPA", "inputSchema": { "type": "object", "properties": { "top": { "type": "integer" }, "arch": { "type": "boolean" } } } },
@@ -621,7 +625,7 @@ impl McpServer {
             "web_research" => self.action_web_research(args),
             "cve_search" => self.action_cve_search(args),
             "security_classify" => self.action_security_classify(args),
-
+            "os_search" => self.action_os_search(args),
             // M.A.T.E.R.I.A.
             "kino_predict" => self.action_kino_predict(args),
             "kino_train" => self.action_kino_train(args),
@@ -957,6 +961,14 @@ impl McpServer {
         let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
         let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("general");
         Ok(security_classify_tools::handle_security_classify(text, context))
+    }
+
+    fn action_os_search(&self, args: &Value) -> Result<Value, String> {
+        let target = args.get("target").and_then(|v| v.as_str()).unwrap_or("local");
+        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let pattern = args.get("pattern").and_then(|v| v.as_str()).unwrap_or("*");
+        let ssh_target = args.get("ssh_target").and_then(|v| v.as_str());
+        Ok(os_search_tools::handle_os_search(target, path, pattern, ssh_target))
     }
 
     fn action_ghost_audit(&self, args: &Value) -> Result<Value, String> {
