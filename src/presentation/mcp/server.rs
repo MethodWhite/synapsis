@@ -171,38 +171,50 @@ impl PersistentEventBus {
         Self { db }
     }
 
-    fn publish(&self, _params: PublishParams) -> Result<i64, String> {
-        Ok(0)
+    fn publish(&self, params: PublishParams) -> Result<i64, String> {
+        self.db.publish_event(
+            params.event_type,
+            params.from,
+            params.to,
+            params.project,
+            params.channel,
+            params.content,
+            params.priority,
+        ).map_err(|e| e.to_string())
     }
 
     fn broadcast(
         &self,
-        _event_type: &str,
-        _from: &str,
-        _project: Option<&str>,
-        _channel: &str,
-        _content: &str,
-        _priority: i32,
+        event_type: &str,
+        from: &str,
+        project: Option<&str>,
+        channel: &str,
+        content: &str,
+        priority: i32,
     ) -> Result<i64, String> {
-        Ok(0)
+        self.db.broadcast_event(event_type, from, project, channel, content, priority)
+            .map_err(|e| e.to_string())
     }
 
     fn poll(
         &self,
-        _since: i64,
-        _channel: Option<&str>,
-        _project: Option<&str>,
-        _limit: i32,
+        since: i64,
+        channel: Option<&str>,
+        project: Option<&str>,
+        limit: i32,
     ) -> Result<Vec<serde_json::Value>, String> {
-        Ok(vec![])
+        self.db.poll_events(since, channel, project, limit)
+            .map_err(|e| e.to_string())
     }
 
-    fn get_pending_messages(&self, _session_id: &str) -> Result<Vec<serde_json::Value>, String> {
-        Ok(vec![])
+    fn get_pending_messages(&self, session_id: &str) -> Result<Vec<serde_json::Value>, String> {
+        self.db.get_pending_messages(session_id)
+            .map_err(|e| e.to_string())
     }
 
-    fn mark_read(&self, _event_id: i64) -> Result<(), String> {
-        Ok(())
+    fn mark_read(&self, event_id: i64) -> Result<(), String> {
+        self.db.acknowledge_event(event_id)
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -255,6 +267,11 @@ impl McpServer {
     }
 
     pub fn init(&self) {
+        // Initialize database tables first
+        if let Err(e) = self.db.init() {
+            eprintln!("[MCP] Warning: Database init failed: {}", e);
+        }
+
         self.skills.init().ok();
         self.agents.init().ok();
         self.watchdog.start_monitoring();
@@ -1438,8 +1455,14 @@ fn action_antibrick_enable(&self, args: &Value) -> Result<Value, String> {
 
     fn action_mem_lock_acquire(&self, args: &Value) -> Result<Value, String> {
         let session_id = args.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
-        let lock_key = args.get("lock_key").and_then(|v| v.as_str()).unwrap_or("global");
-        let ttl = args.get("ttl_secs").and_then(|v| v.as_i64()).unwrap_or(60);
+        let lock_key = args.get("resource")
+            .or_else(|| args.get("lock_key"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("global");
+        let ttl = args.get("ttl_seconds")
+            .or_else(|| args.get("ttl_secs"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(60);
         
         match self.db.acquire_lock(session_id, lock_key, "generic", None, ttl) {
             Ok(success) => Ok(json!({ "success": success, "lock_key": lock_key })),
@@ -1448,7 +1471,10 @@ fn action_antibrick_enable(&self, args: &Value) -> Result<Value, String> {
     }
 
     fn action_mem_lock_release(&self, args: &Value) -> Result<Value, String> {
-        let lock_key = args.get("lock_key").and_then(|v| v.as_str()).unwrap_or("global");
+        let lock_key = args.get("resource")
+            .or_else(|| args.get("lock_key"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("global");
         match self.db.release_lock(lock_key) {
             Ok(_) => Ok(json!({ "success": true })),
             Err(e) => Err(e.to_string()),

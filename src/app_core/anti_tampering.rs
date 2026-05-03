@@ -100,16 +100,24 @@ impl AntiTamperingManager {
     
     /// Verify file integrity
     pub fn verify_file(&mut self, path: &Path) -> Result<bool, String> {
-        let record = self.monitored_files.get_mut(path)
-            .ok_or_else(|| format!("File not monitored: {:?}", path))?;
-        
-        if !record.path.exists() {
-            record.tampered = true;
-            self.send_alert(path, &record.checksum, &vec![], AlertSeverity::Critical);
+        let (checksum, exists) = {
+            let record = self.monitored_files.get_mut(path)
+                .ok_or_else(|| format!("File not monitored: {:?}", path))?;
+            
+            if !record.path.exists() {
+                record.tampered = true;
+                (record.checksum.clone(), false)
+            } else {
+                (record.checksum.clone(), true)
+            }
+        };
+
+        if !exists {
+            self.send_alert(path, &checksum, &vec![], AlertSeverity::Critical);
             return Ok(false);
         }
         
-        let data = fs::read(&record.path)
+        let data = fs::read(path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
         
         // Verify checksum
@@ -117,9 +125,11 @@ impl AntiTamperingManager {
         hasher.update(&data);
         let current_checksum = hasher.finalize().to_vec();
         
-        if current_checksum != record.checksum {
-            record.tampered = true;
-            self.send_alert(path, &record.checksum, &current_checksum, AlertSeverity::Critical);
+        if current_checksum != checksum {
+            if let Some(record) = self.monitored_files.get_mut(path) {
+                record.tampered = true;
+            }
+            self.send_alert(path, &checksum, &current_checksum, AlertSeverity::Critical);
             return Ok(false);
         }
         
@@ -127,14 +137,23 @@ impl AntiTamperingManager {
         let mut mac = HmacSha256::new_from_slice(&self.secret_key).unwrap();
         mac.update(&data);
         
-        if mac.verify_slice(&record.hmac).is_err() {
-            record.tampered = true;
-            self.send_alert(path, &record.checksum, &current_checksum, AlertSeverity::Critical);
+        let hmac_valid = {
+            let record = self.monitored_files.get(path).unwrap();
+            mac.verify_slice(&record.hmac).is_ok()
+        };
+
+        if !hmac_valid {
+            if let Some(record) = self.monitored_files.get_mut(path) {
+                record.tampered = true;
+            }
+            self.send_alert(path, &checksum, &current_checksum, AlertSeverity::Critical);
             return Ok(false);
         }
         
-        record.last_verified = Instant::now();
-        record.tampered = false;
+        if let Some(record) = self.monitored_files.get_mut(path) {
+            record.last_verified = Instant::now();
+            record.tampered = false;
+        }
         
         Ok(true)
     }

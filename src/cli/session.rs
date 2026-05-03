@@ -22,7 +22,7 @@ pub fn init_cli_session(cli_type: &str) -> SessionId {
         registry.register(session.clone());
     }
     
-    eprintln!("[CLI] Session initialized: {}", session.to_string());
+    eprintln!("[CLI] Session initialized: {:?}", session);
     eprintln!("[CLI] Type: {}", session.cli_type);
     eprintln!("[CLI] UUID: {}", session.instance_uuid);
     eprintln!("[CLI] Host: {}", session.hostname);
@@ -43,7 +43,7 @@ pub fn list_active_sessions(max_age_secs: i64) -> Vec<String> {
     registry
         .get_active(max_age_secs)
         .iter()
-        .map(|s| s.to_string())
+        .map(|s| format!("{:?}", s))
         .collect()
 }
 

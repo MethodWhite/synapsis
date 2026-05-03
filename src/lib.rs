@@ -8,6 +8,12 @@
 // Re-export synapsis-core as the foundation
 pub use synapsis_core::*;
 
+// App-specific core logic (updater, resilience, etc.)
+pub mod app_core;
+
+// CLI
+pub mod cli;
+
 // Presentation layer (MCP, HTTP, CLI, TUI) - specific to synapsis application
 pub mod api;
 pub mod presentation;
@@ -22,24 +28,20 @@ pub mod session_cleanup;
 // Re-export domain types for convenience
 pub use domain::*;
 
-// Security modules (re-export from core)
-#[cfg(feature = "security")]
+// Re-export core modules explicitly to resolve path issues
 pub mod rate_limiter {
-    pub use crate::core::rate_limiter::*;
+    pub use synapsis_core::core::rate_limiter::*;
 }
 
-#[cfg(feature = "security")]
 pub mod audit_log {
-    pub use crate::core::audit_log::*;
+    pub use synapsis_core::core::audit_log::*;
 }
 
-#[cfg(feature = "security")]
 pub mod zero_trust {
-    pub use crate::core::zero_trust::*;
+    pub use synapsis_core::core::zero_trust::*;
 }
 
-// PQC Digital Signatures with CRYSTALS-Dilithium (local module)
-#[cfg(feature = "security")]
+// PQC Digital Signatures with CRYSTALS-Dilithium
 pub mod dilithium {
-    include!("core/dilithium_signature.rs");
+    pub use crate::app_core::dilithium::*;
 }

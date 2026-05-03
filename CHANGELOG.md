@@ -7,25 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
-- ✅ Fixed: Session hijacking vulnerability (HMAC-SHA256 session IDs)
-- ✅ Fixed: Lock poisoning vulnerability (is_active verification)
-- ✅ Fixed: TCP authentication bypass (challenge-response auth)
-- ⚠️ Pending: Data encryption at rest (SQLCipher)
-- ⚠️ Pending: Rate limiting (token bucket)
+## [0.3.0] - 2026-05-03
+
+### Fixed
+- **Critical**: PersistentEventBus fully implemented with SQLite-backed events table
+  - Inter-agent messaging now works (CLI <-> IDE <-> TUI)
+  - Direct messages (`send_message`/`get_pending_messages`) between agents
+  - Broadcast to channels with polling (`broadcast`/`event_poll`)
+  - Event acknowledgment (`event_ack`)
+  - Automatic cleanup of expired events
+- **Critical**: `McpServer::init()` now calls `db.init()` - tables created on fresh install
+- **Critical**: `mem_lock_acquire`/`mem_lock_release` accept both `resource`/`ttl_seconds` (MCP spec) and legacy `lock_key`/`ttl_secs` params
+- **Major**: `mw-cli` SynapsisMcpClient rewritten with real JSON-RPC 2.0 MCP stdio communication
+  - Full handshake: `initialize` -> `initialized` -> `mem_session_start`
+  - All operations use real MCP tool calls instead of mock stubs
 
 ### Added
-- Multi-agent coordination with auto-reconnect
-- Distributed locking with TTL
-- Task queue with auto-assignment
-- FTS5 full-text search with BM25 ranking
-- Context caching (5 minute TTL)
-- Agent-agnostic MCP bridge
+- `events` table in SQLite with indexes for efficient agent/channel/project filtering
+- Database methods: `publish_event`, `broadcast_event`, `poll_events`, `get_pending_messages`, `acknowledge_event`, `cleanup_expired_events`
+- `connection_status` MCP tool to see active CLI/IDE/TUI connections
 
-### Changed
-- Improved security score: 4.5/10 → 8.5/10
-- Reduced task pending queue by 90%
-- Enhanced parallel execution efficiency
+## [0.2.0] - 2026-04-02
+
+### Added
+- MCP Server Hardening & Installer Infrastructure
 
 ## [0.1.0] - 2026-03-22
 
