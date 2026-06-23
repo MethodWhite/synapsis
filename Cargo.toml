@@ -1,6 +1,6 @@
 [package]
 name = "synapsis"
-version = "0.7.0"
+version = "0.8.2"
 edition = "2021"
 authors = ["methodwhite"]
 description = "Persistent memory engine for AI agents with PQC security"
@@ -66,6 +66,11 @@ mdns-sd = "0.11"
 
 # System monitoring
 sysinfo = "0.38"
+
+# QUIC transport
+quinn = "0.11"
+rustls = "0.23"
+rcgen = "0.13"
 
 # TUI (optional)
 crossterm = { version = "0.28", optional = true }

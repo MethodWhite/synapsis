@@ -89,25 +89,21 @@ fn test_task_types() {
 
 #[test]
 fn test_task_states() {
-    let states = vec![
-        TaskState::Pending,
+    let states = [TaskState::Pending,
         TaskState::Assigned,
         TaskState::InProgress,
         TaskState::Completed,
         TaskState::Failed,
-        TaskState::Blocked,
-    ];
+        TaskState::Blocked];
     assert_eq!(states.len(), 6);
 }
 
 #[test]
 fn test_task_priority() {
-    let priorities = vec![
-        TaskPriority::Critical,
+    let priorities = [TaskPriority::Critical,
         TaskPriority::High,
         TaskPriority::Normal,
-        TaskPriority::Low,
-    ];
+        TaskPriority::Low];
     assert_eq!(priorities.len(), 4);
 }
 
@@ -129,13 +125,11 @@ fn test_agent_types() {
 
 #[test]
 fn test_agent_states() {
-    let states = vec![
-        AgentState::Idle,
+    let states = [AgentState::Idle,
         AgentState::Working,
         AgentState::Waiting,
         AgentState::Available,
-        AgentState::Offline,
-    ];
+        AgentState::Offline];
     assert_eq!(states.len(), 5);
 }
 
@@ -296,7 +290,7 @@ fn test_orchestrator_recommend_filters_type() {
     let recommendations = orch.recommend(&task);
 
     // Should only recommend coder
-    assert!(recommendations.len() >= 1);
+    assert!(!recommendations.is_empty());
 }
 
 #[test]

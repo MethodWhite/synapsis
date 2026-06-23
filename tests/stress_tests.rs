@@ -32,7 +32,7 @@ mod tests {
             handles.push(std::thread::spawn(move || {
                 for i in 0..10 {
                     let obs = Observation::new(
-                        SessionId::new(&format!("agent-{}-session", agent_id)),
+                        SessionId::new(format!("agent-{}-session", agent_id)),
                         ObservationType::Bugfix,
                         format!("Agent {} Bug Fix {}", agent_id, i),
                         format!("Content from agent {} observation {}", agent_id, i),
@@ -94,11 +94,10 @@ mod tests {
 
             handles.push(std::thread::spawn(move || {
                 for _ in 0..10 {
-                    let id = storage.save_observation(&obs);
-                    if id.is_ok() {
+                    if let Ok(saved_id) = storage.save_observation(&obs) {
                         counter.fetch_add(1, Ordering::Relaxed);
                         let mut guard = ids.lock().unwrap();
-                        guard.push(id.unwrap());
+                        guard.push(saved_id);
                     }
                 }
             }));
@@ -118,7 +117,7 @@ mod tests {
         );
 
         assert!(
-            total >= 1 && total <= 3,
+            (1..=3).contains(&total),
             "Deduplication should result in ~1-2 inserts (sync_id may vary)"
         );
     }

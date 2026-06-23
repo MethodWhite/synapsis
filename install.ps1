@@ -1,7 +1,7 @@
 # Synapsis Installer - Windows (PowerShell)
 # Pure Rust - No Python dependencies
 param(
-    [string]$Version = "0.3.0"
+    [string]$Version = "0.8.2"
 )
 
 $Repo = "methodwhite/synapsis"

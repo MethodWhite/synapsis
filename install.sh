@@ -3,7 +3,7 @@
 # Pure Rust - No Python dependencies
 set -e
 
-VERSION="${SYNAPSIS_VERSION:-0.6.0}"
+VERSION="${SYNAPSIS_VERSION:-0.8.2}"
 REPO="methodwhite/synapsis"
 INSTALL_DIR="${HOME}/.local/bin"
 DATA_DIR="${HOME}/.local/share/synapsis"

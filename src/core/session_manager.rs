@@ -175,8 +175,7 @@ impl SessionManager {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_session_lifecycle() {
-        // Test would require actual DB connection
-        assert!(true);
+    fn test_session_placeholder() {
+        // Integration test requires actual DB connection
     }
 }

@@ -387,14 +387,15 @@ mod tests {
 
     #[test]
     fn test_throttle_logic() {
-        let mut limits = GlobalLimits::default();
-        limits.max_cpu_percent = 10.0; // Very low threshold for testing
-        limits.enable_adaptive_throttling = false;
+        let limits = GlobalLimits {
+            max_cpu_percent: 10.0,
+            enable_adaptive_throttling: false,
+            ..Default::default()
+        };
 
         let rm = ResourceManager::with_limits(limits);
 
         // Can't really test actual CPU usage, but we can test the method doesn't panic
-        let can_accept = rm.can_accept_task("test");
-        assert!(can_accept || !can_accept); // Either is fine, just not panic
+        let _ = rm.can_accept_task("test");
     }
 }

@@ -72,13 +72,11 @@ fn test_compression_level_ratios() {
 
 #[test]
 fn test_content_tier() {
-    let tiers = vec![
-        ContentTier::Essential,
+    let tiers = [ContentTier::Essential,
         ContentTier::Standard,
         ContentTier::OnDemand,
         ContentTier::Compressible,
-        ContentTier::Archive,
-    ];
+        ContentTier::Archive];
     assert_eq!(tiers.len(), 5);
 }
 
@@ -325,11 +323,9 @@ fn test_monitor_alerts_none_when_ok() {
 
 #[test]
 fn test_alert_types() {
-    let types = vec![
-        AlertType::HighUsage,
+    let types = [AlertType::HighUsage,
         AlertType::CompressionNeeded,
-        AlertType::ContextOverflow,
-    ];
+        AlertType::ContextOverflow];
     assert_eq!(types.len(), 3);
 }
 
