@@ -42,10 +42,10 @@ impl RateLimiter {
         let elapsed = now.duration_since(bucket.last_refill).as_secs_f64();
         bucket.tokens =
             (bucket.tokens + elapsed * self.tokens_per_second as f64).min(self.max_tokens as f64);
-        bucket.last_refill = now;
 
         if bucket.tokens >= 1.0 {
             bucket.tokens -= 1.0;
+            bucket.last_refill = now;
             Ok(())
         } else {
             Err(RateLimitError::TooManyRequests)

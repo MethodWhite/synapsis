@@ -237,27 +237,23 @@ impl Orchestrator {
     }
 
     pub fn complete_task(&self, task_id: &str, success: bool) {
-        let agent_id = {
-            let mut tasks = self.tasks.lock_safe();
-            if let Some(task) = tasks.get_mut(task_id) {
-                task.status = if success {
-                    TaskStatus::Completed
-                } else {
-                    TaskStatus::Failed
-                };
-                task.assigned_to.clone()
+        // Lock agents first, then tasks to avoid deadlock with assign_task (agents→tasks order)
+        let mut agents = self.agents.lock_safe();
+        let mut tasks = self.tasks.lock_safe();
+        if let Some(task) = tasks.get_mut(task_id) {
+            task.status = if success {
+                TaskStatus::Completed
             } else {
-                None
-            }
-        };
-        if let Some(aid) = agent_id {
-            let mut agents = self.agents.lock_safe();
-            if let Some(agent) = agents.get_mut(&aid) {
-                agent.status = AgentStatus::Idle;
-                agent.current_task = None;
-                agent.workload = agent.workload.saturating_sub(1);
-                self.resource_manager
-                    .update_agent_task_count(&aid, agent.workload as usize);
+                TaskStatus::Failed
+            };
+            if let Some(ref aid) = task.assigned_to {
+                if let Some(agent) = agents.get_mut(aid) {
+                    agent.status = AgentStatus::Idle;
+                    agent.current_task = None;
+                    agent.workload = agent.workload.saturating_sub(1);
+                    self.resource_manager
+                        .update_agent_task_count(aid, agent.workload as usize);
+                }
             }
         }
     }

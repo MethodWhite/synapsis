@@ -159,19 +159,9 @@ impl ToolRegistry {
     }
 
     pub fn find_workers_by_capability(&self, cap: &str) -> Vec<&WorkerConfig> {
-        let tool_names: Vec<&str> = self
-            .capability_index
-            .get(cap)
-            .map(|v| v.iter().map(|s| s.as_str()).collect())
-            .unwrap_or_default();
-
         self.workers
             .values()
-            .filter(|w| {
-                w.capabilities
-                    .iter()
-                    .any(|c| tool_names.contains(&c.as_str()))
-            })
+            .filter(|w| w.capabilities.iter().any(|c| c == cap))
             .collect()
     }
 

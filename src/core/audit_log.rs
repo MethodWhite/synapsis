@@ -100,8 +100,8 @@ impl AuditLog {
     fn current_timestamp(&self) -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64
+            .unwrap_or_default()
+            .as_micros() as i64
     }
 }
 
