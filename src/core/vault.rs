@@ -248,7 +248,7 @@ impl SecureVault {
             let mut entries = self.entries.write_safe();
 
             if let Some(e) = entries.get_mut(session_id) {
-                e.rotation_count += 1;
+                e.rotation_count = e.rotation_count.saturating_add(1);
                 e.last_used = current_timestamp();
                 e.clone()
             } else {
@@ -434,7 +434,7 @@ impl SecureVault {
             entries
                 .iter()
                 .filter(|(_, e)| {
-                    let ttl_expired = e.last_used + 86400 < now;
+                    let ttl_expired = e.last_used.saturating_add(86400) < now;
                     let key = self.get_session_key(&e.session_id).ok().flatten();
                     let expires = key.and_then(|k| k.expires_at);
                     ttl_expired || expires.map(|exp| now > exp).unwrap_or(false)

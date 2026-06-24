@@ -24,7 +24,7 @@ impl ContextBudget {
             limit,
             used: 0,
             reserved_essentials: limit / 5,
-            comprehensive_limit: (limit * 3) / 4,
+            comprehensive_limit: limit.saturating_mul(3) / 4,
             safety_buffer: limit / 10,
         }
     }

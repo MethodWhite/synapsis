@@ -7,7 +7,7 @@
 //! - Mantiene el contexto coherente
 //! - Recicla partes no usadas frecuentemente
 
-use super::context::Context;
+use super::Context;
 use super::types::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -234,7 +234,10 @@ impl HotRecycler {
 
         // 2. Variables (si hay)
         if !context.variables.is_empty() {
-            let vars_json = serde_json::to_string(&context.variables).unwrap_or_default();
+            let vars_json = serde_json::to_string(&context.variables).unwrap_or_else(|e| {
+                eprintln!("[Synapsis] Warning: failed to serialize context variables: {}", e);
+                String::new()
+            });
             if vars_json.len() <= self.config.max_chunk_size {
                 chunks.push((ChunkType::Core, vars_json));
             } else {

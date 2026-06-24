@@ -5,6 +5,22 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::process::Command as TokioCommand;
 
+fn urlencode(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(byte as char);
+            }
+            b' ' => result.push('+'),
+            _ => {
+                result.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    result
+}
+
 pub struct SearchWorker {
     id: String,
     skills: Vec<String>,
@@ -39,7 +55,7 @@ impl SearchWorker {
                 "-s",
                 "https://api.duckduckgo.com/",
                 "-d",
-                &format!("q={}", query),
+                &format!("q={}", urlencode(query)),
                 "-d",
                 "format=json",
             ])
@@ -60,12 +76,15 @@ impl SearchWorker {
         path: &str,
         file_filter: Option<&str>,
     ) -> Result<String, String> {
-        let mut args = vec!["-r".to_string(), pattern.to_string(), path.to_string()];
+        let mut args = vec!["-r".to_string(), pattern.to_string()];
 
         if let Some(filter) = file_filter {
             args.push("--include".to_string());
             args.push(filter.to_string());
         }
+
+        args.push("--".to_string());
+        args.push(path.to_string());
 
         let output = std::process::Command::new("rg")
             .args(&args)
@@ -115,10 +134,13 @@ impl WorkerAgent for SearchWorker {
                         TaskError::new(0x0100, "Missing 'query' in payload", &task.id)
                     })?;
 
-                let rt = tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap();
+                static RT: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+                let rt = RT.get_or_init(|| {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("Failed to build tokio runtime for search")
+                });
                 match rt.block_on(self.web_search_async(query)) {
                     Ok(results) => Ok(TaskResult::success(
                         results,

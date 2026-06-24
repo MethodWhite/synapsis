@@ -149,7 +149,10 @@ impl SessionId {
     pub fn from_string(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.split('-').collect();
         if parts.len() >= 6 {
-            let signature = format!("{}-{}", parts[5], parts.get(6).unwrap_or(&""));
+            let signature = match parts.get(6) {
+                Some(p6) => format!("{}-{}", parts[5], p6),
+                None => parts[5].to_string(),
+            };
             Some(Self {
                 cli_type: parts[0].to_string(),
                 instance_uuid: parts[1].to_string(),

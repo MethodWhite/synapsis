@@ -439,7 +439,14 @@ impl CLI {
     }
 
     fn cmd_export(&self, args: &[&str]) -> Result<(), i32> {
-        let path = args.first().copied().unwrap_or("synapsis-export.json");
+        let file_name = args.first().copied().unwrap_or("synapsis-export.json");
+        let data_dir = crate::config::data_dir();
+        let path = data_dir.join("exports");
+        std::fs::create_dir_all(&path).map_err(|e| {
+            eprintln!("Failed to create exports directory: {}", e);
+            1
+        })?;
+        let full_path = path.join(file_name);
 
         let timeline = self.db.get_timeline(10000).map_err(|e| {
             eprintln!("Database error: {}", e);
@@ -451,12 +458,12 @@ impl CLI {
             1
         })?;
 
-        std::fs::write(path, data).map_err(|e| {
+        std::fs::write(&full_path, data).map_err(|e| {
             eprintln!("Write error: {}", e);
             1
         })?;
 
-        println!("Exported to {}", path);
+        println!("Exported to {}", full_path.display());
         Ok(())
     }
 

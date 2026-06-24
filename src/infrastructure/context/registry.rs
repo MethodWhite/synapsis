@@ -8,7 +8,7 @@
 //! - Carga perezosa y prefetch
 
 use super::cold_storage::{ColdStats, ColdStorage};
-use super::context::{Context, ContextValue};
+use super::{Context, ContextValue};
 use super::global_context::{GlobalContext, VarType};
 use super::relevance::{ContextRelevanceData, RelevanceEngine};
 use super::types::*;

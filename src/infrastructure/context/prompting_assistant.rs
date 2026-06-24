@@ -9,7 +9,7 @@
 //! Este es el "segundo cerebro" que ayuda a la IA principal
 //! a tomar mejores decisiones.
 
-use super::context::Context;
+use super::Context;
 use super::hot_recycler::HotRecycler;
 use super::types::*;
 use serde::{Deserialize, Serialize};

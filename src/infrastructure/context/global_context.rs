@@ -4,7 +4,7 @@
 //! Parámetros del sistema que no deben cargarse completamente
 //! pero están disponibles cuando se necesitan.
 
-use super::context::ContextValue;
+use super::ContextValue;
 use super::types::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -104,16 +104,14 @@ impl GlobalContext {
     /// Obtiene una variable SIN cargar todo el contexto global
     /// Solo carga la variable específica solicitada
     pub fn get(&mut self, name: &str) -> Option<&ContextValue> {
-        // Verificar si está cacheado
-        if let Some(var) = self.variables.get(name) {
+        let name_key = name.to_string();
+        if let Some(var) = self.variables.get_mut(&name_key) {
             if var.cached {
-                var.access_count += 1;
+                var.access_count = var.access_count.saturating_add(1);
                 var.last_access = now_timestamp();
                 return var.value().ok();
             }
         }
-
-        // No está cacheado - cargar bajo demanda
         self.load_var(name)
     }
 
