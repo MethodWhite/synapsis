@@ -4,7 +4,7 @@ use crate::core::uuid::Uuid;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command as TokioCommand;
 
 pub struct ShellWorker {
@@ -101,7 +101,7 @@ impl ShellWorker {
 
             if let Some(mut stdout) = stdout {
                 let mut reader = tokio::io::BufReader::new(&mut stdout);
-                let _ = reader.read_line(&mut output).await;
+                let _ = reader.read_to_string(&mut output).await;
             }
 
             let status = child
@@ -112,7 +112,7 @@ impl ShellWorker {
             if let Some(mut stderr) = stderr {
                 let mut err_output = String::new();
                 let mut stderr_reader = tokio::io::BufReader::new(&mut stderr);
-                let _ = stderr_reader.read_line(&mut err_output).await;
+                let _ = stderr_reader.read_to_string(&mut err_output).await;
                 if !err_output.is_empty() {
                     output.push_str("\nSTDERR: ");
                     output.push_str(&err_output);

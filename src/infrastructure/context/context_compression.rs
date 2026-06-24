@@ -230,8 +230,8 @@ impl ContextCompressor {
                 let mut c = frag.clone();
                 c.content = compressed;
                 c.tokens = estimate_tokens(&c.content);
+                total += c.tokens;
                 result.add_middle(c);
-                total += frag.tokens;
             }
         }
 

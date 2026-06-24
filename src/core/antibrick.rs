@@ -824,6 +824,11 @@ fn derive_antibrick_key() -> Vec<u8> {
         let _ = std::fs::create_dir_all(parent);
     }
     let _ = std::fs::write(&key_path, &key);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
+    }
     key
 }
 

@@ -45,7 +45,6 @@ fn handle_connection(mut stream: TcpStream, server: &McpServer) {
     }
     let method = parts[0];
     let path = parts[1];
-
     let mut content_length: usize = 0;
 
     loop {
@@ -58,7 +57,7 @@ fn handle_connection(mut stream: TcpStream, server: &McpServer) {
             let key = line[..pos].trim().to_lowercase();
             let value = line[pos + 1..].trim().to_string();
             if key == "content-length" {
-                content_length = value.parse().unwrap_or(0);
+                content_length = value.parse().unwrap_or(0).min(10_000_000);
             }
         }
     }
@@ -75,6 +74,11 @@ fn handle_connection(mut stream: TcpStream, server: &McpServer) {
             }
         }
         ("POST", "/") | ("POST", "/message") => {
+            if content_length > 10_000_000 {
+                let resp = "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\n\r\n";
+                let _ = stream.write_all(resp.as_bytes());
+                return;
+            }
             let mut body = vec![0u8; content_length];
             let _ = reader.read_exact(&mut body);
             let body_str = String::from_utf8_lossy(&body);

@@ -15,7 +15,8 @@ impl QuicTransport {
     }
 
     pub fn start(&self, port: u16) {
-        let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().expect("Invalid bind address");
+        let bind_addr = std::env::var("SYNAPSIS_QUIC_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
+        let addr: SocketAddr = format!("{}:{}", bind_addr, port).parse().expect("Invalid bind address");
         let server = self.server.clone();
 
         let (cert_der, key_der) = generate_self_signed_cert();

@@ -324,7 +324,13 @@ pub fn handle_watchdog_snapshot(
     id: &Value,
     args: &Value,
 ) -> anyhow::Result<Value> {
-    let path = args["path"].as_str().unwrap_or("/").to_string();
+    let path = args["path"].as_str().unwrap_or(".").to_string();
+    if path == "/" {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": "Cannot snapshot entire filesystem. Specify a project path." }
+        }));
+    }
     let result = crate::core::watchdog::mcp_tools::handle_watchdog_snapshot(watchdog, path);
     Ok(json!({
         "jsonrpc": "2.0",
@@ -352,7 +358,7 @@ pub fn handle_watchdog_check_path(
     id: &Value,
     args: &Value,
 ) -> anyhow::Result<Value> {
-    let path = args["path"].as_str().unwrap_or("/").to_string();
+    let path = args["path"].as_str().unwrap_or(".").to_string();
     let result = crate::core::watchdog::mcp_tools::handle_watchdog_check_path(watchdog, path);
     Ok(json!({
         "jsonrpc": "2.0",
@@ -363,42 +369,53 @@ pub fn handle_watchdog_check_path(
 
 fn is_private_url(url_str: &str) -> bool {
     let lower = url_str.to_lowercase();
-    let private_patterns = [
-        "localhost",
-        "127.0.0.1",
-        "::1",
-        "[::1]",
-        "0.0.0.0",
-        "10.",
-        "172.16.",
-        "172.17.",
-        "172.18.",
-        "172.19.",
-        "172.20.",
-        "172.21.",
-        "172.22.",
-        "172.23.",
-        "172.24.",
-        "172.25.",
-        "172.26.",
-        "172.27.",
-        "172.28.",
-        "172.29.",
-        "172.30.",
-        "172.31.",
-        "192.168.",
-        "169.254.",
-    ];
-    private_patterns.iter().any(|p| lower.contains(p))
+    if lower.contains("localhost") || lower.contains("127.0.0.1") || lower.contains("::1") || lower.contains("[::1]") || lower.contains("0.0.0.0") || lower.contains("169.254.") {
+        return true;
+    }
+    if let Ok(parsed) = url::Url::parse(url_str) {
+        if let Some(host) = parsed.host_str() {
+            if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0" {
+                return true;
+            }
+            if host.ends_with(".local") || host.ends_with(".internal") {
+                return true;
+            }
+            if let Some(addr) = host.parse::<std::net::IpAddr>().ok() {
+                match addr {
+                    std::net::IpAddr::V4(a) => {
+                        return a.is_loopback() || a.is_private() || a.is_link_local();
+                    }
+                    std::net::IpAddr::V6(a) => {
+                        return a.is_loopback() || a.is_unicast_link_local();
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 fn sanitize_path(input: &str) -> std::result::Result<std::path::PathBuf, String> {
     let path = std::path::Path::new(input);
-    let canonical = std::fs::canonicalize(path).map_err(|_| format!("Invalid path: {}", input))?;
-    if canonical.components().any(|c| c.as_os_str() == "..") {
-        return Err("Path traversal detected".to_string());
+    if path.exists() {
+        let canonical = std::fs::canonicalize(path).map_err(|_| format!("Cannot resolve path: {}", input))?;
+        return Ok(canonical);
     }
-    Ok(canonical)
+    // File doesn't exist — resolve parent directory
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            return Err(format!("Parent directory does not exist: {}", parent.display()));
+        }
+        let canonical_parent = std::fs::canonicalize(parent).map_err(|_| format!("Cannot resolve parent: {}", parent.display()))?;
+        if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+            let full_path = canonical_parent.join(file_name);
+            if full_path.components().any(|c| c.as_os_str() == "..") {
+                return Err("Path traversal detected".to_string());
+            }
+            return Ok(full_path);
+        }
+    }
+    Err(format!("Invalid path: {}", input))
 }
 
 pub fn handle_db_backup(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
@@ -677,6 +694,13 @@ pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value
         }));
     }
 
+    if is_private_url(url) && std::env::var("SYNAPSIS_ALLOW_PRIVATE_MCP").is_err() {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": format!("SSRF protection: blocked private URL '{}'. Set SYNAPSIS_ALLOW_PRIVATE_MCP=1 to allow", url) }
+        }));
+    }
+
     let mut builder = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -719,6 +743,12 @@ pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value
 
             let body = resp.text().unwrap_or_default();
             let body_len = body.len();
+            if body_len > 10_000_000 {
+                return Ok(json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "content": [{ "type": "text", "text": format!("Response too large ({} bytes). Max 10MB.", body_len) }] }
+                }));
+            }
 
             let result = match extract {
                 "meta" => {
@@ -780,6 +810,13 @@ pub fn handle_browser_snapshot(id: &Value, args: &Value) -> anyhow::Result<Value
         }));
     }
 
+    if is_private_url(url) && std::env::var("SYNAPSIS_ALLOW_PRIVATE_MCP").is_err() {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": format!("SSRF protection: blocked private URL '{}'. Set SYNAPSIS_ALLOW_PRIVATE_MCP=1 to allow", url) }
+        }));
+    }
+
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
@@ -801,6 +838,12 @@ pub fn handle_browser_snapshot(id: &Value, args: &Value) -> anyhow::Result<Value
         Ok(resp) => {
             let status = resp.status().as_u16();
             let body = resp.text().unwrap_or_default();
+            if body.len() > 10_000_000 {
+                return Ok(json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "content": [{ "type": "text", "text": format!("Response too large ({} bytes). Max 10MB.", body.len()) }] }
+                }));
+            }
             let title = extract_title(&body);
             let desc = extract_meta(&body, "description");
             let text = strip_html(&body);

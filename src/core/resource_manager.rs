@@ -201,13 +201,9 @@ impl ResourceManager {
         let agent_limits = self.agent_limits.lock_safe();
 
         if let Some(limits) = agent_limits.get(agent_type) {
-            if let Some(stats) = agent_stats.values().find(|s| {
-                // Find agents of this type
-                agent_type.starts_with(s.pid.map(|_| "").unwrap_or(""))
-            }) {
-                if stats.task_count >= limits.max_concurrent_tasks {
-                    return false;
-                }
+            let total_tasks: usize = agent_stats.values().map(|s| s.task_count).sum();
+            if total_tasks >= limits.max_concurrent_tasks {
+                return false;
             }
         }
 

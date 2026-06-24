@@ -2215,6 +2215,7 @@ dependencies = [
  "sha2",
  "sysinfo",
  "tokio",
+ "url",
  "uuid",
 ]
 

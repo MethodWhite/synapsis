@@ -799,18 +799,14 @@ impl Database {
     }
 
     fn sanitize_fts_query(query: &str) -> String {
-        let lower = query.to_lowercase();
-        let blocklist = ["or ", "and ", "not ", "near("];
-        if blocklist.iter().any(|d| lower.contains(d)) {
-            let sanitized: String = query
-                .chars()
-                .filter(|c| {
-                    c.is_alphanumeric() || c.is_whitespace() || *c == '-' || *c == '_' || *c == '"'
-                })
-                .collect();
-            return sanitized.split_whitespace().collect::<Vec<_>>().join(" ");
-        }
-        query.to_string()
+        query
+            .chars()
+            .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '-' || *c == '_')
+            .collect::<String>()
+            .split_whitespace()
+            .filter(|w| !matches!(*w, "or" | "and" | "not" | "near" | "NEAR" | "OR" | "AND" | "NOT"))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     pub fn search_fts5(

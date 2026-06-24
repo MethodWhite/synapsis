@@ -54,6 +54,7 @@ hex = "0.4"
 
 # CLI
 regex = "1"
+url = "2"
 
 # Async
 tokio = { version = "1", features = ["full"] }
