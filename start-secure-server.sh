@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_SCRIPT="$SCRIPT_DIR/secure_tcp_server.py"
 
 # Default API key (CHANGE IN PRODUCTION!)
-DEFAULT_API_KEY="synapsis-$(hostname)-$(date +%Y%m%d)-secure-key"
+DEFAULT_API_KEY="synapsis-$(head -c 32 /dev/urandom | xxd -p -c 32)-key"
 
 # Load API keys from environment or use default
 if [ -z "$SYNAPSIS_API_KEYS" ]; then

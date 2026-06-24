@@ -111,7 +111,8 @@ impl GitSyncEngine {
         manifest.chunks.clear();
         manifest.total_size = 0;
         for chunk in &chunks {
-            manifest.add_chunk(chunk.id.clone(), chunk.size(), ContentHash::zero());
+            let hash = ContentHash::compute(&chunk.data);
+            manifest.add_chunk(chunk.id.clone(), chunk.size(), hash);
         }
         let manifest_id = manifest.id.clone();
         Ok(manifest_id)
@@ -141,6 +142,6 @@ impl GitSyncEngine {
 fn current_timestamp() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_millis() as u64
 }
