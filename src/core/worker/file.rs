@@ -42,7 +42,7 @@ impl FileWorker {
     fn is_path_allowed(&self, path: &Path) -> bool {
         let allowed = self.allowed_dirs.lock_safe();
         if allowed.is_empty() {
-            return true;
+            return false;
         }
         allowed.iter().any(|d| path.starts_with(d))
     }

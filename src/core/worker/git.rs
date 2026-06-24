@@ -2,9 +2,15 @@ use super::{Task, TaskError, TaskResult, TaskType, WorkerAgent};
 use crate::core::lock_utils::*;
 use crate::core::uuid::Uuid;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 use tokio::process::Command as TokioCommand;
+
+const ALLOWED_GIT_SUBCOMMANDS: &[&str] = &[
+    "log", "diff", "status", "show", "branch", "tag", "describe",
+    "rev-parse", "rev-list", "rev-count", "shortlog",
+];
+const BLOCKED_GIT_FLAGS: &[&str] = &["-c", "--config-env", "--config"];
 
 pub struct GitWorker {
     id: String,
@@ -100,10 +106,30 @@ impl WorkerAgent for GitWorker {
             return Err(TaskError::new(0x0100, "Empty git command", &task.id));
         }
 
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap();
+        // Security: block dangerous git flags
+        for arg in &git_args {
+            if BLOCKED_GIT_FLAGS.contains(arg) {
+                return Err(TaskError::new(0x0100,
+                    &format!("Blocked git flag: {}. Only safe subcommands are allowed.", arg),
+                    &task.id));
+            }
+        }
+
+        // Security: only allow safe subcommands
+        let subcmd = git_args[0];
+        if !ALLOWED_GIT_SUBCOMMANDS.contains(&subcmd) {
+            return Err(TaskError::new(0x0100,
+                &format!("Git subcommand '{}' is not allowed. Allowed: {:?}", subcmd, ALLOWED_GIT_SUBCOMMANDS),
+                &task.id));
+        }
+
+        static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+        let rt = RT.get_or_init(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to build git runtime")
+        });
         match rt.block_on(self.execute_git_async(git_args, cwd)) {
             Ok(output) => Ok(TaskResult::success(
                 output,

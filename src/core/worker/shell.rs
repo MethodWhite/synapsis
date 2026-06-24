@@ -60,11 +60,9 @@ impl ShellWorker {
         command: &str,
         timeout_secs: u64,
     ) -> Result<String, String> {
-        if Self::has_dangerous_metachars(command)
-            && std::env::var("SYNAPSIS_ALLOW_DANGEROUS_SHELL").is_err()
-        {
+        if Self::has_dangerous_metachars(command) {
             return Err(format!(
-                "BLOCKED: Dangerous shell metacharacters in command. Set SYNAPSIS_ALLOW_DANGEROUS_SHELL=1 to allow: {}",
+                "BLOCKED: Dangerous shell metacharacters in command: {}",
                 command
             ));
         }
@@ -174,10 +172,13 @@ impl WorkerAgent for ShellWorker {
             .and_then(|v| v.as_u64())
             .unwrap_or(300);
 
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap();
+        static RT: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+        let rt = RT.get_or_init(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to build shell runtime")
+        });
         let result = rt.block_on(self.execute_shell_async(command, timeout));
 
         let duration = start.elapsed().as_millis() as u64;

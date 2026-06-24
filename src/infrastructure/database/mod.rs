@@ -848,6 +848,10 @@ impl Database {
     }
 
     pub fn backup_to(&self, path: &std::path::Path) -> Result<()> {
+        let path_str = path.display().to_string();
+        if !path_str.chars().all(|c| c.is_alphanumeric() || c == '/' || c == '-' || c == '_' || c == '.' || c == ':') {
+            return Err(SynapsisError::internal_bug("Backup path contains invalid characters".to_string()));
+        }
         let conn = self.get_conn();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -855,7 +859,7 @@ impl Database {
         }
         conn.execute_batch(&format!(
             "VACUUM INTO '{}'",
-            path.display().to_string().replace('\'', "''")
+            path_str.replace('\'', "''")
         ))
         .map_err(|e| SynapsisError::internal_bug(e.to_string()))?;
         db_info!("[Database] Backup saved to {}", path.display());
