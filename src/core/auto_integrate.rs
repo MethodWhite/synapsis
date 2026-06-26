@@ -90,7 +90,7 @@ impl AutoIntegrate {
         let running = Arc::clone(&self.running);
 
         let discovery = Arc::new(EnvironmentDiscovery::new());
-        let registry = ToolRegistryState::new();
+        let registry = ToolRegistryState(self.registry.0.clone());
         let config = self.config.clone();
 
         thread::spawn(move || {
@@ -244,13 +244,10 @@ impl AutoIntegrate {
     }
 
     pub fn force_scan(&self) -> DiscoveryScan {
-        let discovery = EnvironmentDiscovery::new();
-        let scan = discovery.scan();
-
+        let scan = self._discovery.scan();
         for tool in scan.new_tools.clone() {
             self.registry.register(tool);
         }
-
         scan
     }
 }

@@ -12,13 +12,5 @@ pub mod tools;
 pub use domain::*;
 
 // Security modules
-
-#[cfg(feature = "security")]
-pub mod rate_limiter {
-    pub use crate::core::rate_limiter::*;
-}
-
-#[cfg(feature = "security")]
-pub mod audit_log {
-    pub use crate::core::audit_log::*;
-}
+pub use crate::core::rate_limiter::*;
+pub use crate::core::audit_log::*;

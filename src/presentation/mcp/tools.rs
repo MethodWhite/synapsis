@@ -172,14 +172,19 @@ pub fn handle_mem_delete(db: &Database, id: &Value, args: &Value) -> anyhow::Res
             "error": { "code": -32602, "message": "Missing or invalid observation id" }
         }));
     }
+    let agent_id = args["agent_id"].as_str();
+    let session_id = args["session_id"].as_str();
     match db.soft_delete_observation(obs_id) {
-        Ok(_) => Ok(json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": {
-                "content": [{ "type": "text", "text": format!("Observation {} soft-deleted.", obs_id) }]
-            }
-        })),
+        Ok(_) => {
+            db.log_audit("delete", Some(obs_id), agent_id, session_id, None, None, args["reason"].as_str()).ok();
+            Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "content": [{ "type": "text", "text": format!("Observation {} soft-deleted.", obs_id) }]
+                }
+            }))
+        }
         Err(e) => Ok(json!({
             "jsonrpc": "2.0", "id": id,
             "result": { "content": [{ "type": "text", "text": format!("Delete failed: {}", e) }] }
@@ -690,7 +695,10 @@ pub fn handle_mem_update(db: &Database, id: &Value, args: &Value) -> anyhow::Res
         return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'id'"}}));
     }
     match db.update_observation(obs_id, title, content) {
-        Ok(_) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Observation {} updated.",obs_id)}]}})),
+        Ok(_) => {
+            db.log_audit("update", Some(obs_id), args["agent_id"].as_str(), args["session_id"].as_str(), None, Some(content), args["reason"].as_str()).ok();
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Observation {} updated.",obs_id)}]}}))
+        }
         Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
     }
 }
@@ -838,6 +846,31 @@ pub fn handle_mem_current_project(db: &Database, id: &Value, args: &Value) -> an
     ).unwrap_or(0);
     let text = format!("Project: {} | Active observations: {}", project, count);
     Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
+pub fn handle_mem_audit_log(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let limit = args["limit"].as_i64().unwrap_or(20) as i32;
+    match db.get_audit_trail(limit) {
+        Ok(entries) => {
+            let text = if entries.is_empty() {
+                "No audit entries.".to_string()
+            } else {
+                let mut lines = vec![format!("Audit log (last {}):", entries.len())];
+                for e in &entries {
+                    lines.push(format!("[{}] {} (obs#{}) by {} -- {}",
+                        e["created_at"].as_i64().unwrap_or(0),
+                        e["action"].as_str().unwrap_or("?"),
+                        e["observation_id"].as_i64().unwrap_or(0),
+                        e["agent_id"].as_str().unwrap_or("?"),
+                        e["reason"].as_str().unwrap_or(""),
+                    ));
+                }
+                lines.join("\n")
+            };
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+        }
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
 }
 
 pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value> {

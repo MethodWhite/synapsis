@@ -297,6 +297,17 @@ impl Database {
                 created_at INTEGER NOT NULL,
                 checksum TEXT
             );
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                observation_id INTEGER,
+                agent_id TEXT,
+                session_id TEXT,
+                old_value TEXT,
+                new_value TEXT,
+                reason TEXT,
+                created_at INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS memory_relations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sync_id TEXT NOT NULL UNIQUE,
@@ -974,6 +985,35 @@ impl Database {
             params![target_project, source_project],
         )?;
         Ok(updated as i64)
+    }
+
+    pub fn log_audit(&self, action: &str, observation_id: Option<i64>, agent_id: Option<&str>, session_id: Option<&str>, old_value: Option<&str>, new_value: Option<&str>, reason: Option<&str>) -> Result<()> {
+        let conn = self.get_conn();
+        let now = Timestamp::now().0;
+        conn.execute(
+            "INSERT INTO audit_log (action, observation_id, agent_id, session_id, old_value, new_value, reason, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![action, observation_id, agent_id, session_id, old_value, new_value, reason, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_audit_trail(&self, limit: i32) -> Result<Vec<serde_json::Value>> {
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, action, observation_id, agent_id, session_id, reason, created_at FROM audit_log ORDER BY created_at DESC LIMIT ?1"
+        )?;
+        let rows = stmt.query_map(params![limit], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, i64>(0)?,
+                "action": row.get::<_, String>(1)?,
+                "observation_id": row.get::<_, Option<i64>>(2)?,
+                "agent_id": row.get::<_, Option<String>>(3)?,
+                "session_id": row.get::<_, Option<String>>(4)?,
+                "reason": row.get::<_, Option<String>>(5)?,
+                "created_at": row.get::<_, i64>(6)?,
+            }))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     pub fn doctor_check(&self) -> Result<serde_json::Value> {

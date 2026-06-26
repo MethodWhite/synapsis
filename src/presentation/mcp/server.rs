@@ -692,6 +692,16 @@ impl McpServer {
                             "project": { "type": "string" }
                         }
                     }
+                },
+                {
+                    "name": "mem_audit_log",
+                    "description": "View the audit trail of observation changes (updates, deletes).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "limit": { "type": "integer", "default": 20 }
+                        }
+                    }
                 }
             ]}
         }))
@@ -718,6 +728,7 @@ impl McpServer {
             "mem_doctor" => tools::handle_mem_doctor(&self.db, id),
             "mem_merge_projects" => tools::handle_mem_merge_projects(&self.db, id, args),
             "mem_current_project" => tools::handle_mem_current_project(&self.db, id, args),
+            "mem_audit_log" => tools::handle_mem_audit_log(&self.db, id, args),
             "ghost_audit" => tools::handle_ghost_audit(&self.orchestrator, id, args),
             "pqc_encrypt" => tools::handle_pqc_encrypt(id, args),
             "wasm_run" => tools::handle_wasm_run(id, args),
