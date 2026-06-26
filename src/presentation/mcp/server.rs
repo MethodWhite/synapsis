@@ -10,6 +10,7 @@ use crate::core::auth::challenge::ChallengeResponse;
 use crate::core::auth::classifier::AgentClassifier;
 use crate::core::orchestrator::Orchestrator;
 use crate::core::recycle::RecycleBin;
+use crate::core::agent_registry_ext::AgentRegistryExt;
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
 use crate::infrastructure::agents::AgentRegistry;
@@ -43,6 +44,7 @@ pub struct McpServer {
     antibrick: Arc<AntiBrickEngine>,
     watchdog: Arc<FilesystemWatchdog>,
     recycle: RecycleBin,
+    agent_ext: AgentRegistryExt,
     classifier: Option<AgentClassifier>,
     #[allow(dead_code)]
     challenge: Option<ChallengeResponse>,
@@ -71,8 +73,9 @@ impl McpServer {
     pub fn new(db: Arc<Database>, orchestrator: Arc<Orchestrator>) -> Self {
         let auth_enabled = std::env::var("SYNAPSIS_AUTH").is_ok();
         Self {
-            db,
+            db: db.clone(),
             recycle: RecycleBin::new(crate::config::data_dir()),
+            agent_ext: AgentRegistryExt::new(db),
             classifier: auth_enabled.then(AgentClassifier::new),
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
@@ -765,6 +768,28 @@ impl McpServer {
                         },
                         "required": ["id"]
                     }
+                },
+                {
+                    "name": "agent_unregister",
+                    "description": "Unregister an agent (mark as inactive).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "agent_id": { "type": "string", "description": "Agent session ID" }
+                        },
+                        "required": ["agent_id"]
+                    }
+                },
+                {
+                    "name": "agent_list_by_project",
+                    "description": "List all agents in a specific project.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project": { "type": "string" }
+                        },
+                        "required": ["project"]
+                    }
                 }
             ]}
         }))
@@ -815,6 +840,8 @@ impl McpServer {
             "skill_list" => tools::handle_skill_list(&self.skills, id),
             "agent_register" => tools::handle_agent_register(&self.agents, id, args),
             "agent_list" => tools::handle_agent_list(&self.agents, id),
+            "agent_unregister" => tools::handle_agent_unregister(&self.agent_ext, id, args),
+            "agent_list_by_project" => tools::handle_agent_list_by_project(&self.agent_ext, id, args),
             "task_create" => tools::handle_task_create(&self.orchestrator, id, args),
             "task_list" => tools::handle_task_list(&self.orchestrator, id),
             "mcp_call" => tools::handle_mcp_call(id, args),

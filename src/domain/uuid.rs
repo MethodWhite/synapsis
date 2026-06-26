@@ -6,14 +6,7 @@ pub struct Uuid(pub [u8; 16]);
 impl Uuid {
     pub fn new_v4() -> Self {
         let mut bytes = [0u8; 16];
-        if getrandom::getrandom(&mut bytes).is_err() {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-            // Fallback: use timestamp-based UUID
-            let ts_bytes = nanos.to_le_bytes();
-            let len = ts_bytes.len().min(16);
-            bytes[..len].copy_from_slice(&ts_bytes[..len]);
-        }
+        crate::core::security::SecureRng::fill_random(&mut bytes);
 
         bytes[6] = (bytes[6] & 0x0f) | 0x40;
         bytes[8] = (bytes[8] & 0x3f) | 0x80;

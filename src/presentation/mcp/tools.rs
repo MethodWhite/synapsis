@@ -926,6 +926,40 @@ pub fn handle_mem_recycle_delete(recycle: &crate::core::recycle::RecycleBin, id:
     }
 }
 
+pub fn handle_agent_unregister(agent_ext: &crate::core::agent_registry_ext::AgentRegistryExt, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let agent_id = args["agent_id"].as_str().unwrap_or("");
+    if agent_id.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'agent_id'"}}));
+    }
+    match agent_ext.unregister_agent(agent_id) {
+        Ok(_) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Agent {} unregistered.", agent_id)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_agent_list_by_project(agent_ext: &crate::core::agent_registry_ext::AgentRegistryExt, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let project = args["project"].as_str().unwrap_or("");
+    if project.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'project'"}}));
+    }
+    match agent_ext.list_agents_by_project(project) {
+        Ok(agents) => {
+            let text = if agents.is_empty() {
+                format!("No agents in project '{}'.", project)
+            } else {
+                let mut lines = vec![format!("Agents in '{}' ({}):", project, agents.len())];
+                for a in &agents {
+                    let status = if a.is_active { "active" } else { "inactive" };
+                    lines.push(format!("- {} ({}) [{}] last: {}", a.id, a.agent_type, status, a.last_heartbeat));
+                }
+                lines.join("\n")
+            };
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+        }
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
 pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value> {
     let url = args["url"].as_str().unwrap_or("");
     let method = args["method"].as_str().unwrap_or("GET");
