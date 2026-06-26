@@ -4,7 +4,6 @@ pub mod agent;
 pub mod antibrick;
 pub mod auth;
 pub mod auto_integrate;
-pub mod concurrency;
 pub mod discovery;
 pub mod discovery_net;
 pub mod lock_utils;
@@ -26,7 +25,6 @@ pub mod worker;
 pub use agent::*;
 pub use auth::*;
 pub use auto_integrate::*;
-pub use concurrency::*;
 pub use discovery::*;
 pub use orchestrator::{
     Agent, AgentStatus, LegacyFile, MessageType, Orchestrator, OrchestratorMessage, ReviewStatus,

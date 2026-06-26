@@ -121,30 +121,24 @@ pub fn handle_mem_context(db: &Database, id: &Value, args: &Value) -> anyhow::Re
     }))
 }
 
-pub fn handle_mem_timeline(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+pub fn handle_mem_timeline(timelines: &crate::core::timeline_manager::TimelineManager, id: &Value, args: &Value) -> anyhow::Result<Value> {
     let limit = args["limit"].as_i64().unwrap_or(20) as i32;
 
-    let results = db.get_timeline_direct(limit).unwrap_or_default();
-
-    let text = if results.is_empty() {
-        "No timeline entries found.".to_string()
-    } else {
-        let mut lines = vec![format!("Timeline (last {}):", results.len())];
-        for (i, entry) in results.iter().enumerate() {
-            let t = entry.observation.title.as_str();
-            let ts = entry.observation.created_at.0;
-            lines.push(format!("{}. {} ({})", i + 1, t, ts));
+    match timelines.get_timeline(limit) {
+        Ok(results) => {
+            let text = if results.is_empty() {
+                "No timeline entries found.".to_string()
+            } else {
+                let mut lines = vec![format!("Timeline (last {}):", results.len())];
+                for (i, entry) in results.iter().enumerate() {
+                    lines.push(format!("{}. {} ({}) [{}]", i + 1, entry.title, entry.created_at, entry.observation_type));
+                }
+                lines.join("\n")
+            };
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
         }
-        lines.join("\n")
-    };
-
-    Ok(json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": {
-            "content": [{ "type": "text", "text": text }]
-        }
-    }))
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
 }
 
 pub fn handle_mem_stats(db: &Database, id: &Value) -> anyhow::Result<Value> {
@@ -766,40 +760,31 @@ pub fn handle_mem_compare(db: &Database, id: &Value, args: &Value) -> anyhow::Re
     }
 }
 
-pub fn handle_mem_session_start(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
-    let session_id = args["session_id"].as_str().unwrap_or("mcp-session");
+pub fn handle_mem_session_start(sessions: &crate::core::session_manager::SessionManager, id: &Value, args: &Value) -> anyhow::Result<Value> {
     let project = args["project"].as_str().unwrap_or("default");
-    match db.start_session(project, session_id) {
-        Ok(sid) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session started: {}", sid.0)}]}})),
+    let directory = args["directory"].as_str().unwrap_or(".");
+    match sessions.start_session(project, directory) {
+        Ok(sid) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session started: {}", sid)}]}})),
         Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
     }
 }
 
-pub fn handle_mem_session_end(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+pub fn handle_mem_session_end(sessions: &crate::core::session_manager::SessionManager, id: &Value, args: &Value) -> anyhow::Result<Value> {
     let session_id = args["session_id"].as_str().unwrap_or("");
     let summary = args["summary"].as_str();
     if session_id.is_empty() {
         return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'session_id'"}}));
     }
-    let sid = SessionId::new(session_id);
-    match db.end_session(&sid, summary.map(String::from)) {
+    match sessions.end_session(session_id, summary) {
         Ok(_) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session {} ended.", session_id)}]}})),
         Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
     }
 }
 
-pub fn handle_mem_session_summary(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+pub fn handle_mem_session_summary(sessions: &crate::core::session_manager::SessionManager, id: &Value, args: &Value) -> anyhow::Result<Value> {
     let session_id = args["session_id"].as_str().unwrap_or("mcp-session");
-    match db.get_session_stats(session_id) {
-        Ok(stats) => {
-            let text = format!("Session: {}\nObservations: {}\nFirst: {}\nLast: {}",
-                stats["session_id"].as_str().unwrap_or(""),
-                stats["observation_count"].as_i64().unwrap_or(0),
-                stats["first_seen"].as_i64().unwrap_or(0),
-                stats["last_seen"].as_i64().unwrap_or(0),
-            );
-            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
-        }
+    match sessions.generate_summary(session_id) {
+        Ok(summary) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":summary}]}})),
         Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
     }
 }
@@ -955,6 +940,61 @@ pub fn handle_agent_list_by_project(agent_ext: &crate::core::agent_registry_ext:
                 lines.join("\n")
             };
             Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+        }
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_chunk_query(chunks: &crate::core::chunk_query::ChunkQueryManager, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let chunk_id = args["chunk_id"].as_str().unwrap_or("");
+    let project = args["project"].as_str().unwrap_or("");
+    if !chunk_id.is_empty() {
+        match chunks.get_chunk(chunk_id) {
+            Ok(Some(chunk)) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Chunk: {}\nProject: {}\nTitle: {}\nSize: {} bytes\nCreated: {}", chunk.chunk_id, chunk.project_key, chunk.title, chunk.content.len(), chunk.created_at)}]}})),
+            Ok(None) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Chunk {} not found.", chunk_id)}]}})),
+            Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        }
+    } else if !project.is_empty() {
+        match chunks.get_chunks_by_project(project, None) {
+            Ok(chunks_list) => {
+                let text = if chunks_list.is_empty() {
+                    format!("No chunks in project '{}'.", project)
+                } else {
+                    let mut lines = vec![format!("Chunks in '{}' ({}):", project, chunks_list.len())];
+                    for c in &chunks_list {
+                        lines.push(format!("- {} ({}) {} bytes", c.chunk_id, c.title, c.content.len()));
+                    }
+                    lines.join("\n")
+                };
+                Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+            }
+            Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        }
+    } else {
+        Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'chunk_id' or 'project'"}}))
+    }
+}
+
+pub fn handle_vault_store(vault: &crate::core::vault::SecureVault, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let key = args["key"].as_str().unwrap_or("");
+    let value = args["value"].as_str().unwrap_or("");
+    if key.is_empty() || value.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'key' and 'value'"}}));
+    }
+    match vault.store_secret(key, value) {
+        Ok(_) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Stored secret under key '{}'.", key)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_vault_retrieve(vault: &crate::core::vault::SecureVault, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let key = args["key"].as_str().unwrap_or("");
+    if key.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'key'"}}));
+    }
+    match vault.retrieve_secret(key) {
+        Ok(data) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":data}]}}))
         }
         Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
     }

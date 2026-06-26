@@ -1,3 +1,4 @@
+use crate::core::retry::CircuitBreaker;
 use crate::presentation::mcp::McpServer;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -5,11 +6,12 @@ use std::sync::Arc;
 
 pub struct HttpTransport {
     server: Arc<McpServer>,
+    circuit: CircuitBreaker,
 }
 
 impl HttpTransport {
     pub fn new(server: Arc<McpServer>) -> Self {
-        Self { server }
+        Self { server, circuit: CircuitBreaker::new(10, 60) }
     }
 
     pub fn start(&self, port: u16) {
@@ -20,6 +22,13 @@ impl HttpTransport {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
+                    if !self.circuit.is_closed() {
+                        eprintln!("[HTTP] Circuit open - rejecting connection");
+                        let resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n";
+                        let mut stream = stream;
+                        let _ = stream.write_all(resp.as_bytes());
+                        continue;
+                    }
                     let server = self.server.clone();
                     std::thread::spawn(move || {
                         handle_connection(stream, &server);

@@ -11,6 +11,10 @@ use crate::core::auth::classifier::AgentClassifier;
 use crate::core::orchestrator::Orchestrator;
 use crate::core::recycle::RecycleBin;
 use crate::core::agent_registry_ext::AgentRegistryExt;
+use crate::core::session_manager::SessionManager;
+use crate::core::timeline_manager::TimelineManager;
+use crate::core::chunk_query::ChunkQueryManager;
+use crate::core::vault::SecureVault;
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
 use crate::infrastructure::agents::AgentRegistry;
@@ -45,6 +49,10 @@ pub struct McpServer {
     watchdog: Arc<FilesystemWatchdog>,
     recycle: RecycleBin,
     agent_ext: AgentRegistryExt,
+    session_mgr: SessionManager,
+    timelines: TimelineManager,
+    chunks: ChunkQueryManager,
+    vault: SecureVault,
     classifier: Option<AgentClassifier>,
     #[allow(dead_code)]
     challenge: Option<ChallengeResponse>,
@@ -75,7 +83,11 @@ impl McpServer {
         Self {
             db: db.clone(),
             recycle: RecycleBin::new(crate::config::data_dir()),
-            agent_ext: AgentRegistryExt::new(db),
+            agent_ext: AgentRegistryExt::new(db.clone()),
+            session_mgr: SessionManager::new(db.clone()),
+            timelines: TimelineManager::new(db.clone()),
+            chunks: ChunkQueryManager::new(db.clone()),
+            vault: SecureVault::new(crate::config::data_dir()),
             classifier: auth_enabled.then(AgentClassifier::new),
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
@@ -790,6 +802,40 @@ impl McpServer {
                         },
                         "required": ["project"]
                     }
+                },
+                {
+                    "name": "chunk_query",
+                    "description": "Query context chunks by chunk_id or by project.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "chunk_id": { "type": "string", "description": "Chunk ID to look up" },
+                            "project": { "type": "string", "description": "Project key to list chunks" }
+                        }
+                    }
+                },
+                {
+                    "name": "vault_store",
+                    "description": "Store a secret in the secure vault.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "key": { "type": "string" },
+                            "value": { "type": "string" }
+                        },
+                        "required": ["key", "value"]
+                    }
+                },
+                {
+                    "name": "vault_retrieve",
+                    "description": "Retrieve a secret from the secure vault.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "key": { "type": "string" }
+                        },
+                        "required": ["key"]
+                    }
                 }
             ]}
         }))
@@ -803,16 +849,16 @@ impl McpServer {
             "mem_save" | "memory_add" => tools::handle_mem_save(&self.db, id, args),
             "mem_search" | "memory_search" => tools::handle_mem_search(&self.db, id, args),
             "mem_context" => tools::handle_mem_context(&self.db, id, args),
-            "mem_timeline" | "memory_timeline" => tools::handle_mem_timeline(&self.db, id, args),
+            "mem_timeline" | "memory_timeline" => tools::handle_mem_timeline(&self.timelines, id, args),
             "mem_stats" | "memory_stats" => tools::handle_mem_stats(&self.db, id),
             "mem_delete" => tools::handle_mem_delete(&self.db, id, args),
             "mem_update" => tools::handle_mem_update(&self.db, id, args),
             "mem_get_observation" => tools::handle_mem_get_observation(&self.db, id, args),
             "mem_judge" => tools::handle_mem_judge(&self.db, id, args),
             "mem_compare" => tools::handle_mem_compare(&self.db, id, args),
-            "mem_session_start" => tools::handle_mem_session_start(&self.db, id, args),
-            "mem_session_end" => tools::handle_mem_session_end(&self.db, id, args),
-            "mem_session_summary" => tools::handle_mem_session_summary(&self.db, id, args),
+            "mem_session_start" => tools::handle_mem_session_start(&self.session_mgr, id, args),
+            "mem_session_end" => tools::handle_mem_session_end(&self.session_mgr, id, args),
+            "mem_session_summary" => tools::handle_mem_session_summary(&self.session_mgr, id, args),
             "mem_doctor" => tools::handle_mem_doctor(&self.db, id),
             "mem_merge_projects" => tools::handle_mem_merge_projects(&self.db, id, args),
             "mem_current_project" => tools::handle_mem_current_project(&self.db, id, args),
@@ -842,6 +888,9 @@ impl McpServer {
             "agent_list" => tools::handle_agent_list(&self.agents, id),
             "agent_unregister" => tools::handle_agent_unregister(&self.agent_ext, id, args),
             "agent_list_by_project" => tools::handle_agent_list_by_project(&self.agent_ext, id, args),
+            "chunk_query" => tools::handle_chunk_query(&self.chunks, id, args),
+            "vault_store" => tools::handle_vault_store(&self.vault, id, args),
+            "vault_retrieve" => tools::handle_vault_retrieve(&self.vault, id, args),
             "task_create" => tools::handle_task_create(&self.orchestrator, id, args),
             "task_list" => tools::handle_task_list(&self.orchestrator, id),
             "mcp_call" => tools::handle_mcp_call(id, args),
