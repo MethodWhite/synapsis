@@ -12,5 +12,5 @@ pub mod tools;
 pub use domain::*;
 
 // Security modules
-pub use crate::core::rate_limiter::*;
-pub use crate::core::audit_log::*;
+pub use crate::core::rate_limiter::RateLimitError;
+pub use crate::core::audit_log::AuditLog;
