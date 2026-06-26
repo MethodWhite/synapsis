@@ -873,6 +873,59 @@ pub fn handle_mem_audit_log(db: &Database, id: &Value, args: &Value) -> anyhow::
     }
 }
 
+pub fn handle_mem_recycle_save(recycle: &crate::core::recycle::RecycleBin, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let content = args["content"].as_str().unwrap_or("");
+    match recycle.store(content.as_bytes(), None, "mcp") {
+        Ok(entry_id) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Recycled (id={})", entry_id)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":format!("Recycle failed: {:?}", e)}})),
+    }
+}
+
+pub fn handle_mem_recycle_search(recycle: &crate::core::recycle::RecycleBin, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let keyword = args["keyword"].as_str().unwrap_or("");
+    let limit = args["limit"].as_i64().unwrap_or(20) as usize;
+    let query = crate::core::recycle::SearchQuery {
+        keywords: if keyword.is_empty() { vec![] } else { vec![keyword.to_string()] },
+        category: None,
+        limit,
+        offset: args["offset"].as_i64().unwrap_or(0) as usize,
+        agent_fingerprint: None,
+        task_id: None,
+        from_time: None,
+        to_time: None,
+    };
+    let results = recycle.search(&query);
+    let text = if results.entries.is_empty() {
+        "No recycled items found.".to_string()
+    } else {
+        let mut lines = vec![format!("Recycled items ({}):", results.total)];
+        for e in &results.entries {
+            lines.push(format!("[{}] size={}", e.id, e.size_bytes));
+        }
+        lines.join("\n")
+    };
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
+pub fn handle_mem_recycle_stats(recycle: &crate::core::recycle::RecycleBin, id: &Value) -> anyhow::Result<Value> {
+    let stats = recycle.stats();
+    let text = format!("Recycle Bin: {} items, {} bytes", stats.total_entries, stats.total_size_bytes);
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
+pub fn handle_mem_recycle_delete(recycle: &crate::core::recycle::RecycleBin, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let entry_id = args["id"].as_str().unwrap_or("");
+    if entry_id.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'id'"}}));
+    }
+    if recycle.delete(entry_id) {
+        let _ = recycle.save();
+        Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Deleted recycled entry {}", entry_id)}]}}))
+    } else {
+        Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":"Entry not found"}}))
+    }
+}
+
 pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value> {
     let url = args["url"].as_str().unwrap_or("");
     let method = args["method"].as_str().unwrap_or("GET");

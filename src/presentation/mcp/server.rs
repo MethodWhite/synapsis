@@ -9,6 +9,7 @@ use crate::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
 use crate::core::auth::challenge::ChallengeResponse;
 use crate::core::auth::classifier::AgentClassifier;
 use crate::core::orchestrator::Orchestrator;
+use crate::core::recycle::RecycleBin;
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
 use crate::infrastructure::agents::AgentRegistry;
@@ -41,6 +42,7 @@ pub struct McpServer {
     orchestrator: Arc<Orchestrator>,
     antibrick: Arc<AntiBrickEngine>,
     watchdog: Arc<FilesystemWatchdog>,
+    recycle: RecycleBin,
     classifier: Option<AgentClassifier>,
     #[allow(dead_code)]
     challenge: Option<ChallengeResponse>,
@@ -70,6 +72,7 @@ impl McpServer {
         let auth_enabled = std::env::var("SYNAPSIS_AUTH").is_ok();
         Self {
             db,
+            recycle: RecycleBin::new(crate::config::data_dir()),
             classifier: auth_enabled.then(AgentClassifier::new),
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
@@ -721,6 +724,47 @@ impl McpServer {
                             "limit": { "type": "integer", "default": 20 }
                         }
                     }
+                },
+                {
+                    "name": "mem_recycle_save",
+                    "description": "Save content to the recycle bin with a classification category.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "content": { "type": "string" },
+                            "category": { "type": "string", "enum": ["critical","sensitive","important","standard","ephemeral"], "default": "standard" }
+                        },
+                        "required": ["content"]
+                    }
+                },
+                {
+                    "name": "mem_recycle_search",
+                    "description": "Search recycled items by keyword and/or category.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "keyword": { "type": "string" },
+                            "category": { "type": "string", "enum": ["critical","sensitive","important","standard","ephemeral"] },
+                            "limit": { "type": "integer", "default": 20 },
+                            "offset": { "type": "integer", "default": 0 }
+                        }
+                    }
+                },
+                {
+                    "name": "mem_recycle_stats",
+                    "description": "Get recycle bin statistics (total items, expired, bytes).",
+                    "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "mem_recycle_delete",
+                    "description": "Permanently delete an item from the recycle bin by ID.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "string" }
+                        },
+                        "required": ["id"]
+                    }
                 }
             ]}
         }))
@@ -748,6 +792,10 @@ impl McpServer {
             "mem_merge_projects" => tools::handle_mem_merge_projects(&self.db, id, args),
             "mem_current_project" => tools::handle_mem_current_project(&self.db, id, args),
             "mem_audit_log" => tools::handle_mem_audit_log(&self.db, id, args),
+            "mem_recycle_save" => tools::handle_mem_recycle_save(&self.recycle, id, args),
+            "mem_recycle_search" => tools::handle_mem_recycle_search(&self.recycle, id, args),
+            "mem_recycle_stats" => tools::handle_mem_recycle_stats(&self.recycle, id),
+            "mem_recycle_delete" => tools::handle_mem_recycle_delete(&self.recycle, id, args),
             "ghost_audit" => tools::handle_ghost_audit(&self.orchestrator, id, args),
             "pqc_encrypt" => tools::handle_pqc_encrypt(id, args),
             "wasm_run" => tools::handle_wasm_run(id, args),
