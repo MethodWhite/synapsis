@@ -15,6 +15,11 @@ use crate::core::session_manager::SessionManager;
 use crate::core::timeline_manager::TimelineManager;
 use crate::core::chunk_query::ChunkQueryManager;
 use crate::core::vault::SecureVault;
+use crate::core::worker::{WorkerOrchestrator, ShellWorker, FileWorker, CodeWorker, SearchWorker, GitWorker};
+use crate::core::sync::GitSyncEngine;
+use crate::core::auto_integrate::AutoIntegrate;
+use crate::core::discovery::EnvironmentDiscovery;
+use crate::core::tool_registry::ToolRegistryState;
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
 use crate::infrastructure::agents::AgentRegistry;
@@ -53,6 +58,9 @@ pub struct McpServer {
     timelines: TimelineManager,
     chunks: ChunkQueryManager,
     vault: SecureVault,
+    workers: WorkerOrchestrator,
+    git_sync: GitSyncEngine,
+    auto_integrate: AutoIntegrate,
     classifier: Option<AgentClassifier>,
     #[allow(dead_code)]
     challenge: Option<ChallengeResponse>,
@@ -88,6 +96,21 @@ impl McpServer {
             timelines: TimelineManager::new(db.clone()),
             chunks: ChunkQueryManager::new(db.clone()),
             vault: SecureVault::new(crate::config::data_dir()),
+            workers: {
+                let mut wo = WorkerOrchestrator::new();
+                wo.register_worker(Arc::new(ShellWorker::new()));
+                wo.register_worker(Arc::new(FileWorker::new()));
+                wo.register_worker(Arc::new(CodeWorker::new()));
+                wo.register_worker(Arc::new(SearchWorker::new()));
+                wo.register_worker(Arc::new(GitWorker::new()));
+                wo
+            },
+            git_sync: GitSyncEngine::new(crate::core::sync::GitSyncConfig::default()),
+            auto_integrate: {
+                let discovery = Arc::new(EnvironmentDiscovery::new());
+                let registry = ToolRegistryState::new();
+                AutoIntegrate::new(discovery, registry)
+            },
             classifier: auth_enabled.then(AgentClassifier::new),
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
@@ -836,6 +859,45 @@ impl McpServer {
                         },
                         "required": ["key"]
                     }
+                },
+                {
+                    "name": "worker_execute",
+                    "description": "Execute a task on a worker agent (shell, file, code, search, git).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "task_type": { "type": "string", "description": "shell, file_read, file_write, code_analysis, code_refactor, search, git" },
+                            "command": { "type": "string" },
+                            "path": { "type": "string" },
+                            "query": { "type": "string" },
+                            "skill": { "type": "string" }
+                        },
+                        "required": ["task_type"]
+                    }
+                },
+                {
+                    "name": "worker_status",
+                    "description": "List registered workers and external agents.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "sync_status",
+                    "description": "Get Git sync engine status (commits, pending changes, conflicts).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "auto_discover",
+                    "description": "Force a scan for available tools and auto-integrate them.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
                 }
             ]}
         }))
@@ -891,6 +953,10 @@ impl McpServer {
             "chunk_query" => tools::handle_chunk_query(&self.chunks, id, args),
             "vault_store" => tools::handle_vault_store(&self.vault, id, args),
             "vault_retrieve" => tools::handle_vault_retrieve(&self.vault, id, args),
+            "worker_execute" => tools::handle_worker_execute(&self.workers, id, args),
+            "worker_status" => tools::handle_worker_status(&self.workers, id),
+            "sync_status" => tools::handle_sync_status(&self.git_sync, id),
+            "auto_discover" => tools::handle_auto_discover(&self.auto_integrate, id),
             "task_create" => tools::handle_task_create(&self.orchestrator, id, args),
             "task_list" => tools::handle_task_list(&self.orchestrator, id),
             "mcp_call" => tools::handle_mcp_call(id, args),

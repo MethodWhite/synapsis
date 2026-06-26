@@ -3,6 +3,7 @@
 //! Implements: mem_session_start, mem_session_end, mem_session_summary
 
 use crate::infrastructure::database::Database;
+use crate::core::session_id::SessionId as SecureSessionId;
 use anyhow::Result;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
@@ -32,7 +33,8 @@ impl SessionManager {
 
     /// mem_session_start - Start a new session
     pub fn start_session(&self, project: &str, directory: &str) -> Result<String> {
-        let session_id = format!("{}-{}", project, self.current_timestamp());
+        let secure_id = SecureSessionId::new("synapsis");
+        let session_id = format!("{}-{}", project, secure_id.signature);
 
         let conn = self.db.get_conn();
 

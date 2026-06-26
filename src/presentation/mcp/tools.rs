@@ -1000,6 +1000,67 @@ pub fn handle_vault_retrieve(vault: &crate::core::vault::SecureVault, id: &Value
     }
 }
 
+pub fn handle_worker_execute(workers: &crate::core::worker::WorkerOrchestrator, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let task_type_str = args["task_type"].as_str().unwrap_or("");
+    let command = args["command"].as_str().unwrap_or("");
+    if task_type_str.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'task_type' (shell, file_read, file_write, code_analysis, code_refactor, search, git)"}}));
+    }
+    let task_type = match task_type_str {
+        "shell" => crate::core::worker::TaskType::Shell,
+        "file_read" => crate::core::worker::TaskType::FileRead,
+        "file_write" => crate::core::worker::TaskType::FileWrite,
+        "code_analysis" => crate::core::worker::TaskType::CodeAnalysis,
+        "code_refactor" => crate::core::worker::TaskType::CodeRefactor,
+        "search" => crate::core::worker::TaskType::Search,
+        "git" => crate::core::worker::TaskType::Git,
+        _ => return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Unknown task_type: {}", task_type_str)}})),
+    };
+    let mut payload = serde_json::json!({});
+    if !command.is_empty() {
+        payload["command"] = serde_json::json!(command);
+    }
+    if let Some(path) = args["path"].as_str() {
+        payload["path"] = serde_json::json!(path);
+    }
+    if let Some(query) = args["query"].as_str() {
+        payload["query"] = serde_json::json!(query);
+    }
+    let skill = args["skill"].as_str().unwrap_or(task_type_str);
+    let task = crate::core::worker::Task::new(task_type, payload).with_skills(vec![skill.to_string()]);
+    match workers.execute_task(task) {
+        Ok(result) => {
+            let status = match result.status {
+                crate::core::worker::TaskStatus::Success => "success",
+                crate::core::worker::TaskStatus::Failed => "failed",
+                crate::core::worker::TaskStatus::Timeout => "timeout",
+                crate::core::worker::TaskStatus::Cancelled => "cancelled",
+            };
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Status: {}\nDuration: {}ms\nOutput: {}", status, result.duration_ms, result.output)}]}}))
+        }
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":format!("[0x{:04X}] {}", e.code, e.message)}})),
+    }
+}
+
+pub fn handle_worker_status(workers: &crate::core::worker::WorkerOrchestrator, id: &Value) -> anyhow::Result<Value> {
+    let status = workers.get_status();
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Workers: {:?}\nExternal: {:?}", status["builtin_workers"], status["external_agents"])}]}}))
+}
+
+pub fn handle_sync_status(git_sync: &crate::core::sync::GitSyncEngine, id: &Value) -> anyhow::Result<Value> {
+    let status = git_sync.get_sync_status();
+    let text = format!("Last sync: {}\nCommits: {}\nPending: {}\nConflicts: {}\nCircuit: {}",
+        status.last_sync, status.commit_count, status.pending_changes, status.conflict_detected, status.circuit_breaker_state);
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
+pub fn handle_auto_discover(auto_int: &crate::core::auto_integrate::AutoIntegrate, id: &Value) -> anyhow::Result<Value> {
+    let scan = auto_int.force_scan();
+    let text = format!("Discovery scan: {} total found, {} new ({}ms)\nBy type: {:?}",
+        scan.total_found, scan.new_tools.len(), scan.scan_time_ms, scan.by_type);
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
 pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value> {
     let url = args["url"].as_str().unwrap_or("");
     let method = args["method"].as_str().unwrap_or("GET");
