@@ -944,6 +944,93 @@ impl McpServer {
                         },
                         "required": ["agent_type"]
                     }
+                },
+                {
+                    "name": "secure_write_file",
+                    "description": "Write data to a file securely.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" },
+                            "data": { "type": "string" }
+                        },
+                        "required": ["path", "data"]
+                    }
+                },
+                {
+                    "name": "secure_read_file",
+                    "description": "Read a file securely.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" }
+                        },
+                        "required": ["path"]
+                    }
+                },
+                {
+                    "name": "secure_list_dir",
+                    "description": "List directory contents securely.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" }
+                        }
+                    }
+                },
+                {
+                    "name": "secure_random",
+                    "description": "Generate a cryptographically secure random number (0 to max-1).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "max": { "type": "integer", "description": "Upper bound (exclusive), default 1000" }
+                        }
+                    }
+                },
+                {
+                    "name": "vault_session_key",
+                    "description": "Manage session keys in the secure vault (store, get, rotate, close).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": { "type": "string" },
+                            "action": { "type": "string", "description": "store, get, rotate, close" },
+                            "key_data": { "type": "string" }
+                        },
+                        "required": ["session_id", "action"]
+                    }
+                },
+                {
+                    "name": "vault_list_sessions",
+                    "description": "List all active session keys in the vault.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "sync_memory",
+                    "description": "Sync a memory observation to the Git sync engine.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "agent_id": { "type": "string" },
+                            "summary": { "type": "string" }
+                        },
+                        "required": ["summary"]
+                    }
+                },
+                {
+                    "name": "audit_log",
+                    "description": "Get audit trail for a specific observation.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "observation_id": { "type": "integer" }
+                        },
+                        "required": ["observation_id"]
+                    }
                 }
             ]}
         }))
@@ -1006,6 +1093,14 @@ impl McpServer {
             "auth_tpm_status" => tools::handle_auth_tpm_status(&self.tpm, id),
             "auth_tpm_attest" => tools::handle_auth_tpm_attest(&self.tpm, id, args),
             "auth_check_permission" => tools::handle_auth_check_permission(id, args),
+            "secure_write_file" => tools::handle_secure_write_file(id, args),
+            "secure_read_file" => tools::handle_secure_read_file(id, args),
+            "secure_list_dir" => tools::handle_secure_list_dir(id, args),
+            "secure_random" => tools::handle_secure_random(id, args),
+            "vault_session_key" => tools::handle_vault_session_key(&self.vault, id, args),
+            "vault_list_sessions" => tools::handle_vault_list_sessions(&self.vault, id),
+            "sync_memory" => tools::handle_sync_memory(&self.git_sync, id, args),
+            "audit_log" => tools::handle_audit_log(id, args),
             "auth_classify_agent" => match &self.classifier {
                 Some(c) => tools::handle_auth_classify_agent(c, id, args),
                 None => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Auth not enabled (set SYNAPSIS_AUTH env var)"}})),

@@ -1119,6 +1119,141 @@ pub fn handle_auth_classify_agent(classifier: &crate::core::auth::classifier::Ag
     Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
 }
 
+pub fn handle_secure_write_file(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let path = args["path"].as_str().unwrap_or("");
+    let data = args["data"].as_str().unwrap_or("");
+    if path.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'path' and 'data'"}}));
+    }
+    match crate::core::security::SysCall::write_file(path, data.as_bytes()) {
+        Ok(_) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Written {} bytes to {}", data.len(), path)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_secure_read_file(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let path = args["path"].as_str().unwrap_or("");
+    if path.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'path'"}}));
+    }
+    match crate::core::security::SysCall::read_file(path) {
+        Ok(data) => {
+            let text = String::from_utf8_lossy(&data).to_string();
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+        }
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_secure_list_dir(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let path = args["path"].as_str().unwrap_or(".");
+    match crate::core::security::SysCall::list_directory(path) {
+        Ok(entries) => {
+            let text = if entries.is_empty() {
+                format!("Directory '{}' is empty.", path)
+            } else {
+                format!("Directory '{}' ({} entries):\n{}", path, entries.len(), entries.join("\n"))
+            };
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+        }
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_secure_random(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let max = args["max"].as_i64().unwrap_or(1000) as u64;
+    let val = crate::core::security::secure_random_u64() % max;
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":val.to_string()}]}}))
+}
+
+pub fn handle_vault_session_key(vault: &crate::core::vault::SecureVault, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let session_id = args["session_id"].as_str().unwrap_or("");
+    let action = args["action"].as_str().unwrap_or("get");
+    if session_id.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'session_id'"}}));
+    }
+    match action {
+        "get" => match vault.get_session_key(session_id) {
+            Ok(Some(key)) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session key for {}: expires at {:?}", session_id, key.expires_at)}]}})),
+            Ok(None) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("No session key for {}", session_id)}]}})),
+            Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        }
+        "rotate" => match vault.rotate_key(session_id) {
+            Ok(Some(new_key)) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Key rotated for {}: new key prefix: {}...", session_id, &new_key[..new_key.len().min(8)])}]}})),
+            Ok(None) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("No session key to rotate for {}", session_id)}]}})),
+            Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        }
+        "close" => {
+            vault.close_session(session_id);
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session {} closed.", session_id)}]}}))
+        }
+        _ => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Unknown action: {}", action)}})),
+    }
+}
+
+pub fn handle_vault_list_sessions(vault: &crate::core::vault::SecureVault, id: &Value) -> anyhow::Result<Value> {
+    let sessions = vault.list_sessions();
+    let text = if sessions.is_empty() {
+        "No active session keys.".to_string()
+    } else {
+        let mut lines = vec![format!("Active session keys ({}):", sessions.len())];
+        for (sid, key_prefix, ts) in &sessions {
+            lines.push(format!("- {} (key: {}... created: {})", sid, &key_prefix[..key_prefix.len().min(8)], ts));
+        }
+        lines.join("\n")
+    };
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
+pub fn handle_sync_memory(git_sync: &crate::core::sync::GitSyncEngine, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let agent_id = args["agent_id"].as_str().unwrap_or("default");
+    if let Some(summary) = args["summary"].as_str() {
+        let memory = crate::domain::entities::Memory {
+            id: crate::core::uuid::Uuid::new_v4().to_hex_string(),
+            agent_id: agent_id.to_string(),
+            session_id: None,
+            role: "sync".to_string(),
+            content: summary.to_string(),
+            token_count: summary.len() as i32,
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            checksum: None,
+        };
+        match git_sync.sync_memory(&memory) {
+            Ok(manifest_id) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Memory synced. Manifest: {}", manifest_id.0)}]}})),
+            Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        }
+    } else {
+        Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'summary'"}}))
+    }
+}
+
+pub fn handle_audit_log(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let obs_id = args["observation_id"].as_i64().unwrap_or(0);
+    let log = crate::core::audit_log::AuditLog::new();
+    if obs_id > 0 {
+        match log.get_audit_trail(obs_id) {
+            Ok(entries) => {
+                let text = if entries.is_empty() {
+                    format!("No audit entries for observation {}.", obs_id)
+                } else {
+                    let mut lines = vec![format!("Audit trail for observation {} ({} entries):", obs_id, entries.len())];
+                    for e in &entries {
+                        lines.push(format!("- {} [{}] {} obs:{}", e.timestamp, e.agent_id, e.action, e.observation_id));
+                    }
+                    lines.join("\n")
+                };
+                Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+            }
+            Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        }
+    } else {
+        Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"Provide 'observation_id' to get audit trail."}]}}))
+    }
+}
+
 pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value> {
     let url = args["url"].as_str().unwrap_or("");
     let method = args["method"].as_str().unwrap_or("GET");
