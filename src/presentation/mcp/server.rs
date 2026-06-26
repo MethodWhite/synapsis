@@ -6,6 +6,8 @@ use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 
 use crate::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
+use crate::core::auth::challenge::ChallengeResponse;
+use crate::core::auth::classifier::AgentClassifier;
 use crate::core::orchestrator::Orchestrator;
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
@@ -39,6 +41,9 @@ pub struct McpServer {
     orchestrator: Arc<Orchestrator>,
     antibrick: Arc<AntiBrickEngine>,
     watchdog: Arc<FilesystemWatchdog>,
+    classifier: Option<AgentClassifier>,
+    #[allow(dead_code)]
+    challenge: Option<ChallengeResponse>,
     sessions: std::sync::RwLock<HashMap<String, SessionInfo>>,
     messages: std::sync::Mutex<Vec<AgentMessage>>,
     next_msg_id: std::sync::atomic::AtomicI64,
@@ -62,8 +67,11 @@ pub struct AgentMessage {
 
 impl McpServer {
     pub fn new(db: Arc<Database>, orchestrator: Arc<Orchestrator>) -> Self {
+        let auth_enabled = std::env::var("SYNAPSIS_AUTH").is_ok();
         Self {
             db,
+            classifier: auth_enabled.then(AgentClassifier::new),
+            challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
             agents: Arc::new(AgentRegistry::new()),
             orchestrator,
@@ -118,6 +126,17 @@ impl McpServer {
                 );
             }
         };
+
+        // Auth check: if SYNAPSIS_AUTH is set, require valid API key in initialize
+        if let Some(ref _classifier) = self.classifier {
+            let is_initialize = request["method"].as_str() == Some("initialize");
+            if !is_initialize {
+                let key = request["params"]["api_key"].as_str().or_else(|| request["params"]["token"].as_str()).unwrap_or("");
+                if key.is_empty() {
+                    return Some(json!({"jsonrpc":"2.0","id":&request["id"],"error":{"code":-32001,"message":"Authentication required. Pass api_key in params."}}).to_string());
+                }
+            }
+        }
 
         let is_tool_call = request["method"].as_str() == Some("tools/call");
         let tool_name = request["params"]["name"].as_str().unwrap_or("").to_string();
