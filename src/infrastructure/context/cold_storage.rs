@@ -9,7 +9,9 @@
 //! 3. Indexación para recuperación rápida
 //! 4. Reconstitución perezosa bajo demanda
 
-use super::types::*;
+
+use super::context_types::{ContextId, ContextState, ContextType, Priority, Timestamp, Context, ContextValue};
+use super::context_types::now_ts as now_timestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -177,7 +179,7 @@ impl ColdStorage {
         partial: bool,
     ) -> Result<RestoredContext, ColdError> {
         // Obtener índice
-        let index = self.index.get(context_id).ok_or(ColdError::NotFound)?;
+        let index = self.index.get(context_id).cloned().ok_or(ColdError::NotFound)?;
 
         // Cargar fragmentos según lo solicitado
         let fragments = if partial {
@@ -263,14 +265,14 @@ impl ColdStorage {
                         .searchable_metadata
                         .tags
                         .iter()
-                        .any(|t| t.to_lowercase().contains(&query_lower))
+                        .any(|t: &String| t.to_lowercase().contains(&query_lower))
                     || idx
                         .searchable_metadata
                         .summary
                         .to_lowercase()
                         .contains(&query_lower)
             })
-            .map(|(id, idx)| ColdSearchResult {
+            .map(|(id, idx): (&ContextId, &ColdIndex)| ColdSearchResult {
                 context_id: id.clone(),
                 name: idx.searchable_metadata.name.clone(),
                 context_type: idx.searchable_metadata.context_type,
@@ -310,14 +312,14 @@ impl ColdStorage {
         let total_size: usize = self
             .fragments
             .values()
-            .flat_map(|frags| frags.iter())
+            .flat_map(|frags: &Vec<ColdFragment>| frags.iter())
             .map(|f| f.data.len())
             .sum();
 
         ColdStats {
             total_contexts,
             total_size_bytes: total_size,
-            fragment_count: self.fragments.values().map(|v| v.len()).sum(),
+            fragment_count: self.fragments.values().map(|v: &Vec<ColdFragment>| v.len()).sum(),
         }
     }
 

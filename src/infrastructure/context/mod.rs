@@ -8,9 +8,15 @@
 //! - Sistema de orquestación multi-agente
 //! - Compresión de contexto y budget tracking
 
+pub mod cold_storage;
 pub mod context_compression;
 pub mod context_types;
+pub mod global_context;
+pub mod hot_recycler;
 pub mod orchestration;
+pub mod prompting_assistant;
+pub mod registry;
+pub mod relevance;
 
 pub use context_compression::{
     AlertType, CompressedContext, CompressionLevel, ContentTier, ContextAlert, ContextBudget,

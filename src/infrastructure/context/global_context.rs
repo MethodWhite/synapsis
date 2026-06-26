@@ -4,8 +4,9 @@
 //! Parámetros del sistema que no deben cargarse completamente
 //! pero están disponibles cuando se necesitan.
 
-use super::ContextValue;
-use super::types::*;
+use super::context_types::{ContextValue, Timestamp};
+use super::context_types::now_ts as now_timestamp;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -103,20 +104,20 @@ impl GlobalContext {
 
     /// Obtiene una variable SIN cargar todo el contexto global
     /// Solo carga la variable específica solicitada
-    pub fn get(&mut self, name: &str) -> Option<&ContextValue> {
+    pub fn get(&mut self, name: &str) -> Option<ContextValue> {
         let name_key = name.to_string();
         if let Some(var) = self.variables.get_mut(&name_key) {
             if var.cached {
                 var.access_count = var.access_count.saturating_add(1);
                 var.last_access = now_timestamp();
-                return var.value().ok();
+                return var.value().ok().cloned();
             }
         }
         self.load_var(name)
     }
 
     /// Carga una variable específica bajo demanda
-    fn load_var(&mut self, name: &str) -> Option<&ContextValue> {
+    fn load_var(&mut self, name: &str) -> Option<ContextValue> {
         // Verificar si existe en índice
         let metadata = self.index.var_metadata.get(name)?;
 
@@ -138,11 +139,11 @@ impl GlobalContext {
             };
 
             self.variables.insert(name.to_string(), var);
-            return self.variables.get(name).and_then(|v| v.value().ok());
+            return self.variables.get(name).and_then(|v| v.value().ok().cloned());
         }
 
         // No cachear, devolver valor directamente
-        Some(&ContextValue::String("loaded-not-cached".to_string()))
+        Some(ContextValue::String("loaded-not-cached".to_string()))
     }
 
     fn should_cache(&self, name: &str, metadata: &VarMetadata) -> bool {
@@ -163,13 +164,14 @@ impl GlobalContext {
     fn make_cache_space(&mut self) {
         while self.variables.len() >= self.config.max_cached_vars {
             // Encontrar la variable menos recientemente usada que no sea "always_cached"
-            if let Some((name, _)) = self
+            if let Some(name) = self
                 .variables
                 .iter()
                 .filter(|(name, _)| !self.config.always_cached.contains(*name))
                 .min_by_key(|(_, var)| var.last_access)
+                .map(|(name, _)| name.clone())
             {
-                self.variables.remove(name);
+                self.variables.remove(&name);
             } else {
                 break;
             }
@@ -192,8 +194,9 @@ impl GlobalContext {
         }
 
         // Obtener variables relacionadas por afinidad
-        if let Some(related) = self.index.affinity_groups.get(name) {
-            for rel_name in related {
+        let affinity_group = self.index.affinity_groups.get(name).cloned();
+        if let Some(related) = affinity_group {
+            for rel_name in &related {
                 if let Some(value) = self.get(rel_name) {
                     result.insert(rel_name.clone(), value.clone());
                 }

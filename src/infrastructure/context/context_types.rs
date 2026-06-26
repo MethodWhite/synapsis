@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ContextId(pub String);
 
 impl ContextId {
@@ -23,6 +23,12 @@ impl ContextId {
 impl Default for ContextId {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::fmt::Display for ContextId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -57,9 +63,18 @@ pub enum ContextType {
 pub struct ContextRef {
     pub id: ContextId,
     pub access_level: AccessLevel,
+    pub relation: ContextRelation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ContextRelation {
+    Parent,
+    Child,
+    Sibling,
+    Reference,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum AccessLevel {
     None,
     MetadataOnly,
@@ -262,6 +277,10 @@ impl Context {
         }
     }
 
+    pub fn connect(&mut self, reference: ContextRef) {
+        self.connections.insert(reference);
+    }
+
     pub fn memory_size(&self) -> usize {
         let vars: usize = self.variables.values().map(|v| v.estimated_size()).sum();
         let meta: usize = self.metadata.values().map(|s| s.len()).sum();
@@ -345,6 +364,7 @@ impl ContextRegistry {
         ctx.connections.insert(ContextRef {
             id: parent.clone(),
             access_level: AccessLevel::Summary,
+            relation: ContextRelation::Parent,
         });
         let id = ctx.id.clone();
         self.hot_contexts.insert(id.clone(), ctx);

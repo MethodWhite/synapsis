@@ -9,9 +9,11 @@
 //! 3. Prefetch inteligente basado en patrones
 //! 4. Descarte proactivo de contexto irrelevante
 
-use super::types::*;
+
+use super::context_types::{ContextId, Priority, Timestamp};
+use super::context_types::now_ts as now_timestamp;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Motor de relevancia para contextos
 pub struct RelevanceEngine {
@@ -103,7 +105,7 @@ impl TransitionGraph {
                     .entry(prev.clone())
                     .or_insert_with(HashMap::new)
                     .entry(context_id.clone())
-                    .and_modify(|c| *c += 1)
+                    .and_modify(|c: &mut u64| *c += 1)
                     .or_insert(1);
             }
         }
@@ -111,10 +113,10 @@ impl TransitionGraph {
 
     fn predict_next(&self, current: &ContextId) -> Vec<(ContextId, f64)> {
         if let Some(edges) = self.edges.get(current) {
-            let total: u64 = edges.values().sum();
+            let total: u64 = edges.values().sum::<u64>();
             edges
                 .iter()
-                .map(|(id, count)| (id.clone(), *count as f64 / total as f64))
+                .map(|(id, count): (&ContextId, &u64)| (id.clone(), *count as f64 / total as f64))
                 .collect()
         } else {
             Vec::new()

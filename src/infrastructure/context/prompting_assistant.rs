@@ -9,9 +9,10 @@
 //! Este es el "segundo cerebro" que ayuda a la IA principal
 //! a tomar mejores decisiones.
 
-use super::Context;
+use super::context_types::{Context, ContextId, ContextValue, ContextState, ContextType, Priority, Timestamp};
+use super::context_types::now_ts as now_timestamp;
 use super::hot_recycler::HotRecycler;
-use super::types::*;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -118,12 +119,13 @@ impl ContextEvaluator {
 
         // Identificar gaps
         let gaps = self.identify_gaps(&scores);
+        let recommendations = self.generate_recommendations(&scores);
 
         EvaluationReport {
             overall_score: overall,
             aspect_scores: scores,
             gaps,
-            recommendations: self.generate_recommendations(&scores),
+            recommendations,
         }
     }
 
@@ -167,7 +169,7 @@ impl ContextEvaluator {
     }
 
     fn evaluate_relevance(&self, context: &Context) -> f64 {
-        let score: f64 = match context.priority {
+        let mut score: f64 = match context.priority {
             Priority::Critical => 1.0,
             Priority::High => 0.8,
             Priority::Normal => 0.6,
@@ -213,7 +215,7 @@ impl ContextEvaluator {
         let has_values = context
             .variables
             .values()
-            .any(|v| !matches!(v, super::context::ContextValue::Null));
+            .any(|v| !matches!(v, ContextValue::Null));
         if has_values {
             score += 0.2;
         }
@@ -322,7 +324,7 @@ pub struct ContextGap {
     pub suggested_action: String,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GapSeverity {
     Warning,
     Critical,
@@ -564,16 +566,10 @@ impl PromptingAssistant {
         // Generar reporte de evaluación
         let report = self.evaluator.evaluate(context, hot_recycler);
 
-        // Generar sugerencias
         let suggestions = self.suggester.generate_suggestions(&[context], &report);
-
-        // Sugerir tareas
         let tasks = self.task_monitor.suggest_tasks(context);
-
-        // Decidir si actuar automáticamente
         let auto_actions = self.decide_auto_actions(&report, &suggestions);
 
-        // Registrar decisión
         self.record_decision(
             DecisionType::Suggestion,
             Some(context.id.clone()),
@@ -581,12 +577,14 @@ impl PromptingAssistant {
             DecisionOutcome::Success,
         );
 
+        let message = self.generate_message(&report);
+
         AssistantOutput {
             report,
             suggestions,
             suggested_tasks: tasks,
             auto_actions,
-            message: self.generate_message(&report),
+            message,
         }
     }
 
