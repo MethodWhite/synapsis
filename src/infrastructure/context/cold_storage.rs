@@ -9,9 +9,10 @@
 //! 3. Indexación para recuperación rápida
 //! 4. Reconstitución perezosa bajo demanda
 
-
-use super::context_types::{ContextId, ContextState, ContextType, Priority, Timestamp, Context, ContextValue};
 use super::context_types::now_ts as now_timestamp;
+use super::context_types::{
+    Context, ContextId, ContextState, ContextType, ContextValue, Priority, Timestamp,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -179,7 +180,11 @@ impl ColdStorage {
         partial: bool,
     ) -> Result<RestoredContext, ColdError> {
         // Obtener índice
-        let index = self.index.get(context_id).cloned().ok_or(ColdError::NotFound)?;
+        let index = self
+            .index
+            .get(context_id)
+            .cloned()
+            .ok_or(ColdError::NotFound)?;
 
         // Cargar fragmentos según lo solicitado
         let fragments = if partial {
@@ -319,7 +324,11 @@ impl ColdStorage {
         ColdStats {
             total_contexts,
             total_size_bytes: total_size,
-            fragment_count: self.fragments.values().map(|v: &Vec<ColdFragment>| v.len()).sum(),
+            fragment_count: self
+                .fragments
+                .values()
+                .map(|v: &Vec<ColdFragment>| v.len())
+                .sum(),
         }
     }
 
@@ -475,6 +484,6 @@ fn rand_id() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
+        .unwrap_or_default()
         .as_nanos() as u64
 }

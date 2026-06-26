@@ -351,7 +351,11 @@ fn constant_time_compare(a: &str, b: &str) -> bool {
     let a_bytes = a.as_bytes();
     let b_bytes = b.as_bytes();
     let max_len = a_bytes.len().max(b_bytes.len());
-    let mut result: u8 = if a_bytes.len() != b_bytes.len() { 0xFF } else { 0 };
+    let mut result: u8 = if a_bytes.len() != b_bytes.len() {
+        0xFF
+    } else {
+        0
+    };
     for i in 0..max_len {
         let x = a_bytes.get(i).copied().unwrap_or(0);
         let y = b_bytes.get(i).copied().unwrap_or(0);

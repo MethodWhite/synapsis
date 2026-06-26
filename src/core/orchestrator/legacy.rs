@@ -63,10 +63,6 @@ impl Orchestrator {
     }
 
     pub fn get_legacy_files(&self) -> Vec<LegacyFile> {
-        self.legacy_files
-            .lock_safe()
-            .values()
-            .cloned()
-            .collect()
+        self.legacy_files.lock_safe().values().cloned().collect()
     }
 }

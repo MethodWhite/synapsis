@@ -35,9 +35,13 @@ fn main() {
                 println!("Usage:");
                 println!("  synapsis-server                       Start MCP server (stdio)");
                 println!("  synapsis-server --http                Start MCP server with HTTP/SSE");
-                println!("  synapsis-server --http --port PORT    Custom HTTP port (default: 7438)");
+                println!(
+                    "  synapsis-server --http --port PORT    Custom HTTP port (default: 7438)"
+                );
                 println!("  synapsis-server --quic                Start MCP server with QUIC");
-                println!("  synapsis-server --quic --quic-port PORT Custom QUIC port (default: 7439)");
+                println!(
+                    "  synapsis-server --quic --quic-port PORT Custom QUIC port (default: 7439)"
+                );
                 return;
             }
             _ => {}
@@ -60,9 +64,14 @@ fn main() {
     server.init();
 
     // Run task cleanup on startup
-    if let Ok(report) = synapsis::core::task_cleanup::TaskCleanupManager::new(state.db.clone()).run_cleanup() {
+    if let Ok(report) =
+        synapsis::core::task_cleanup::TaskCleanupManager::new(state.db.clone()).run_cleanup()
+    {
         if report.total_removed() > 0 {
-            eprintln!("[Synapsis] Startup cleanup: removed {} stale tasks", report.total_removed());
+            eprintln!(
+                "[Synapsis] Startup cleanup: removed {} stale tasks",
+                report.total_removed()
+            );
         }
     }
 

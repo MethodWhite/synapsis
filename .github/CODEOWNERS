@@ -1,0 +1,16 @@
+# Default owners for everything
+* @MethodWhite
+
+# Core architecture
+src/core/* @MethodWhite
+src/domain/* @MethodWhite
+
+# Infrastructure (database, encryption, storage)
+src/infrastructure/database/* @MethodWhite
+src/infrastructure/vault/* @MethodWhite
+
+# MCP protocol
+src/presentation/mcp/* @MethodWhite
+
+# Security
+SECURITY.md @MethodWhite

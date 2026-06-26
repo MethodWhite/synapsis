@@ -19,13 +19,33 @@ pub struct ContextBudget {
 }
 
 impl ContextBudget {
+    /// Create a new budget with standard ratios:
+    /// - 25% reserved for essentials
+    /// - 80% comprehensive limit (start compression here)
+    /// - 10% safety buffer before hard limit
     pub fn new(limit: usize) -> Self {
         Self {
             limit,
             used: 0,
-            reserved_essentials: limit / 5,
-            comprehensive_limit: limit.saturating_mul(3) / 4,
-            safety_buffer: limit / 10,
+            reserved_essentials: limit.saturating_mul(25) / 100,
+            comprehensive_limit: limit.saturating_mul(80) / 100,
+            safety_buffer: limit.saturating_mul(10) / 100,
+        }
+    }
+
+    /// Create a budget with custom ratios (percentages 0-100)
+    pub fn with_ratios(
+        limit: usize,
+        essentials_pct: usize,
+        comprehensive_pct: usize,
+        buffer_pct: usize,
+    ) -> Self {
+        Self {
+            limit,
+            used: 0,
+            reserved_essentials: limit.saturating_mul(essentials_pct) / 100,
+            comprehensive_limit: limit.saturating_mul(comprehensive_pct) / 100,
+            safety_buffer: limit.saturating_mul(buffer_pct) / 100,
         }
     }
 
@@ -47,7 +67,7 @@ impl ContextBudget {
 
     pub fn compression_needed(&self) -> usize {
         if self.needs_compression() {
-            self.used - self.comprehensive_limit + self.safety_buffer
+            self.used - self.comprehensive_limit
         } else {
             0
         }
@@ -358,7 +378,7 @@ fn generate_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
+        .unwrap_or_default()
         .as_nanos();
     format!("frag_{:x}", ts)
 }

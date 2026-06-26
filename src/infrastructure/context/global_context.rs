@@ -4,8 +4,8 @@
 //! Parámetros del sistema que no deben cargarse completamente
 //! pero están disponibles cuando se necesitan.
 
-use super::context_types::{ContextValue, Timestamp};
 use super::context_types::now_ts as now_timestamp;
+use super::context_types::{ContextValue, Timestamp};
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -139,7 +139,10 @@ impl GlobalContext {
             };
 
             self.variables.insert(name.to_string(), var);
-            return self.variables.get(name).and_then(|v| v.value().ok().cloned());
+            return self
+                .variables
+                .get(name)
+                .and_then(|v| v.value().ok().cloned());
         }
 
         // No cachear, devolver valor directamente

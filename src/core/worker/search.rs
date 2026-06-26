@@ -134,7 +134,8 @@ impl WorkerAgent for SearchWorker {
                         TaskError::new(0x0100, "Missing 'query' in payload", &task.id)
                     })?;
 
-                static RT: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+                static RT: std::sync::OnceLock<tokio::runtime::Runtime> =
+                    std::sync::OnceLock::new();
                 let rt = RT.get_or_init(|| {
                     tokio::runtime::Builder::new_current_thread()
                         .enable_all()

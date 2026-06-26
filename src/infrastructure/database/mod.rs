@@ -835,7 +835,12 @@ impl Database {
             .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '-' || *c == '_')
             .collect::<String>()
             .split_whitespace()
-            .filter(|w| !matches!(*w, "or" | "and" | "not" | "near" | "NEAR" | "OR" | "AND" | "NOT"))
+            .filter(|w| {
+                !matches!(
+                    *w,
+                    "or" | "and" | "not" | "near" | "NEAR" | "OR" | "AND" | "NOT"
+                )
+            })
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -897,8 +902,15 @@ impl Database {
     }
 
     pub fn insert_relation(
-        &self, source_id: i64, target_id: i64, relation: &str, reason: Option<&str>,
-        evidence: Option<&str>, confidence: f64, session_id: Option<&str>, project: Option<&str>,
+        &self,
+        source_id: i64,
+        target_id: i64,
+        relation: &str,
+        reason: Option<&str>,
+        evidence: Option<&str>,
+        confidence: f64,
+        session_id: Option<&str>,
+        project: Option<&str>,
     ) -> Result<String> {
         let conn = self.get_conn();
         let now = Timestamp::now().0;
@@ -958,10 +970,13 @@ impl Database {
 
     pub fn get_session_stats(&self, session_id: &str) -> Result<serde_json::Value> {
         let conn = self.get_conn();
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM observations WHERE session_id = ?1 AND deleted_at IS NULL",
-            params![session_id], |r| r.get(0),
-        ).unwrap_or(0);
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM observations WHERE session_id = ?1 AND deleted_at IS NULL",
+                params![session_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
         let first: Option<i64> = conn.query_row(
             "SELECT MIN(created_at) FROM observations WHERE session_id = ?1 AND deleted_at IS NULL",
             params![session_id], |r| r.get(0),
@@ -987,7 +1002,16 @@ impl Database {
         Ok(updated as i64)
     }
 
-    pub fn log_audit(&self, action: &str, observation_id: Option<i64>, agent_id: Option<&str>, session_id: Option<&str>, old_value: Option<&str>, new_value: Option<&str>, reason: Option<&str>) -> Result<()> {
+    pub fn log_audit(
+        &self,
+        action: &str,
+        observation_id: Option<i64>,
+        agent_id: Option<&str>,
+        session_id: Option<&str>,
+        old_value: Option<&str>,
+        new_value: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<()> {
         let conn = self.get_conn();
         let now = Timestamp::now().0;
         conn.execute(
@@ -1018,11 +1042,33 @@ impl Database {
 
     pub fn doctor_check(&self) -> Result<serde_json::Value> {
         let conn = self.get_conn();
-        let obs_ok = conn.query_row("SELECT COUNT(*) FROM observations", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
-        let deleted = conn.query_row("SELECT COUNT(*) FROM observations WHERE deleted_at IS NOT NULL", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
-        let sessions_ok = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
-        let fts_ok = conn.query_row("SELECT COUNT(*) FROM observations_fts", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
-        let integrity = conn.query_row("SELECT COUNT(*) FROM observations WHERE content_hash = X'00'", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
+        let obs_ok = conn
+            .query_row("SELECT COUNT(*) FROM observations", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap_or(-1);
+        let deleted = conn
+            .query_row(
+                "SELECT COUNT(*) FROM observations WHERE deleted_at IS NOT NULL",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(-1);
+        let sessions_ok = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get::<_, i64>(0))
+            .unwrap_or(-1);
+        let fts_ok = conn
+            .query_row("SELECT COUNT(*) FROM observations_fts", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap_or(-1);
+        let integrity = conn
+            .query_row(
+                "SELECT COUNT(*) FROM observations WHERE content_hash = X'00'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(-1);
         let broken_relations = conn.query_row(
             "SELECT COUNT(*) FROM memory_relations r LEFT JOIN observations o ON o.id = r.source_id WHERE o.id IS NULL",
             [], |r| r.get::<_, i64>(0),
@@ -1038,7 +1084,10 @@ impl Database {
         }))
     }
 
-    pub fn get_observation_by_id_raw(&self, id: i64) -> Result<Option<(String, String, String, Option<String>)>> {
+    pub fn get_observation_by_id_raw(
+        &self,
+        id: i64,
+    ) -> Result<Option<(String, String, String, Option<String>)>> {
         let conn = self.get_conn();
         let mut stmt = conn.prepare(
             "SELECT title, content, observation_type, project FROM observations WHERE id = ?1 AND deleted_at IS NULL"
@@ -1056,19 +1105,20 @@ impl Database {
 
     pub fn backup_to(&self, path: &std::path::Path) -> Result<()> {
         let path_str = path.display().to_string();
-        if !path_str.chars().all(|c| c.is_alphanumeric() || c == '/' || c == '-' || c == '_' || c == '.' || c == ':') {
-            return Err(SynapsisError::internal_bug("Backup path contains invalid characters".to_string()));
+        if !path_str.chars().all(|c| {
+            c.is_alphanumeric() || c == '/' || c == '-' || c == '_' || c == '.' || c == ':'
+        }) {
+            return Err(SynapsisError::internal_bug(
+                "Backup path contains invalid characters".to_string(),
+            ));
         }
         let conn = self.get_conn();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| SynapsisError::internal_bug(e.to_string()))?;
         }
-        conn.execute_batch(&format!(
-            "VACUUM INTO '{}'",
-            path_str.replace('\'', "''")
-        ))
-        .map_err(|e| SynapsisError::internal_bug(e.to_string()))?;
+        conn.execute_batch(&format!("VACUUM INTO '{}'", path_str.replace('\'', "''")))
+            .map_err(|e| SynapsisError::internal_bug(e.to_string()))?;
         db_info!("[Database] Backup saved to {}", path.display());
         Ok(())
     }

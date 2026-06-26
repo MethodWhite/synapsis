@@ -60,9 +60,7 @@ impl Orchestrator {
             sub_agents: Vec::new(),
             is_sub_orchestrator: false,
         };
-        self.agents
-            .lock_safe()
-            .insert(agent_id.to_string(), agent);
+        self.agents.lock_safe().insert(agent_id.to_string(), agent);
         for skill in &skills {
             self.skills_index
                 .lock_safe()

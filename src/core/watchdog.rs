@@ -357,7 +357,9 @@ impl FilesystemWatchdog {
                 if let Ok(metadata) = fs::metadata(current_path) {
                     let current_modified = metadata
                         .modified()
-            .map(|t| t.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64)
+                        .map(|t| {
+                            t.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+                        })
                         .unwrap_or(0);
 
                     if current_modified > original.modified {

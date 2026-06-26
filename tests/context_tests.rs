@@ -1,8 +1,8 @@
 //! # Context Module Tests
 
 use synapsis::infrastructure::context::{
-    AccessLevel, Context, ContextId, ContextMetrics, ContextRef, ContextRegistry, ContextState,
-    ContextType, ContextValue, Priority,
+    AccessLevel, Context, ContextId, ContextMetrics, ContextRef, ContextRegistry, ContextRelation,
+    ContextState, ContextType, ContextValue, Priority,
 };
 
 #[test]
@@ -323,10 +323,12 @@ fn test_context_ref() {
     let ref1 = ContextRef {
         id: ContextId::new(),
         access_level: AccessLevel::Full,
+        relation: ContextRelation::Reference,
     };
     let ref2 = ContextRef {
         id: ContextId::new(),
         access_level: AccessLevel::Partial,
+        relation: ContextRelation::Reference,
     };
 
     assert_ne!(ref1.id.0, ref2.id.0);
@@ -349,6 +351,7 @@ fn test_access_levels() {
         let _ref = ContextRef {
             id: ctx.id.clone(),
             access_level: level,
+            relation: ContextRelation::Reference,
         };
     }
 }

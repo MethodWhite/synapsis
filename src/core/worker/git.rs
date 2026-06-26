@@ -7,8 +7,17 @@ use std::time::Instant;
 use tokio::process::Command as TokioCommand;
 
 const ALLOWED_GIT_SUBCOMMANDS: &[&str] = &[
-    "log", "diff", "status", "show", "branch", "tag", "describe",
-    "rev-parse", "rev-list", "rev-count", "shortlog",
+    "log",
+    "diff",
+    "status",
+    "show",
+    "branch",
+    "tag",
+    "describe",
+    "rev-parse",
+    "rev-list",
+    "rev-count",
+    "shortlog",
 ];
 const BLOCKED_GIT_FLAGS: &[&str] = &["-c", "--config-env", "--config"];
 
@@ -109,18 +118,28 @@ impl WorkerAgent for GitWorker {
         // Security: block dangerous git flags
         for arg in &git_args {
             if BLOCKED_GIT_FLAGS.contains(arg) {
-                return Err(TaskError::new(0x0100,
-                    &format!("Blocked git flag: {}. Only safe subcommands are allowed.", arg),
-                    &task.id));
+                return Err(TaskError::new(
+                    0x0100,
+                    &format!(
+                        "Blocked git flag: {}. Only safe subcommands are allowed.",
+                        arg
+                    ),
+                    &task.id,
+                ));
             }
         }
 
         // Security: only allow safe subcommands
         let subcmd = git_args[0];
         if !ALLOWED_GIT_SUBCOMMANDS.contains(&subcmd) {
-            return Err(TaskError::new(0x0100,
-                &format!("Git subcommand '{}' is not allowed. Allowed: {:?}", subcmd, ALLOWED_GIT_SUBCOMMANDS),
-                &task.id));
+            return Err(TaskError::new(
+                0x0100,
+                &format!(
+                    "Git subcommand '{}' is not allowed. Allowed: {:?}",
+                    subcmd, ALLOWED_GIT_SUBCOMMANDS
+                ),
+                &task.id,
+            ));
         }
 
         static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();

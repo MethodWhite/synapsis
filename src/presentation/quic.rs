@@ -4,7 +4,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-
 pub struct QuicTransport {
     server: Arc<McpServer>,
 }
@@ -15,8 +14,11 @@ impl QuicTransport {
     }
 
     pub fn start(&self, port: u16) {
-        let bind_addr = std::env::var("SYNAPSIS_QUIC_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
-        let addr: SocketAddr = format!("{}:{}", bind_addr, port).parse().expect("Invalid bind address");
+        let bind_addr =
+            std::env::var("SYNAPSIS_QUIC_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
+        let addr: SocketAddr = format!("{}:{}", bind_addr, port)
+            .parse()
+            .expect("Invalid bind address");
         let server = self.server.clone();
 
         let (cert_der, key_der) = generate_self_signed_cert();
@@ -48,9 +50,13 @@ impl QuicTransport {
                 Some(server_config),
                 socket,
                 Arc::new(quinn::TokioRuntime),
-            ).expect("Failed to create QUIC endpoint");
+            )
+            .expect("Failed to create QUIC endpoint");
 
-            eprintln!("[Synapsis MCP] QUIC server listening on {} (self-signed cert)", addr);
+            eprintln!(
+                "[Synapsis MCP] QUIC server listening on {} (self-signed cert)",
+                addr
+            );
 
             while let Some(connecting) = endpoint.accept().await {
                 let srv = server.clone();
@@ -69,9 +75,12 @@ impl QuicTransport {
 
 fn generate_self_signed_cert() -> (Vec<u8>, Vec<u8>) {
     let key_pair = rcgen::KeyPair::generate().expect("Failed to generate key pair");
-    let cert_params = rcgen::CertificateParams::new(vec!["synapsis.local".to_string(), "127.0.0.1".to_string()])
-        .expect("Invalid cert params");
-    let cert = cert_params.self_signed(&key_pair).expect("Failed to self-sign cert");
+    let cert_params =
+        rcgen::CertificateParams::new(vec!["synapsis.local".to_string(), "127.0.0.1".to_string()])
+            .expect("Invalid cert params");
+    let cert = cert_params
+        .self_signed(&key_pair)
+        .expect("Failed to self-sign cert");
     (cert.der().to_vec(), key_pair.serialize_der())
 }
 

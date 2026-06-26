@@ -9,8 +9,10 @@
 //! Este es el "segundo cerebro" que ayuda a la IA principal
 //! a tomar mejores decisiones.
 
-use super::context_types::{Context, ContextId, ContextValue, ContextState, ContextType, Priority, Timestamp};
 use super::context_types::now_ts as now_timestamp;
+use super::context_types::{
+    Context, ContextId, ContextState, ContextType, ContextValue, Priority, Timestamp,
+};
 use super::hot_recycler::HotRecycler;
 
 use serde::{Deserialize, Serialize};

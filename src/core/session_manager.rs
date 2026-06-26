@@ -2,8 +2,8 @@
 //!
 //! Implements: mem_session_start, mem_session_end, mem_session_summary
 
-use crate::infrastructure::database::Database;
 use crate::core::session_id::SessionId as SecureSessionId;
+use crate::infrastructure::database::Database;
 use anyhow::Result;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};

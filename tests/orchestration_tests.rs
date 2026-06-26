@@ -89,21 +89,25 @@ fn test_task_types() {
 
 #[test]
 fn test_task_states() {
-    let states = [TaskState::Pending,
+    let states = [
+        TaskState::Pending,
         TaskState::Assigned,
         TaskState::InProgress,
         TaskState::Completed,
         TaskState::Failed,
-        TaskState::Blocked];
+        TaskState::Blocked,
+    ];
     assert_eq!(states.len(), 6);
 }
 
 #[test]
 fn test_task_priority() {
-    let priorities = [TaskPriority::Critical,
+    let priorities = [
+        TaskPriority::Critical,
         TaskPriority::High,
         TaskPriority::Normal,
-        TaskPriority::Low];
+        TaskPriority::Low,
+    ];
     assert_eq!(priorities.len(), 4);
 }
 
@@ -125,11 +129,13 @@ fn test_agent_types() {
 
 #[test]
 fn test_agent_states() {
-    let states = [AgentState::Idle,
+    let states = [
+        AgentState::Idle,
         AgentState::Working,
         AgentState::Waiting,
         AgentState::Available,
-        AgentState::Offline];
+        AgentState::Offline,
+    ];
     assert_eq!(states.len(), 5);
 }
 

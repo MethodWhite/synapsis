@@ -55,6 +55,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.88.0
       - run: cargo check
 
+  actionlint:
+    name: Validate workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reviewdog/action-actionlint@v1
+        with:
+          level: warning
+
   security:
     name: Security audit
     runs-on: ubuntu-latest

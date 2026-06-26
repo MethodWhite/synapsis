@@ -9,9 +9,8 @@
 //! 3. Prefetch inteligente basado en patrones
 //! 4. Descarte proactivo de contexto irrelevante
 
-
-use super::context_types::{ContextId, Priority, Timestamp};
 use super::context_types::now_ts as now_timestamp;
+use super::context_types::{ContextId, Priority, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

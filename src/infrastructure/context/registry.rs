@@ -8,7 +8,10 @@
 //! - Carga perezosa y prefetch
 
 use super::cold_storage::{ColdStats, ColdStorage};
-use super::context_types::{ContextType, ContextState, Context, ContextId, ContextRef, ContextRelation, AccessLevel, Priority, ContextValue, Timestamp, now_ts as now_timestamp};
+use super::context_types::{
+    now_ts as now_timestamp, AccessLevel, Context, ContextId, ContextRef, ContextRelation,
+    ContextState, ContextType, ContextValue, Priority, Timestamp,
+};
 use super::global_context::{GlobalContext, VarType};
 use super::relevance::{ContextRelevanceData, RelevanceEngine};
 use serde::{Deserialize, Serialize};
@@ -169,7 +172,12 @@ impl ContextRegistry {
         let mut result = HashMap::new();
 
         let connections: Vec<(ContextId, AccessLevel)> = match self.get(id) {
-            Some(c) => c.connections.iter().filter(|conn| conn.access_level >= level).map(|conn| (conn.id.clone(), conn.access_level)).collect(),
+            Some(c) => c
+                .connections
+                .iter()
+                .filter(|conn| conn.access_level >= level)
+                .map(|conn| (conn.id.clone(), conn.access_level))
+                .collect(),
             None => return result,
         };
 

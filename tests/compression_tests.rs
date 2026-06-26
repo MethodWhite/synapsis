@@ -10,19 +10,19 @@ fn test_budget_new() {
     let budget = ContextBudget::new(1000);
     assert_eq!(budget.limit, 1000);
     assert_eq!(budget.used, 0);
-    assert_eq!(budget.reserved_essentials, 200); // 20%
-    assert_eq!(budget.comprehensive_limit, 750); // 75%
+    assert_eq!(budget.reserved_essentials, 250); // 25%
+    assert_eq!(budget.comprehensive_limit, 800); // 80%
     assert_eq!(budget.safety_buffer, 100); // 10%
 }
 
 #[test]
 fn test_budget_available() {
     let budget = ContextBudget::new(1000);
-    assert_eq!(budget.available(), 750);
+    assert_eq!(budget.available(), 800);
 
     let mut budget = ContextBudget::new(1000);
     budget.update(500);
-    assert_eq!(budget.available(), 250);
+    assert_eq!(budget.available(), 300); // 800 - 500
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn test_budget_needs_compression() {
     let mut budget = ContextBudget::new(1000);
     assert!(!budget.needs_compression());
 
-    budget.update(800);
+    budget.update(850);
     assert!(budget.needs_compression());
 }
 
@@ -57,8 +57,8 @@ fn test_budget_compression_needed() {
     let mut budget = ContextBudget::new(1000);
     assert_eq!(budget.compression_needed(), 0);
 
-    budget.update(800);
-    assert_eq!(budget.compression_needed(), 150); // 800 - 750 + 100
+    budget.update(900);
+    assert_eq!(budget.compression_needed(), 100); // 900 - 800
 }
 
 #[test]
@@ -72,11 +72,13 @@ fn test_compression_level_ratios() {
 
 #[test]
 fn test_content_tier() {
-    let tiers = [ContentTier::Essential,
+    let tiers = [
+        ContentTier::Essential,
         ContentTier::Standard,
         ContentTier::OnDemand,
         ContentTier::Compressible,
-        ContentTier::Archive];
+        ContentTier::Archive,
+    ];
     assert_eq!(tiers.len(), 5);
 }
 
@@ -306,7 +308,7 @@ fn test_monitor_alerts_compression_needed() {
     let budget = ContextBudget::new(1000);
     let mut monitor = ContextMonitor::new(budget);
 
-    monitor.record(800);
+    monitor.record(850);
     let alerts = monitor.get_alerts();
     assert!(!alerts.is_empty());
     assert_eq!(alerts[0].alert_type, AlertType::CompressionNeeded);
@@ -323,9 +325,11 @@ fn test_monitor_alerts_none_when_ok() {
 
 #[test]
 fn test_alert_types() {
-    let types = [AlertType::HighUsage,
+    let types = [
+        AlertType::HighUsage,
         AlertType::CompressionNeeded,
-        AlertType::ContextOverflow];
+        AlertType::ContextOverflow,
+    ];
     assert_eq!(types.len(), 3);
 }
 

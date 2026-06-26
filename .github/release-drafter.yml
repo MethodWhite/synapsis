@@ -13,6 +13,8 @@ categories:
     labels:
       - 'enhancement'
       - 'feature'
+      - 'core'
+      - 'domain'
   - title: 'Bug Fixes'
     labels:
       - 'bug'
@@ -21,6 +23,7 @@ categories:
     labels:
       - 'database'
       - 'schema'
+      - 'db'
   - title: 'MCP Tools'
     labels:
       - 'mcp'
@@ -29,6 +32,11 @@ categories:
     labels:
       - 'config'
       - 'ci'
+  - title: 'Infrastructure'
+    labels:
+      - 'infra'
+      - 'context'
+      - 'auth'
   - title: 'Documentation'
     labels:
       - 'documentation'

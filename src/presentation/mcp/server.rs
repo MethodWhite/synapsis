@@ -5,24 +5,27 @@ use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 
+use crate::core::agent_registry_ext::AgentRegistryExt;
 use crate::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
 use crate::core::auth::challenge::ChallengeResponse;
 use crate::core::auth::classifier::AgentClassifier;
+use crate::core::auth::permissions::{Permission, PermissionSet};
+use crate::core::auth::tpm::TpmMfaProvider;
+use crate::core::auto_integrate::AutoIntegrate;
+use crate::core::chunk_query::ChunkQueryManager;
+use crate::core::discovery::EnvironmentDiscovery;
 use crate::core::orchestrator::Orchestrator;
 use crate::core::recycle::RecycleBin;
-use crate::core::agent_registry_ext::AgentRegistryExt;
+use crate::core::resource_manager::ResourceManager;
 use crate::core::session_manager::SessionManager;
-use crate::core::timeline_manager::TimelineManager;
-use crate::core::chunk_query::ChunkQueryManager;
-use crate::core::vault::SecureVault;
-use crate::core::worker::{WorkerOrchestrator, ShellWorker, FileWorker, CodeWorker, SearchWorker, GitWorker};
 use crate::core::sync::GitSyncEngine;
-use crate::core::auto_integrate::AutoIntegrate;
-use crate::core::discovery::EnvironmentDiscovery;
+use crate::core::timeline_manager::TimelineManager;
 use crate::core::tool_registry::ToolRegistryState;
-use crate::core::auth::tpm::TpmMfaProvider;
-use crate::core::auth::permissions::{PermissionSet, Permission};
+use crate::core::vault::SecureVault;
 use crate::core::watchdog::FilesystemWatchdog;
+use crate::core::worker::{
+    CodeWorker, FileWorker, GitWorker, SearchWorker, ShellWorker, WorkerOrchestrator,
+};
 use crate::domain::*;
 use crate::infrastructure::agents::AgentRegistry;
 use crate::infrastructure::database::Database;
@@ -64,6 +67,7 @@ pub struct McpServer {
     git_sync: GitSyncEngine,
     auto_integrate: AutoIntegrate,
     tpm: TpmMfaProvider,
+    resources: ResourceManager,
     classifier: Option<AgentClassifier>,
     #[allow(dead_code)]
     challenge: Option<ChallengeResponse>,
@@ -101,8 +105,12 @@ impl McpServer {
             vault: SecureVault::new(crate::config::data_dir()),
             workers: {
                 let mut wo = WorkerOrchestrator::new();
-                wo.register_worker(Arc::new(ShellWorker::new()));
-                wo.register_worker(Arc::new(FileWorker::new()));
+                wo.register_worker(Arc::new(ShellWorker::new().with_antibrick(Arc::new(
+                    AntiBrickEngine::new(AntiBrickConfig::default()),
+                ))));
+                wo.register_worker(Arc::new(
+                    FileWorker::new().with_allowed_dirs(vec![std::path::PathBuf::from(".")]),
+                ));
                 wo.register_worker(Arc::new(CodeWorker::new()));
                 wo.register_worker(Arc::new(SearchWorker::new()));
                 wo.register_worker(Arc::new(GitWorker::new()));
@@ -115,6 +123,7 @@ impl McpServer {
                 AutoIntegrate::new(discovery, registry)
             },
             tpm: TpmMfaProvider::new(),
+            resources: ResourceManager::new(),
             classifier: auth_enabled.then(AgentClassifier::new),
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
@@ -176,7 +185,10 @@ impl McpServer {
         if let Some(ref _classifier) = self.classifier {
             let is_initialize = request["method"].as_str() == Some("initialize");
             if !is_initialize {
-                let key = request["params"]["api_key"].as_str().or_else(|| request["params"]["token"].as_str()).unwrap_or("");
+                let key = request["params"]["api_key"]
+                    .as_str()
+                    .or_else(|| request["params"]["token"].as_str())
+                    .unwrap_or("");
                 if key.is_empty() {
                     return Some(json!({"jsonrpc":"2.0","id":&request["id"],"error":{"code":-32001,"message":"Authentication required. Pass api_key in params."}}).to_string());
                 }
@@ -944,6 +956,131 @@ impl McpServer {
                         },
                         "required": ["agent_type"]
                     }
+                },
+                {
+                    "name": "secure_write_file",
+                    "description": "Write data to a file securely.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" },
+                            "data": { "type": "string" }
+                        },
+                        "required": ["path", "data"]
+                    }
+                },
+                {
+                    "name": "secure_read_file",
+                    "description": "Read a file securely.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" }
+                        },
+                        "required": ["path"]
+                    }
+                },
+                {
+                    "name": "secure_list_dir",
+                    "description": "List directory contents securely.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" }
+                        }
+                    }
+                },
+                {
+                    "name": "secure_random",
+                    "description": "Generate a cryptographically secure random number (0 to max-1).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "max": { "type": "integer", "description": "Upper bound (exclusive), default 1000" }
+                        }
+                    }
+                },
+                {
+                    "name": "vault_session_key",
+                    "description": "Manage session keys in the secure vault (store, get, rotate, close).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": { "type": "string" },
+                            "action": { "type": "string", "description": "store, get, rotate, close" },
+                            "key_data": { "type": "string" }
+                        },
+                        "required": ["session_id", "action"]
+                    }
+                },
+                {
+                    "name": "vault_list_sessions",
+                    "description": "List all active session keys in the vault.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "sync_memory",
+                    "description": "Sync a memory observation to the Git sync engine.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "agent_id": { "type": "string" },
+                            "summary": { "type": "string" }
+                        },
+                        "required": ["summary"]
+                    }
+                },
+                {
+                    "name": "audit_log",
+                    "description": "Get audit trail for a specific observation.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "observation_id": { "type": "integer" }
+                        },
+                        "required": ["observation_id"]
+                    }
+                },
+                {
+                    "name": "resource_stats",
+                    "description": "Get system resource stats (CPU, memory, agents).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "resource_recommendations",
+                    "description": "Get agent-specific resource recommendations.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "agent_id": { "type": "string" }
+                        },
+                        "required": ["agent_id"]
+                    }
+                },
+                {
+                    "name": "orchestrator_tree",
+                    "description": "Get sub-agent tree for a given agent.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "agent_id": { "type": "string" }
+                        },
+                        "required": ["agent_id"]
+                    }
+                },
+                {
+                    "name": "orchestrator_idle",
+                    "description": "List idle agents available for task assignment.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
                 }
             ]}
         }))
@@ -957,7 +1094,9 @@ impl McpServer {
             "mem_save" | "memory_add" => tools::handle_mem_save(&self.db, id, args),
             "mem_search" | "memory_search" => tools::handle_mem_search(&self.db, id, args),
             "mem_context" => tools::handle_mem_context(&self.db, id, args),
-            "mem_timeline" | "memory_timeline" => tools::handle_mem_timeline(&self.timelines, id, args),
+            "mem_timeline" | "memory_timeline" => {
+                tools::handle_mem_timeline(&self.timelines, id, args)
+            }
             "mem_stats" | "memory_stats" => tools::handle_mem_stats(&self.db, id),
             "mem_delete" => tools::handle_mem_delete(&self.db, id, args),
             "mem_update" => tools::handle_mem_update(&self.db, id, args),
@@ -995,7 +1134,9 @@ impl McpServer {
             "agent_register" => tools::handle_agent_register(&self.agents, id, args),
             "agent_list" => tools::handle_agent_list(&self.agents, id),
             "agent_unregister" => tools::handle_agent_unregister(&self.agent_ext, id, args),
-            "agent_list_by_project" => tools::handle_agent_list_by_project(&self.agent_ext, id, args),
+            "agent_list_by_project" => {
+                tools::handle_agent_list_by_project(&self.agent_ext, id, args)
+            }
             "chunk_query" => tools::handle_chunk_query(&self.chunks, id, args),
             "vault_store" => tools::handle_vault_store(&self.vault, id, args),
             "vault_retrieve" => tools::handle_vault_retrieve(&self.vault, id, args),
@@ -1006,9 +1147,25 @@ impl McpServer {
             "auth_tpm_status" => tools::handle_auth_tpm_status(&self.tpm, id),
             "auth_tpm_attest" => tools::handle_auth_tpm_attest(&self.tpm, id, args),
             "auth_check_permission" => tools::handle_auth_check_permission(id, args),
+            "secure_write_file" => tools::handle_secure_write_file(id, args),
+            "secure_read_file" => tools::handle_secure_read_file(id, args),
+            "secure_list_dir" => tools::handle_secure_list_dir(id, args),
+            "secure_random" => tools::handle_secure_random(id, args),
+            "vault_session_key" => tools::handle_vault_session_key(&self.vault, id, args),
+            "vault_list_sessions" => tools::handle_vault_list_sessions(&self.vault, id),
+            "sync_memory" => tools::handle_sync_memory(&self.git_sync, id, args),
+            "audit_log" => tools::handle_audit_log(id, args),
+            "resource_stats" => tools::handle_resource_stats(&self.resources, id),
+            "resource_recommendations" => {
+                tools::handle_resource_recommendations(&self.resources, id, args)
+            }
+            "orchestrator_tree" => tools::handle_orchestrator_tree(&self.orchestrator, id, args),
+            "orchestrator_idle" => tools::handle_orchestrator_idle(&self.orchestrator, id),
             "auth_classify_agent" => match &self.classifier {
                 Some(c) => tools::handle_auth_classify_agent(c, id, args),
-                None => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Auth not enabled (set SYNAPSIS_AUTH env var)"}})),
+                None => Ok(
+                    json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Auth not enabled (set SYNAPSIS_AUTH env var)"}}),
+                ),
             },
             "task_create" => tools::handle_task_create(&self.orchestrator, id, args),
             "task_list" => tools::handle_task_list(&self.orchestrator, id),

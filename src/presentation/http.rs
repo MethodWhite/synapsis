@@ -11,7 +11,10 @@ pub struct HttpTransport {
 
 impl HttpTransport {
     pub fn new(server: Arc<McpServer>) -> Self {
-        Self { server, circuit: CircuitBreaker::new(10, 60) }
+        Self {
+            server,
+            circuit: CircuitBreaker::new(10, 60),
+        }
     }
 
     pub fn start(&self, port: u16) {

@@ -105,7 +105,9 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             const labels = pr.labels.map(l => l.name);
-            const hasType = labels.some(l => ['feat','fix','refactor','test','docs','ci','config','perf','chore','db','mcp'].includes(l));
+            const validLabels = ['feat','fix','refactor','test','docs','ci','config','perf','chore','db','mcp',
+                                 'core','domain','infra','tools','context','auth'];
+            const hasType = labels.some(l => validLabels.includes(l));
             if (!hasType) {
-              core.warning('PR is missing a type label (feat, fix, refactor, db, mcp, etc.)');
+              core.warning('PR is missing a type label (feat, fix, refactor, core, db, mcp, etc.)');
             }

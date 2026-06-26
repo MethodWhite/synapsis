@@ -23,8 +23,8 @@ pub use context_compression::{
     ContextCompressor, ContextFragment, ContextMonitor,
 };
 pub use context_types::{
-    AccessLevel, Context, ContextId, ContextMetrics, ContextRef, ContextRegistry, ContextState,
-    ContextType, ContextValue, IsolationConfig, Priority, SearchResult,
+    AccessLevel, Context, ContextId, ContextMetrics, ContextRef, ContextRegistry, ContextRelation,
+    ContextState, ContextType, ContextValue, IsolationConfig, Priority, SearchResult,
 };
 pub use orchestration::{
     AgentId, AgentState, AgentType, OrchStatus, Orchestrator, Suggestion, Task, TaskId,
