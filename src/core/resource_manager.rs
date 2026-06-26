@@ -173,8 +173,7 @@ impl ResourceManager {
     /// Set limits for an agent type
     pub fn set_agent_limits(&self, agent_type: &str, limits: AgentLimits) {
         self.agent_limits
-            .lock()
-            .unwrap()
+            .lock_safe()
             .insert(agent_type.to_string(), limits);
     }
 

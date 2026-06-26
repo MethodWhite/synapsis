@@ -511,7 +511,7 @@ impl AntiBrickEngine {
         let id = self.event_counter.fetch_add(1, Ordering::SeqCst);
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64;
 
         let user = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
@@ -710,7 +710,7 @@ Justificación breve (1 línea):"#,
     pub fn cleanup_old_threats(&self, max_age_hours: u64) {
         let cutoff = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64
             - (max_age_hours * 3600 * 1000);
 

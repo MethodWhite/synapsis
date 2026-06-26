@@ -296,8 +296,7 @@ impl Orchestrator {
         drop(agents);
         let desc = {
             self.tasks
-                .lock()
-                .unwrap()
+                .lock_safe()
                 .get(task_id)
                 .map(|t| t.description.clone())
         };
@@ -314,8 +313,7 @@ impl Orchestrator {
 
     pub fn get_pending_tasks(&self) -> Vec<Task> {
         self.tasks
-            .lock()
-            .unwrap()
+            .lock_safe()
             .values()
             .filter(|t| t.status == TaskStatus::Pending)
             .cloned()

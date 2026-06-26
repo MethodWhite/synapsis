@@ -158,7 +158,7 @@ impl TaskCleanupManager {
     fn current_timestamp(&self) -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs() as i64
     }
 }

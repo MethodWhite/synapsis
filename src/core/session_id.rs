@@ -96,7 +96,7 @@ impl SessionId {
     pub fn new(cli_type: &str) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs() as i64;
 
         let uuid = Self::generate_uuid();
@@ -205,7 +205,7 @@ impl SessionId {
     pub fn age(&self) -> i64 {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs() as i64;
         now - self.started_at
     }

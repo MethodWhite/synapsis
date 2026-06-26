@@ -261,7 +261,7 @@ impl FilesystemWatchdog {
 
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64;
 
         Ok(FileSnapshot {
@@ -418,7 +418,7 @@ impl FilesystemWatchdog {
         let id = self.event_counter.fetch_add(1, Ordering::SeqCst);
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64;
 
         let user = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());

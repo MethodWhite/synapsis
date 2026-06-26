@@ -70,8 +70,7 @@ impl Orchestrator {
 
     pub fn get_agent_messages(&self, agent_id: &str, since: i64) -> Vec<OrchestratorMessage> {
         self.messages
-            .lock()
-            .unwrap()
+            .lock_safe()
             .iter()
             .filter(|m| {
                 m.timestamp > since && (m.to.as_deref() == Some(agent_id) || m.to.is_none())

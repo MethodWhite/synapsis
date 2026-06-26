@@ -150,8 +150,7 @@ impl Orchestrator {
         let timeout = timeout_secs as i64;
         let stale: Vec<String> = self
             .agents
-            .lock()
-            .unwrap()
+            .lock_safe()
             .iter()
             .filter(|(_, a)| now - a.last_heartbeat > timeout)
             .map(|(id, _)| id.clone())

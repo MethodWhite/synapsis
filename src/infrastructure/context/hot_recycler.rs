@@ -28,7 +28,7 @@ impl ChunkId {
         use std::time::{SystemTime, UNIX_EPOCH};
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_nanos();
         Self(format!("chunk_{:x}", ts))
     }

@@ -32,7 +32,11 @@ impl HttpTransport {
 }
 
 fn handle_connection(mut stream: TcpStream, server: &McpServer) {
-    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let cloned = match stream.try_clone() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let mut reader = BufReader::new(cloned);
 
     let mut request_line = String::new();
     if reader.read_line(&mut request_line).is_err() {

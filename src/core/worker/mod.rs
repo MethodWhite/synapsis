@@ -178,8 +178,7 @@ impl WorkerRegistry {
 
     pub fn find_by_skill(&self, skill: &str) -> Vec<Arc<dyn WorkerAgent>> {
         self.workers
-            .lock()
-            .unwrap()
+            .lock_safe()
             .values()
             .filter(|w| w.skills().contains(&skill.to_string()))
             .cloned()
