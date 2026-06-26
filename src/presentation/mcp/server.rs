@@ -574,6 +574,124 @@ impl McpServer {
                     "name": "db_vacuum",
                     "description": "Reclaim unused space in the database (VACUUM).",
                     "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "mem_update",
+                    "description": "Update an existing observation's title and content.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "integer", "description": "Observation ID" },
+                            "title": { "type": "string", "description": "New title" },
+                            "content": { "type": "string", "description": "New content" }
+                        },
+                        "required": ["id", "title", "content"]
+                    }
+                },
+                {
+                    "name": "mem_get_observation",
+                    "description": "Get a single observation by ID with full content.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "integer", "description": "Observation ID" }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "mem_judge",
+                    "description": "Record a judgment resolving a detected memory conflict.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "source_id": { "type": "integer", "description": "Source observation ID" },
+                            "target_id": { "type": "integer", "description": "Target observation ID" },
+                            "relation": { "type": "string", "enum": ["related","compatible","scoped","conflicts_with","supersedes","not_conflict"], "description": "Type of relation" },
+                            "reason": { "type": "string", "description": "Explanation" },
+                            "evidence": { "type": "string" },
+                            "confidence": { "type": "number", "default": 1.0 },
+                            "session_id": { "type": "string" },
+                            "project": { "type": "string" }
+                        },
+                        "required": ["source_id", "target_id", "relation"]
+                    }
+                },
+                {
+                    "name": "mem_compare",
+                    "description": "Directly compare two memories and record a semantic verdict.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "memory_id_a": { "type": "integer", "description": "First observation ID" },
+                            "memory_id_b": { "type": "integer", "description": "Second observation ID" },
+                            "relation": { "type": "string", "enum": ["related","compatible","scoped","conflicts_with","supersedes","not_conflict"] },
+                            "confidence": { "type": "number", "default": 1.0 },
+                            "reasoning": { "type": "string" },
+                            "model": { "type": "string" }
+                        },
+                        "required": ["memory_id_a", "memory_id_b", "relation"]
+                    }
+                },
+                {
+                    "name": "mem_session_start",
+                    "description": "Start a new memory session for tracking context across a work session.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": { "type": "string", "description": "Unique session identifier" },
+                            "project": { "type": "string" }
+                        }
+                    }
+                },
+                {
+                    "name": "mem_session_end",
+                    "description": "End a memory session with an optional summary.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": { "type": "string" },
+                            "summary": { "type": "string" }
+                        },
+                        "required": ["session_id"]
+                    }
+                },
+                {
+                    "name": "mem_session_summary",
+                    "description": "Get a summary of a session: observation count, first/last activity.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": { "type": "string" }
+                        }
+                    }
+                },
+                {
+                    "name": "mem_doctor",
+                    "description": "Run diagnostics on the Synapsis memory database.",
+                    "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "mem_merge_projects",
+                    "description": "Merge all observations from one project into another.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "source": { "type": "string", "description": "Source project to merge from" },
+                            "target": { "type": "string", "description": "Target project to merge into" }
+                        },
+                        "required": ["source", "target"]
+                    }
+                },
+                {
+                    "name": "mem_current_project",
+                    "description": "Get observation count and context for a project.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project": { "type": "string" }
+                        }
+                    }
                 }
             ]}
         }))
@@ -590,6 +708,16 @@ impl McpServer {
             "mem_timeline" | "memory_timeline" => tools::handle_mem_timeline(&self.db, id, args),
             "mem_stats" | "memory_stats" => tools::handle_mem_stats(&self.db, id),
             "mem_delete" => tools::handle_mem_delete(&self.db, id, args),
+            "mem_update" => tools::handle_mem_update(&self.db, id, args),
+            "mem_get_observation" => tools::handle_mem_get_observation(&self.db, id, args),
+            "mem_judge" => tools::handle_mem_judge(&self.db, id, args),
+            "mem_compare" => tools::handle_mem_compare(&self.db, id, args),
+            "mem_session_start" => tools::handle_mem_session_start(&self.db, id, args),
+            "mem_session_end" => tools::handle_mem_session_end(&self.db, id, args),
+            "mem_session_summary" => tools::handle_mem_session_summary(&self.db, id, args),
+            "mem_doctor" => tools::handle_mem_doctor(&self.db, id),
+            "mem_merge_projects" => tools::handle_mem_merge_projects(&self.db, id, args),
+            "mem_current_project" => tools::handle_mem_current_project(&self.db, id, args),
             "ghost_audit" => tools::handle_ghost_audit(&self.orchestrator, id, args),
             "pqc_encrypt" => tools::handle_pqc_encrypt(id, args),
             "wasm_run" => tools::handle_wasm_run(id, args),

@@ -297,6 +297,26 @@ impl Database {
                 created_at INTEGER NOT NULL,
                 checksum TEXT
             );
+            CREATE TABLE IF NOT EXISTS memory_relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sync_id TEXT NOT NULL UNIQUE,
+                source_id INTEGER NOT NULL,
+                target_id INTEGER NOT NULL,
+                relation TEXT NOT NULL,
+                judgment_status TEXT NOT NULL DEFAULT 'pending',
+                reason TEXT,
+                evidence TEXT,
+                confidence REAL NOT NULL DEFAULT 1.0,
+                marked_by_actor TEXT,
+                marked_by_kind TEXT,
+                marked_by_model TEXT,
+                session_id TEXT,
+                project TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (source_id) REFERENCES observations(id),
+                FOREIGN KEY (target_id) REFERENCES observations(id)
+            );
             ",
         )?;
 
@@ -845,6 +865,153 @@ impl Database {
             }))
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn update_observation(&self, id: i64, title: &str, content: &str) -> Result<()> {
+        let conn = self.get_conn();
+        let now = Timestamp::now().0;
+        conn.execute(
+            "UPDATE observations SET title = ?1, content = ?2, updated_at = ?3 WHERE id = ?4 AND deleted_at IS NULL",
+            params![title, content, now, id],
+        )?;
+        let _ = conn.execute(
+            "INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES('delete', ?1, '', '')",
+            params![id],
+        );
+        let _ = conn.execute(
+            "INSERT INTO observations_fts(rowid, title, content) VALUES (?1, ?2, ?3)",
+            params![id, title, content],
+        );
+        Ok(())
+    }
+
+    pub fn insert_relation(
+        &self, source_id: i64, target_id: i64, relation: &str, reason: Option<&str>,
+        evidence: Option<&str>, confidence: f64, session_id: Option<&str>, project: Option<&str>,
+    ) -> Result<String> {
+        let conn = self.get_conn();
+        let now = Timestamp::now().0;
+        let sync_id = format!("rel-{}", Uuid::new_v4().to_hex_string());
+        conn.execute(
+            "INSERT INTO memory_relations (sync_id, source_id, target_id, relation, judgment_status, reason, evidence, confidence, marked_by_actor, marked_by_kind, session_id, project, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 'judged', ?5, ?6, ?7, 'engram', 'system', ?8, ?9, ?10, ?10)",
+            params![sync_id, source_id, target_id, relation, reason, evidence, confidence, session_id, project, now],
+        )?;
+        Ok(sync_id)
+    }
+
+    pub fn get_relations_for_observation(&self, obs_id: i64) -> Result<Vec<serde_json::Value>> {
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.sync_id, r.source_id, r.target_id, r.relation, r.judgment_status, r.reason, r.confidence, r.created_at,
+                    o.title AS target_title
+             FROM memory_relations r
+             LEFT JOIN observations o ON o.id = r.target_id
+             WHERE (r.source_id = ?1 OR r.target_id = ?1) AND r.judgment_status = 'judged'"
+        )?;
+        let rows = stmt.query_map(params![obs_id], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, i64>(0)?,
+                "sync_id": row.get::<_, String>(1)?,
+                "source_id": row.get::<_, i64>(2)?,
+                "target_id": row.get::<_, i64>(3)?,
+                "relation": row.get::<_, String>(4)?,
+                "judgment_status": row.get::<_, String>(5)?,
+                "reason": row.get::<_, Option<String>>(6)?,
+                "confidence": row.get::<_, f64>(7)?,
+                "created_at": row.get::<_, i64>(8)?,
+                "target_title": row.get::<_, Option<String>>(9)?.unwrap_or_default(),
+            }))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_observation_by_id(&self, id: i64) -> Result<Option<serde_json::Value>> {
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, title, content, project, observation_type, created_at, updated_at FROM observations WHERE id = ?1 AND deleted_at IS NULL"
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, i64>(0)?,
+                "title": row.get::<_, String>(1)?,
+                "content": row.get::<_, String>(2)?,
+                "project": row.get::<_, Option<String>>(3)?,
+                "observation_type": row.get::<_, u8>(4)?,
+                "created_at": row.get::<_, i64>(5)?,
+                "updated_at": row.get::<_, i64>(6)?,
+            }))
+        })?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn get_session_stats(&self, session_id: &str) -> Result<serde_json::Value> {
+        let conn = self.get_conn();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM observations WHERE session_id = ?1 AND deleted_at IS NULL",
+            params![session_id], |r| r.get(0),
+        ).unwrap_or(0);
+        let first: Option<i64> = conn.query_row(
+            "SELECT MIN(created_at) FROM observations WHERE session_id = ?1 AND deleted_at IS NULL",
+            params![session_id], |r| r.get(0),
+        ).optional().ok().flatten();
+        let last: Option<i64> = conn.query_row(
+            "SELECT MAX(updated_at) FROM observations WHERE session_id = ?1 AND deleted_at IS NULL",
+            params![session_id], |r| r.get(0),
+        ).optional().ok().flatten();
+        Ok(serde_json::json!({
+            "session_id": session_id,
+            "observation_count": count,
+            "first_seen": first,
+            "last_seen": last,
+        }))
+    }
+
+    pub fn merge_projects(&self, source_project: &str, target_project: &str) -> Result<i64> {
+        let conn = self.get_conn();
+        let updated = conn.execute(
+            "UPDATE observations SET project = ?1 WHERE project = ?2 AND deleted_at IS NULL",
+            params![target_project, source_project],
+        )?;
+        Ok(updated as i64)
+    }
+
+    pub fn doctor_check(&self) -> Result<serde_json::Value> {
+        let conn = self.get_conn();
+        let obs_ok = conn.query_row("SELECT COUNT(*) FROM observations", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
+        let deleted = conn.query_row("SELECT COUNT(*) FROM observations WHERE deleted_at IS NOT NULL", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
+        let sessions_ok = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
+        let fts_ok = conn.query_row("SELECT COUNT(*) FROM observations_fts", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
+        let integrity = conn.query_row("SELECT COUNT(*) FROM observations WHERE content_hash = X'00'", [], |r| r.get::<_, i64>(0)).unwrap_or(-1);
+        let broken_relations = conn.query_row(
+            "SELECT COUNT(*) FROM memory_relations r LEFT JOIN observations o ON o.id = r.source_id WHERE o.id IS NULL",
+            [], |r| r.get::<_, i64>(0),
+        ).unwrap_or(-1);
+        Ok(serde_json::json!({
+            "status": if obs_ok >= 0 { "ok" } else { "error" },
+            "observations": obs_ok.max(0),
+            "deleted": deleted.max(0),
+            "sessions": sessions_ok.max(0),
+            "fts_entries": fts_ok.max(0),
+            "zero_hash_observations": integrity.max(0),
+            "broken_relations": broken_relations.max(0),
+        }))
+    }
+
+    pub fn get_observation_by_id_raw(&self, id: i64) -> Result<Option<(String, String, String, Option<String>)>> {
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare(
+            "SELECT title, content, observation_type, project FROM observations WHERE id = ?1 AND deleted_at IS NULL"
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+        Ok(rows.next().transpose()?)
     }
 
     pub fn backup_to(&self, path: &std::path::Path) -> Result<()> {

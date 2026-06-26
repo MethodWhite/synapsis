@@ -682,6 +682,164 @@ pub fn handle_mcp_call(id: &Value, args: &Value) -> anyhow::Result<Value> {
     }
 }
 
+pub fn handle_mem_update(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let obs_id = args["id"].as_i64().unwrap_or(0);
+    let title = args["title"].as_str().unwrap_or("");
+    let content = args["content"].as_str().unwrap_or("");
+    if obs_id == 0 {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'id'"}}));
+    }
+    match db.update_observation(obs_id, title, content) {
+        Ok(_) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Observation {} updated.",obs_id)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_mem_get_observation(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let obs_id = args["id"].as_i64().unwrap_or(0);
+    if obs_id == 0 {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'id'"}}));
+    }
+    match db.get_observation_by_id(obs_id) {
+        Ok(Some(obs)) => {
+            let text = format!("# {}\n\n{}\n\nProject: {} | Type: {} | Created: {}",
+                obs["title"].as_str().unwrap_or(""),
+                obs["content"].as_str().unwrap_or(""),
+                obs["project"].as_str().unwrap_or("(none)"),
+                obs["observation_type"].as_i64().unwrap_or(0),
+                obs["created_at"].as_i64().unwrap_or(0),
+            );
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+        }
+        Ok(None) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"Observation not found."}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_mem_judge(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let source_id = args["source_id"].as_i64().unwrap_or(0);
+    let target_id = args["target_id"].as_i64().unwrap_or(0);
+    let relation = args["relation"].as_str().unwrap_or("");
+    let reason = args["reason"].as_str();
+    let evidence = args["evidence"].as_str();
+    let confidence = args["confidence"].as_f64().unwrap_or(1.0).clamp(0.0, 1.0);
+    let session_id = args["session_id"].as_str();
+    let project = args["project"].as_str();
+    let valid_relations = ["related", "compatible", "scoped", "conflicts_with", "supersedes", "not_conflict"];
+    if source_id == 0 || target_id == 0 || !valid_relations.contains(&relation) {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Invalid params: source_id, target_id, and relation required"}}));
+    }
+    if relation == "not_conflict" {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"No conflict recorded (not_conflict is a no-op)."}]}}));
+    }
+    match db.insert_relation(source_id, target_id, relation, reason, evidence, confidence, session_id, project) {
+        Ok(sync_id) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Relation '{}' recorded (sync_id={})", relation, sync_id)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_mem_compare(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let memory_id_a = args["memory_id_a"].as_i64().unwrap_or(0);
+    let memory_id_b = args["memory_id_b"].as_i64().unwrap_or(0);
+    let relation = args["relation"].as_str().unwrap_or("");
+    let confidence = args["confidence"].as_f64().unwrap_or(1.0).clamp(0.0, 1.0);
+    let reasoning = args["reasoning"].as_str().unwrap_or("");
+    let model = args["model"].as_str();
+    let valid_relations = ["related", "compatible", "scoped", "conflicts_with", "supersedes", "not_conflict"];
+    if memory_id_a == 0 || memory_id_b == 0 || !valid_relations.contains(&relation) {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Invalid params"}}));
+    }
+    if relation == "not_conflict" {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"No conflict (not_conflict)."}]}}));
+    }
+    match db.insert_relation(memory_id_a, memory_id_b, relation, Some(reasoning), model, confidence, None, None) {
+        Ok(sync_id) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Comparison '{}' recorded (sync_id={})", relation, sync_id)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_mem_session_start(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let session_id = args["session_id"].as_str().unwrap_or("mcp-session");
+    let project = args["project"].as_str().unwrap_or("default");
+    match db.start_session(project, session_id) {
+        Ok(sid) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session started: {}", sid.0)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_mem_session_end(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let session_id = args["session_id"].as_str().unwrap_or("");
+    let summary = args["summary"].as_str();
+    if session_id.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'session_id'"}}));
+    }
+    let sid = SessionId::new(session_id);
+    match db.end_session(&sid, summary.map(String::from)) {
+        Ok(_) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session {} ended.", session_id)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_mem_session_summary(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let session_id = args["session_id"].as_str().unwrap_or("mcp-session");
+    match db.get_session_stats(session_id) {
+        Ok(stats) => {
+            let text = format!("Session: {}\nObservations: {}\nFirst: {}\nLast: {}",
+                stats["session_id"].as_str().unwrap_or(""),
+                stats["observation_count"].as_i64().unwrap_or(0),
+                stats["first_seen"].as_i64().unwrap_or(0),
+                stats["last_seen"].as_i64().unwrap_or(0),
+            );
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+        }
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_mem_doctor(db: &Database, id: &Value) -> anyhow::Result<Value> {
+    match db.doctor_check() {
+        Ok(diag) => {
+            let text = format!(
+                "Synapsis Memory Diagnostics\nStatus: {}\nObservations: {}\nDeleted: {}\nSessions: {}\nFTS entries: {}\nZero-hash observations: {}\nBroken relations: {}",
+                diag["status"].as_str().unwrap_or("unknown"),
+                diag["observations"].as_i64().unwrap_or(-1),
+                diag["deleted"].as_i64().unwrap_or(-1),
+                diag["sessions"].as_i64().unwrap_or(-1),
+                diag["fts_entries"].as_i64().unwrap_or(-1),
+                diag["zero_hash_observations"].as_i64().unwrap_or(-1),
+                diag["broken_relations"].as_i64().unwrap_or(-1),
+            );
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+        }
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_mem_merge_projects(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let source = args["source"].as_str().unwrap_or("");
+    let target = args["target"].as_str().unwrap_or("");
+    if source.is_empty() || target.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'source' and 'target'"}}));
+    }
+    match db.merge_projects(source, target) {
+        Ok(count) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Merged {} observations from '{}' into '{}'", count, source, target)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_mem_current_project(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let project = args["project"].as_str().unwrap_or("");
+    if project.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'project'"}}));
+    }
+    let count: i64 = db.get_conn().query_row(
+        "SELECT COUNT(*) FROM observations WHERE project = ?1 AND deleted_at IS NULL",
+        rusqlite::params![project], |r| r.get(0),
+    ).unwrap_or(0);
+    let text = format!("Project: {} | Active observations: {}", project, count);
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
 pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value> {
     let url = args["url"].as_str().unwrap_or("");
     let method = args["method"].as_str().unwrap_or("GET");
