@@ -20,6 +20,8 @@ use crate::core::sync::GitSyncEngine;
 use crate::core::auto_integrate::AutoIntegrate;
 use crate::core::discovery::EnvironmentDiscovery;
 use crate::core::tool_registry::ToolRegistryState;
+use crate::core::auth::tpm::TpmMfaProvider;
+use crate::core::auth::permissions::{PermissionSet, Permission};
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
 use crate::infrastructure::agents::AgentRegistry;
@@ -61,6 +63,7 @@ pub struct McpServer {
     workers: WorkerOrchestrator,
     git_sync: GitSyncEngine,
     auto_integrate: AutoIntegrate,
+    tpm: TpmMfaProvider,
     classifier: Option<AgentClassifier>,
     #[allow(dead_code)]
     challenge: Option<ChallengeResponse>,
@@ -111,6 +114,7 @@ impl McpServer {
                 let registry = ToolRegistryState::new();
                 AutoIntegrate::new(discovery, registry)
             },
+            tpm: TpmMfaProvider::new(),
             classifier: auth_enabled.then(AgentClassifier::new),
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
@@ -898,6 +902,48 @@ impl McpServer {
                         "type": "object",
                         "properties": {}
                     }
+                },
+                {
+                    "name": "auth_tpm_status",
+                    "description": "Check TPM availability for hardware-backed security.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "auth_tpm_attest",
+                    "description": "Generate a TPM attestation for a given nonce.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "nonce": { "type": "string" }
+                        },
+                        "required": ["nonce"]
+                    }
+                },
+                {
+                    "name": "auth_check_permission",
+                    "description": "Check if a trust level grants a specific permission.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "permission": { "type": "string", "description": "pqc_encrypt, pqc_decrypt, manage_agents, configure_security, read_recycle, write_recycle, admin, create_task, execute_task" },
+                            "trust_level": { "type": "string", "description": "all, trusted, basic, minimal, none" }
+                        },
+                        "required": ["permission"]
+                    }
+                },
+                {
+                    "name": "auth_classify_agent",
+                    "description": "Classify an agent by type and get its trust level (requires SYNAPSIS_AUTH).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "agent_type": { "type": "string" }
+                        },
+                        "required": ["agent_type"]
+                    }
                 }
             ]}
         }))
@@ -957,6 +1003,13 @@ impl McpServer {
             "worker_status" => tools::handle_worker_status(&self.workers, id),
             "sync_status" => tools::handle_sync_status(&self.git_sync, id),
             "auto_discover" => tools::handle_auto_discover(&self.auto_integrate, id),
+            "auth_tpm_status" => tools::handle_auth_tpm_status(&self.tpm, id),
+            "auth_tpm_attest" => tools::handle_auth_tpm_attest(&self.tpm, id, args),
+            "auth_check_permission" => tools::handle_auth_check_permission(id, args),
+            "auth_classify_agent" => match &self.classifier {
+                Some(c) => tools::handle_auth_classify_agent(c, id, args),
+                None => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Auth not enabled (set SYNAPSIS_AUTH env var)"}})),
+            },
             "task_create" => tools::handle_task_create(&self.orchestrator, id, args),
             "task_list" => tools::handle_task_list(&self.orchestrator, id),
             "mcp_call" => tools::handle_mcp_call(id, args),

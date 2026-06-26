@@ -1,4 +1,5 @@
 use crate::core::antibrick::AntiBrickEngine;
+use crate::core::auth::permissions::{PermissionSet, Permission};
 use crate::core::orchestrator::Orchestrator;
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
@@ -1058,6 +1059,63 @@ pub fn handle_auto_discover(auto_int: &crate::core::auto_integrate::AutoIntegrat
     let scan = auto_int.force_scan();
     let text = format!("Discovery scan: {} total found, {} new ({}ms)\nBy type: {:?}",
         scan.total_found, scan.new_tools.len(), scan.scan_time_ms, scan.by_type);
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
+pub fn handle_auth_tpm_status(tpm: &crate::core::auth::tpm::TpmMfaProvider, id: &Value) -> anyhow::Result<Value> {
+    let available = tpm.is_tpm_available();
+    let text = format!("TPM availability: {:?}", available);
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
+pub fn handle_auth_tpm_attest(tpm: &crate::core::auth::tpm::TpmMfaProvider, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let nonce = args["nonce"].as_str().unwrap_or("");
+    if nonce.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'nonce'"}}));
+    }
+    match tpm.generate_tpm_attestation(nonce) {
+        Ok(att) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("TPM attestation generated for nonce: {}\nDevice: {:?}", nonce, att)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_auth_check_permission(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let perm_str = args["permission"].as_str().unwrap_or("");
+    let trust_str = args["trust_level"].as_str().unwrap_or("basic");
+    if perm_str.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'permission'"}}));
+    }
+    let perms = match trust_str {
+        "all" => PermissionSet::all(),
+        "trusted" => PermissionSet::trusted(),
+        "basic" => PermissionSet::basic(),
+        "minimal" => PermissionSet::minimal(),
+        _ => PermissionSet::none(),
+    };
+    let perm = match perm_str {
+        "pqc_encrypt" => Permission::PqcEncrypt,
+        "pqc_decrypt" => Permission::PqcDecrypt,
+        "manage_agents" => Permission::ManageAgents,
+        "configure_security" => Permission::ConfigureSecurity,
+        "read_recycle" => Permission::ReadRecycleBin,
+        "write_recycle" => Permission::WriteRecycleBin,
+        "admin" => Permission::Admin,
+        "create_task" => Permission::CreateTask,
+        "execute_task" => Permission::ExecuteTask,
+        _ => return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Unknown permission: {}", perm_str)}})),
+    };
+    let allowed = perms.has_permission(perm);
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Permission '{}' for trust level '{}': {}", perm_str, trust_str, if allowed { "ALLOWED" } else { "DENIED" })}]}}))
+}
+
+pub fn handle_auth_classify_agent(classifier: &crate::core::auth::classifier::AgentClassifier, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let agent_type = args["agent_type"].as_str().unwrap_or("");
+    if agent_type.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'agent_type'"}}));
+    }
+    let client_type = crate::core::auth::classifier::ClientType::from_agent_type(agent_type);
+    let config = classifier.get_config();
+    let text = format!("Agent: {}\nClient type: {:?}\nConfig: {:?}", agent_type, client_type, config);
     Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
 }
 
