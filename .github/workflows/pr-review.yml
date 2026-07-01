@@ -17,7 +17,7 @@ jobs:
       additions: ${{ steps.changes.outputs.additions }}
       deletions: ${{ steps.changes.outputs.deletions }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Analyze PR changes
@@ -46,7 +46,7 @@ jobs:
     outputs:
       title_valid: ${{ steps.conventions.outputs.title_valid }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate PR title
         id: conventions
         run: |
