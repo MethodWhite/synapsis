@@ -362,10 +362,12 @@ impl SecureVault {
         if mk.key.len() != 32 {
             return Err(VaultError::InvalidKeyLength);
         }
+        #[allow(deprecated)]
         let key = Key::<Aes256Gcm>::from_slice(&mk.key);
         let cipher = Aes256Gcm::new(key);
         let mut nonce = [0u8; 12];
         getrandom(&mut nonce).map_err(|e| VaultError::EncryptionFailed(e.to_string()))?;
+        #[allow(deprecated)]
         let nonce = Nonce::<Aes256Gcm>::from_slice(&nonce);
         let ciphertext = cipher
             .encrypt(nonce, plaintext)
@@ -384,11 +386,13 @@ impl SecureVault {
         if mk.key.len() != 32 {
             return Err(VaultError::InvalidKeyLength);
         }
+        #[allow(deprecated)]
         let key = Key::<Aes256Gcm>::from_slice(&mk.key);
         let cipher = Aes256Gcm::new(key);
+        #[allow(deprecated)]
         let nonce = Nonce::<Aes256Gcm>::from_slice(&ciphertext[..12]);
         let plaintext = cipher
-            .decrypt(nonce, &ciphertext[12..])
+            .decrypt(&nonce, &ciphertext[12..])
             .map_err(|_| VaultError::DecryptionFailed)?;
         Ok(plaintext)
     }

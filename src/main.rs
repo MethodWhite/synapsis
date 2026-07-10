@@ -16,13 +16,13 @@ fn main() {
             "--help" | "-h" => {
                 eprintln!("synapsis v{}", env!("CARGO_PKG_VERSION"));
                 eprintln!("Usage: synapsis [--version | --help]");
+                eprintln!("       synapsis [--tls-cert <path> --tls-key <path>]");
                 eprintln!("Without arguments, starts the HTTP/SSE MCP server on port 7438.");
+                eprintln!("Use --tls-cert and --tls-key to enable HTTPS.");
+                eprintln!("Env: SYNAPSIS_PORT, SYNAPSIS_TLS_CERT, SYNAPSIS_TLS_KEY");
                 std::process::exit(0);
             }
-            _ => {
-                eprintln!("Unknown argument: {}", args[1]);
-                std::process::exit(1);
-            }
+            _ => {}
         }
     }
 
@@ -31,14 +31,86 @@ fn main() {
         .and_then(|p| p.parse().ok())
         .unwrap_or(7438);
 
+    let tls_cert = std::env::var("SYNAPSIS_TLS_CERT").ok().or_else(|| {
+        let mut val = None;
+        let mut i = 1;
+        while i < args.len() {
+            if args[i] == "--tls-cert" {
+                val = args.get(i + 1).cloned();
+            }
+            i += 1;
+        }
+        val
+    });
+
+    let tls_key = std::env::var("SYNAPSIS_TLS_KEY").ok().or_else(|| {
+        let mut val = None;
+        let mut i = 1;
+        while i < args.len() {
+            if args[i] == "--tls-key" {
+                val = args.get(i + 1).cloned();
+            }
+            i += 1;
+        }
+        val
+    });
+
+    let tls_config = match (tls_cert, tls_key) {
+        (Some(cert_path), Some(key_path)) => {
+            match synapsis::presentation::http::load_tls_config(&cert_path, &key_path) {
+                Ok(cfg) => {
+                    eprintln!("[Synapsis] TLS configured (cert: {})", cert_path);
+                    Some(cfg)
+                }
+                Err(e) => {
+                    eprintln!("[Synapsis] Failed to load TLS config: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        (Some(_cert_path), None) => {
+            eprintln!(
+                "[Synapsis] SYNAPSIS_TLS_CERT set without key — generating self-signed cert"
+            );
+            match synapsis::presentation::http::generate_self_signed_cert() {
+                Ok((cert_der, key_der)) => {
+                    match rustls::ServerConfig::builder()
+                        .with_no_client_auth()
+                        .with_single_cert(
+                            vec![rustls::pki_types::CertificateDer::from(cert_der)],
+                            rustls::pki_types::PrivateKeyDer::try_from(key_der)
+                                .expect("Invalid private key"),
+                        )
+                    {
+                        Ok(cfg) => {
+                            eprintln!("[Synapsis] Self-signed TLS configured");
+                            Some(cfg)
+                        }
+                        Err(e) => {
+                            eprintln!("[Synapsis] Failed to build self-signed TLS: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[Synapsis] Failed to generate self-signed cert: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        _ => None,
+    };
+
+    let proto = if tls_config.is_some() { "HTTPS" } else { "HTTP" };
+
     eprintln!("╔══════════════════════════════════════════════════════════╗");
     eprintln!(
         "║  Synapsis v{} - Multi-Agent MCP Server            ║",
         env!("CARGO_PKG_VERSION")
     );
     eprintln!(
-        "║  Transport: HTTP/SSE (port {})                       ║",
-        port
+        "║  Transport: {}/SSE (port {})                      ║",
+        proto, port
     );
     eprintln!("║  Multi-Agent: enabled                                  ║");
     eprintln!("╚══════════════════════════════════════════════════════════╝");
@@ -51,6 +123,9 @@ fn main() {
     ));
     server.init();
 
-    let transport = synapsis::presentation::http::HttpTransport::new(server);
+    let transport = match tls_config {
+        Some(cfg) => synapsis::presentation::http::HttpTransport::with_tls(server, cfg),
+        None => synapsis::presentation::http::HttpTransport::new(server),
+    };
     transport.start(port);
 }

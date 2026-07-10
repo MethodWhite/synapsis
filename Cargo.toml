@@ -74,6 +74,7 @@ sysinfo = "0.39"
 # QUIC transport
 quinn = "0.11"
 rustls = "0.23"
+# PEM loading is built into rustls 0.23 via pki_types::PemObject
 rcgen = "0.14"
 
 # TUI (optional)

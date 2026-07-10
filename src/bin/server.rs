@@ -15,19 +15,36 @@ fn main() {
     let mut quic_port: u16 = 7439;
     let mut http_mode = false;
     let mut quic_mode = false;
+    let mut tls_cert: Option<String> = None;
+    let mut tls_key: Option<String> = None;
 
-    for (i, arg) in args.iter().enumerate() {
-        match arg.as_str() {
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
             "--http" | "-h" => http_mode = true,
             "--quic" | "-q" => quic_mode = true,
             "--port" | "-p" => {
                 if let Some(p) = args.get(i + 1) {
                     port = p.parse().unwrap_or(7438);
+                    i += 1;
                 }
             }
             "--quic-port" => {
                 if let Some(p) = args.get(i + 1) {
                     quic_port = p.parse().unwrap_or(7439);
+                    i += 1;
+                }
+            }
+            "--tls-cert" => {
+                if let Some(p) = args.get(i + 1) {
+                    tls_cert = Some(p.clone());
+                    i += 1;
+                }
+            }
+            "--tls-key" => {
+                if let Some(p) = args.get(i + 1) {
+                    tls_key = Some(p.clone());
+                    i += 1;
                 }
             }
             "--help" => {
@@ -42,10 +59,29 @@ fn main() {
                 println!(
                     "  synapsis-server --quic --quic-port PORT Custom QUIC port (default: 7439)"
                 );
+                println!("");
+                println!("TLS options (with --http):");
+                println!("  --tls-cert <path>                    TLS certificate file");
+                println!("  --tls-key <path>                     TLS private key file");
+                println!("  If --tls-cert is set without --tls-key, a self-signed cert is used.");
+                println!("");
+                println!("Env vars:");
+                println!("  SYNAPSIS_PORT");
+                println!("  SYNAPSIS_TLS_CERT");
+                println!("  SYNAPSIS_TLS_KEY");
                 return;
             }
             _ => {}
         }
+        i += 1;
+    }
+
+    // Check env vars (lower priority than CLI)
+    if tls_cert.is_none() {
+        tls_cert = std::env::var("SYNAPSIS_TLS_CERT").ok();
+    }
+    if tls_key.is_none() {
+        tls_key = std::env::var("SYNAPSIS_TLS_KEY").ok();
     }
 
     eprintln!("╔══════════════════════════════════════════════════════════╗");
@@ -76,12 +112,64 @@ fn main() {
     }
 
     if http_mode {
+        let tls_config = match (tls_cert, tls_key) {
+            (Some(ref cert_path), Some(ref key_path)) => {
+                match synapsis::presentation::http::load_tls_config(cert_path, key_path) {
+                    Ok(cfg) => {
+                        eprintln!("[Synapsis] TLS configured (cert: {})", cert_path);
+                        Some(cfg)
+                    }
+                    Err(e) => {
+                        eprintln!("[Synapsis] Failed to load TLS config: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            (Some(_), None) => {
+                eprintln!("[Synapsis] TLS cert set without key — generating self-signed cert");
+                match synapsis::presentation::http::generate_self_signed_cert() {
+                    Ok((cert_der, key_der)) => {
+                        match rustls::ServerConfig::builder()
+                            .with_no_client_auth()
+                            .with_single_cert(
+                                vec![rustls::pki_types::CertificateDer::from(cert_der)],
+                                rustls::pki_types::PrivateKeyDer::try_from(key_der)
+                                    .expect("Invalid private key"),
+                            )
+                        {
+                            Ok(cfg) => {
+                                eprintln!("[Synapsis] Self-signed TLS configured");
+                                Some(cfg)
+                            }
+                            Err(e) => {
+                                eprintln!("[Synapsis] Failed to build self-signed TLS: {}", e);
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[Synapsis] Failed to generate self-signed cert: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            _ => None,
+        };
+
+        let proto = if tls_config.is_some() {
+            "HTTPS"
+        } else {
+            "HTTP"
+        };
         eprintln!(
-            "║  Transport: HTTP/SSE (port {})                      ║",
-            port
+            "║  Transport: {}/SSE (port {})                      ║",
+            proto, port
         );
         eprintln!("╚══════════════════════════════════════════════════════════╝");
-        let transport = synapsis::presentation::http::HttpTransport::new(server);
+        let transport = match tls_config {
+            Some(cfg) => synapsis::presentation::http::HttpTransport::with_tls(server, cfg),
+            None => synapsis::presentation::http::HttpTransport::new(server),
+        };
         transport.start(port);
     } else if quic_mode {
         eprintln!(
