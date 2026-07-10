@@ -723,16 +723,6 @@ impl McpServer {
                     }
                 },
                 {
-                    "name": "mem_current_project",
-                    "description": "Get observation count and context for a project.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "project": { "type": "string" }
-                        }
-                    }
-                },
-                {
                     "name": "mem_audit_log",
                     "description": "View the audit trail of observation changes (updates, deletes).",
                     "inputSchema": {
@@ -1069,7 +1059,6 @@ impl McpServer {
             "mem_session_summary" => tools::handle_mem_session_summary(&self.session_mgr, id, args),
             "mem_doctor" => tools::handle_mem_doctor(&self.db, id),
             "mem_merge_projects" => tools::handle_mem_merge_projects(&self.db, id, args),
-            "mem_current_project" => tools::handle_mem_current_project(&self.db, id, args),
             "mem_audit_log" => tools::handle_mem_audit_log(&self.db, id, args),
             "mem_recycle_save" => tools::handle_mem_recycle_save(&self.recycle, id, args),
             "mem_recycle_search" => tools::handle_mem_recycle_search(&self.recycle, id, args),
