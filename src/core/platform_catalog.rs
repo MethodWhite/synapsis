@@ -192,11 +192,7 @@ pub fn all_platforms() -> Vec<Platform> {
             name: "VS Code + Copilot".into(),
             category: PlatformCategory::IdeIntegration,
             protocol: Protocol::REST,
-            detection_hints: vec![
-                "code".into(),
-                "~/.vscode/".into(),
-                "~/.config/Code/".into(),
-            ],
+            detection_hints: vec!["code".into(), "~/.vscode/".into(), "~/.config/Code/".into()],
             mcp_config_template: None,
             status: PlatformStatus::Active,
             country: "USA".into(),
@@ -235,10 +231,7 @@ pub fn all_platforms() -> Vec<Platform> {
             name: "JetBrains IntelliJ IDEA".into(),
             category: PlatformCategory::IdeIntegration,
             protocol: Protocol::REST,
-            detection_hints: vec![
-                "idea".into(),
-                "~/.config/JetBrains/IntelliJIdea*/".into(),
-            ],
+            detection_hints: vec!["idea".into(), "~/.config/JetBrains/IntelliJIdea*/".into()],
             mcp_config_template: None,
             status: PlatformStatus::Active,
             country: "Czech Republic".into(),
@@ -249,10 +242,7 @@ pub fn all_platforms() -> Vec<Platform> {
             name: "JetBrains PyCharm".into(),
             category: PlatformCategory::IdeIntegration,
             protocol: Protocol::REST,
-            detection_hints: vec![
-                "pycharm".into(),
-                "~/.config/JetBrains/PyCharm*/".into(),
-            ],
+            detection_hints: vec!["pycharm".into(), "~/.config/JetBrains/PyCharm*/".into()],
             mcp_config_template: None,
             status: PlatformStatus::Active,
             country: "Czech Republic".into(),
@@ -263,10 +253,7 @@ pub fn all_platforms() -> Vec<Platform> {
             name: "JetBrains GoLand".into(),
             category: PlatformCategory::IdeIntegration,
             protocol: Protocol::REST,
-            detection_hints: vec![
-                "goland".into(),
-                "~/.config/JetBrains/GoLand*/".into(),
-            ],
+            detection_hints: vec!["goland".into(), "~/.config/JetBrains/GoLand*/".into()],
             mcp_config_template: None,
             status: PlatformStatus::Active,
             country: "Czech Republic".into(),
@@ -277,10 +264,7 @@ pub fn all_platforms() -> Vec<Platform> {
             name: "JetBrains WebStorm".into(),
             category: PlatformCategory::IdeIntegration,
             protocol: Protocol::REST,
-            detection_hints: vec![
-                "webstorm".into(),
-                "~/.config/JetBrains/WebStorm*/".into(),
-            ],
+            detection_hints: vec!["webstorm".into(), "~/.config/JetBrains/WebStorm*/".into()],
             mcp_config_template: None,
             status: PlatformStatus::Active,
             country: "Czech Republic".into(),
@@ -291,10 +275,7 @@ pub fn all_platforms() -> Vec<Platform> {
             name: "Android Studio".into(),
             category: PlatformCategory::IdeIntegration,
             protocol: Protocol::REST,
-            detection_hints: vec![
-                "studio".into(),
-                "~/.config/Google/AndroidStudio*/".into(),
-            ],
+            detection_hints: vec!["studio".into(), "~/.config/Google/AndroidStudio*/".into()],
             mcp_config_template: None,
             status: PlatformStatus::Active,
             country: "USA".into(),
@@ -640,7 +621,10 @@ mod tests {
     fn test_generate_mcp_configs_non_empty() {
         let platforms = all_platforms();
         let configs = generate_mcp_configs(&platforms);
-        assert!(!configs.is_empty(), "Should generate configs for platforms with templates");
+        assert!(
+            !configs.is_empty(),
+            "Should generate configs for platforms with templates"
+        );
     }
 
     #[test]
