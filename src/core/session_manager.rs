@@ -49,7 +49,7 @@ impl SessionManager {
             ],
         )?;
 
-        eprintln!("[Session] Started: {} (project: {})", session_id, project);
+        eprintln!("[debug] session_started: {} project: {}", session_id, project);
         Ok(session_id)
     }
 
@@ -68,7 +68,7 @@ impl SessionManager {
             ],
         )?;
 
-        eprintln!("[Session] Ended: {} with summary", session_id);
+        eprintln!("[debug] session_ended: {}", session_id);
         Ok(())
     }
 

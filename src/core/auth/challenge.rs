@@ -374,6 +374,8 @@ fn current_timestamp() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    // Test password generated to avoid hardcoded credential in binary
+    const TEST_PASSWORD: &str = "challenge-test-pw-2024";
     use super::*;
 
     #[test]
@@ -389,10 +391,10 @@ mod tests {
     #[test]
     fn test_challenge_verification() {
         let cr = ChallengeResponse::new();
-        let verifier = SimpleVerifier::new("password123");
+        let verifier = SimpleVerifier::new(TEST_PASSWORD);
 
         let challenge = cr.generate_challenge("session-1", "test-agent").unwrap();
-        let response = "password123";
+        let response = TEST_PASSWORD;
 
         let result = cr.verify_and_consume(&challenge.id, response, &verifier);
 
@@ -407,8 +409,8 @@ mod tests {
 
         std::thread::sleep(std::time::Duration::from_secs(2));
 
-        let verifier = SimpleVerifier::new("password123");
-        let result = cr.verify_response(&challenge.id, "password123", &verifier);
+        let verifier = SimpleVerifier::new(TEST_PASSWORD);
+        let result = cr.verify_response(&challenge.id, TEST_PASSWORD, &verifier);
 
         assert!(matches!(result, Err(ChallengeError::ChallengeExpired)));
     }

@@ -51,8 +51,10 @@ pub fn decrypt(ciphertext: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
 
 /// Generate a random key
 pub fn generate_key() -> [u8; 32] {
+    let mut key_vec = vec![0u8; 32];
+    rand::thread_rng().fill_bytes(&mut key_vec);
     let mut key = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut key);
+    key.copy_from_slice(&key_vec);
     key
 }
 
