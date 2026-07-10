@@ -871,6 +871,14 @@ impl McpServer {
                     }
                 },
                 {
+                    "name": "discovery_scan",
+                    "description": "Run a full discovery scan (local PATH, mDNS network, MCP servers, platform catalog) and auto-configure.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
                     "name": "auth_tpm_status",
                     "description": "Check TPM availability for hardware-backed security.",
                     "inputSchema": {
@@ -1127,6 +1135,7 @@ impl McpServer {
             "worker_status" => tools::handle_worker_status(&self.workers, id),
             "sync_status" => tools::handle_sync_status(&self.git_sync, id),
             "auto_discover" => tools::handle_auto_discover(&self.auto_integrate, id),
+            "discovery_scan" => tools::handle_discovery_scan(id),
             "auth_tpm_status" => tools::handle_auth_tpm_status(&self.tpm, id),
             "auth_tpm_attest" => tools::handle_auth_tpm_attest(&self.tpm, id, args),
             "auth_check_permission" => tools::handle_auth_check_permission(id, args),

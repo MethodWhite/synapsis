@@ -5,6 +5,7 @@ pub mod antibrick;
 pub mod auth;
 pub mod auto_integrate;
 pub mod discovery;
+pub mod discovery_bridge;
 pub mod discovery_net;
 pub mod lock_utils;
 pub mod mcp_autoconfig;

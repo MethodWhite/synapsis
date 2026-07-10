@@ -16,9 +16,9 @@ echo "Synapsis MCP Install"
 echo "  Binary: ${MCP_BINARY}"
 echo ""
 
-PYTHON=$(command -v python3 || command -v python || true)
-if [ -z "$PYTHON" ]; then
-    echo "!! python3 is required" >&2
+JQ=$(command -v jq || true)
+if [ -z "$JQ" ]; then
+    echo "!! jq is required (install with: sudo pacman -S jq)" >&2
     exit 1
 fi
 

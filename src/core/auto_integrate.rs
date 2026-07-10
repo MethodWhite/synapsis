@@ -1,6 +1,7 @@
 //! Synapsis Auto-Integration - Proactive tool integration
 
 use crate::core::discovery::{DiscoveredTool, DiscoveryScan, EnvironmentDiscovery, ToolType};
+use crate::core::discovery_bridge::DiscoveryBridge;
 use crate::core::lock_utils::*;
 use crate::core::tool_registry::{ToolRegistryState, WorkerConfig};
 use crate::domain::types::Timestamp;
@@ -93,7 +94,23 @@ impl AutoIntegrate {
         let registry = ToolRegistryState(self.registry.0.clone());
         let config = self.config.clone();
 
+        let discovery_bridge = DiscoveryBridge::new().ok();
+
         thread::spawn(move || {
+            // Run DiscoveryBridge on first tick
+            if let Some(ref bridge) = discovery_bridge {
+                println!("[AutoIntegrate] Running full discovery bridge...");
+                let report = bridge.full_discovery_flow();
+                let summary = DiscoveryBridge::report_summary(&report);
+                println!(
+                    "[AutoIntegrate] Discovery complete: {} local, {} mcp, {} nodes, {} platforms",
+                    summary.get("local_tools").unwrap_or(&0),
+                    summary.get("mcp_servers").unwrap_or(&0),
+                    summary.get("network_nodes").unwrap_or(&0),
+                    summary.get("platform_matches").unwrap_or(&0),
+                );
+            }
+
             while running.load(std::sync::atomic::Ordering::SeqCst) {
                 let result = Self::scan_and_integrate(&discovery, &registry, &config);
 

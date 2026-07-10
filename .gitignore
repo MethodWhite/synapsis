@@ -30,3 +30,7 @@ synapsis_*.log
 # Keep Cargo.lock committed for reproducible builds
 crates/core
 __pycache__/
+# No Python in Synapsis - Rust-native project
+*.py
+*.pyc
+__pycache__/

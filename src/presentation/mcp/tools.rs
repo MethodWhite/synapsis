@@ -1,6 +1,7 @@
 use crate::core::antibrick::AntiBrickEngine;
 use crate::core::auth::permissions::{Permission, PermissionSet};
 use crate::core::orchestrator::Orchestrator;
+use crate::core::discovery_bridge::DiscoveryBridge;
 use crate::core::session_bridge::{self, SharedSession, SessionBridge};
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
@@ -1413,6 +1414,27 @@ pub fn handle_auto_discover(
         scan.new_tools.len(),
         scan.scan_time_ms,
         scan.by_type
+    );
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
+}
+
+pub fn handle_discovery_scan(id: &Value) -> anyhow::Result<Value> {
+    let bridge = match DiscoveryBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":format!("DiscoveryBridge init failed: {}", e)}}));
+        }
+    };
+    let report = bridge.full_discovery_flow();
+    let summary = DiscoveryBridge::report_summary(&report);
+    let text = format!(
+        "Discovery scan complete:\n  Local tools: {}\n  MCP servers: {}\n  Network nodes: {}\n  Platform matches: {}\n  Auto-configured: {}\n  Errors: {}",
+        summary.get("local_tools").unwrap_or(&0),
+        summary.get("mcp_servers").unwrap_or(&0),
+        summary.get("network_nodes").unwrap_or(&0),
+        summary.get("platform_matches").unwrap_or(&0),
+        summary.get("auto_configured").unwrap_or(&0),
+        summary.get("errors").unwrap_or(&0),
     );
     Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
 }

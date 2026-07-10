@@ -69,20 +69,14 @@ if [ ! -x "$MCP_BINARY" ]; then
     exit 1
 fi
 
-PYTHON=$(command -v python3 || command -v python || true)
-if [ -z "$PYTHON" ]; then
-    err "python3 is required for JSON merging"
-    exit 1
-fi
-
 echo "Synapsis MCP Auto-Config"
 echo "  Binary: ${MCP_BINARY}"
 echo "  Mode:   $([ "$DRY_RUN" = true ] && echo 'DRY-RUN (use --apply to write)' || echo 'APPLY')"
 echo ""
 
 # ── JSON Merge Function ───────────────────────────────────
-# Uses python3 to safely merge MCP server entry into a JSON config file.
-# Returns 0 if file was changed, 1 if no change needed.
+# Uses jq to safely merge MCP server entry into a JSON config file.
+# Falls back to Rust binary if available.
 merge_mcp_config() {
     local filepath="$1"
 
@@ -93,38 +87,32 @@ merge_mcp_config() {
 
     mkdir -p "$(dirname "$filepath")"
 
-    # Backup existing file
     if [ -f "$filepath" ]; then
-        cp "$filepath" "${filepath}.bak"
+        cp "$filepath" "${filepath}.bak" 2>/dev/null || true
         debug "Backup created: ${filepath}.bak"
     fi
 
-    "$PYTHON" -c "
-import json, sys
+    # Use jq if available (native POSIX tool)
+    if command -v jq &>/dev/null; then
+        local tmp; tmp=$(mktemp)
+        if [ -f "$filepath" ]; then
+            jq --arg cmd "$MCP_BINARY" '.mcpServers.synapsis = {command: $cmd, args: []}' "$filepath" > "$tmp" 2>/dev/null && mv "$tmp" "$filepath" || rm -f "$tmp"
+        else
+            jq -n --arg cmd "$MCP_BINARY" '{mcpServers: {synapsis: {command: $cmd, args: []}}}' > "$filepath"
+        fi
+        echo "ok $1 already up to date"
+        return 0
+    fi
 
-filepath = '$filepath'
-binary = '$MCP_BINARY'
+    # Fallback: use synapsis-autoconfig Rust binary
+    if command -v synapsis-autoconfig &>/dev/null; then
+        synapsis-autoconfig --apply
+        return $?
+    fi
 
-try:
-    with open(filepath) as f:
-        data = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    data = {}
-
-data.setdefault('mcpServers', {})
-
-existing = data['mcpServers'].get('synapsis', {})
-if isinstance(existing, dict) and existing.get('command') == binary:
-    sys.exit(1)
-
-data['mcpServers']['synapsis'] = {'command': binary, 'args': []}
-
-with open(filepath, 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-
-sys.exit(0)
-" && return 0 || return 1
+    err "jq or synapsis-autoconfig required for JSON merging"
+    return 1
+}
 }
 
 # ── Tool Detection ────────────────────────────────────────
