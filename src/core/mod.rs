@@ -25,6 +25,8 @@ pub mod uuid;
 pub mod vault;
 pub mod watchdog;
 pub mod worker;
+pub mod x402;
+pub mod x402_discovery;
 
 pub use agent::*;
 pub use auth::*;

@@ -79,6 +79,36 @@ fn main() {
                     }
                 }
             }
+            "x402" => {
+                let sub = args.get(2).map(|s| s.as_str()).unwrap_or("");
+                match sub {
+                    "discover" => {
+                        let engine = synapsis::core::x402::X402Engine::new(
+                            "0x0000000000000000000000000000000000000000",
+                            "https://mainnet.base.org",
+                        );
+                        let discovery = engine.get_x402_discovery();
+                        println!("{}", serde_json::to_string_pretty(&discovery).unwrap());
+                        std::process::exit(0);
+                    }
+                    "features" => {
+                        let features = synapsis::core::x402::all_premium_features();
+                        println!("{:<20} {:<50} {:>10}", "Feature", "Description", "Price");
+                        println!("{}", "-".repeat(82));
+                        for f in &features {
+                            println!(
+                                "{:<20} {:<50} {:>8.3} USDC",
+                                f.name, f.description, f.price_usdc
+                            );
+                        }
+                        std::process::exit(0);
+                    }
+                    _ => {
+                        eprintln!("Usage: synapsis x402 <discover|features>");
+                        std::process::exit(1);
+                    }
+                }
+            }
             _ => {}
         }
     }
