@@ -114,18 +114,18 @@ mod mcp_tests {
             .map(|t| t["name"].as_str().unwrap())
             .collect();
 
-        assert!(tool_names.contains(&"memory_add"), "Should have memory_add");
+        assert!(tool_names.contains(&"mem_save"), "Should have mem_save");
         assert!(
-            tool_names.contains(&"memory_search"),
-            "Should have memory_search"
+            tool_names.contains(&"mem_search"),
+            "Should have mem_search"
         );
         assert!(
-            tool_names.contains(&"memory_timeline"),
-            "Should have memory_timeline"
+            tool_names.contains(&"mem_timeline"),
+            "Should have mem_timeline"
         );
         assert!(
-            tool_names.contains(&"memory_stats"),
-            "Should have memory_stats"
+            tool_names.contains(&"mem_stats"),
+            "Should have mem_stats"
         );
         assert!(
             tool_names.contains(&"skill_register"),
@@ -140,7 +140,7 @@ mod mcp_tests {
     }
 
     #[test]
-    fn test_memory_add_via_mcp() {
+    fn test_mem_save_via_mcp() {
         let server = test_server();
 
         server.init();
@@ -150,7 +150,7 @@ mod mcp_tests {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "memory_add",
+                "name": "mem_save",
                 "arguments": {
                     "title": "Test Memory",
                     "content": "Test content for MCP"
@@ -175,7 +175,7 @@ mod mcp_tests {
     }
 
     #[test]
-    fn test_memory_search_via_mcp() {
+    fn test_mem_search_via_mcp() {
         let server = test_server();
         server.init();
 
@@ -184,7 +184,7 @@ mod mcp_tests {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "memory_add",
+                "name": "mem_save",
                 "arguments": {
                     "title": "Rust Programming",
                     "content": "Learning Rust programming language"
@@ -198,7 +198,7 @@ mod mcp_tests {
             "id": 2,
             "method": "tools/call",
             "params": {
-                "name": "memory_search",
+                "name": "mem_search",
                 "arguments": {
                     "query": "Rust",
                     "limit": 10
@@ -217,7 +217,7 @@ mod mcp_tests {
     }
 
     #[test]
-    fn test_memory_timeline_via_mcp() {
+    fn test_mem_timeline_via_mcp() {
         let server = test_server();
         server.init();
 
@@ -226,7 +226,7 @@ mod mcp_tests {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "memory_timeline",
+                "name": "mem_timeline",
                 "arguments": {
                     "limit": 10
                 }
@@ -247,7 +247,7 @@ mod mcp_tests {
     }
 
     #[test]
-    fn test_memory_stats_via_mcp() {
+    fn test_mem_stats_via_mcp() {
         let server = test_server();
         server.init();
 
@@ -256,7 +256,7 @@ mod mcp_tests {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "memory_stats",
+                "name": "mem_stats",
                 "arguments": {}
             }
         });
@@ -584,7 +584,7 @@ mod mcp_tests {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "memory_stats"
+                "name": "mem_stats"
             }
         });
 
@@ -628,7 +628,7 @@ mod mcp_tests {
                 "id": 1,
                 "method": "tools/call",
                 "params": {
-                    "name": "memory_add",
+                    "name": "mem_save",
                     "arguments": {
                         "title": title,
                         "content": format!("Content for {}", title)
@@ -643,7 +643,7 @@ mod mcp_tests {
             "id": 2,
             "method": "tools/call",
             "params": {
-                "name": "memory_search",
+                "name": "mem_search",
                 "arguments": {
                     "query": "Content",
                     "limit": 10
