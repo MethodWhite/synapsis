@@ -49,7 +49,10 @@ impl SessionManager {
             ],
         )?;
 
-        eprintln!("[debug] session_started: {} project: {}", session_id, project);
+        eprintln!(
+            "[debug] session_started: {} project: {}",
+            session_id, project
+        );
         Ok(session_id)
     }
 

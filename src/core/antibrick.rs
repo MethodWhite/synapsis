@@ -535,7 +535,7 @@ impl AntiBrickEngine {
     }
 
     fn compute_event_hash(&self, id: u64, timestamp: u64, cmd: &str, args: &[String]) -> String {
-        use hmac::{Hmac, Mac, KeyInit};
+        use hmac::{Hmac, KeyInit, Mac};
         use sha2::Sha256;
         let data = format!("{}:{}:{}:{:?}", id, timestamp, cmd, args);
         let key = derive_antibrick_key();
