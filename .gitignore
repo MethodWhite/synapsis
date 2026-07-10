@@ -29,3 +29,4 @@ synapsis_*.log
 
 # Keep Cargo.lock committed for reproducible builds
 crates/core
+__pycache__/
