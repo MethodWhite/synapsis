@@ -23,6 +23,17 @@ pub fn handle_mem_save(db: &Database, id: &Value, args: &Value) -> anyhow::Resul
     let scope_str = args["scope"].as_str().unwrap_or("project");
     let session_id = args["session_id"].as_str().unwrap_or("mcp-session");
 
+    // Validate content length — reject excessively large payloads
+    const MAX_CONTENT_LEN: usize = 10_000_000; // 10 MB
+    if content.len() > MAX_CONTENT_LEN {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": format!(
+                "Content too large: {} bytes (max {} bytes)", content.len(), MAX_CONTENT_LEN
+            )}
+        }));
+    }
+
     let mut obs = Observation::new(
         SessionId::new(session_id),
         obs_type_str
@@ -205,7 +216,7 @@ pub fn handle_mem_delete(db: &Database, id: &Value, args: &Value) -> anyhow::Res
         }
         Err(e) => Ok(json!({
             "jsonrpc": "2.0", "id": id,
-            "result": { "content": [{ "type": "text", "text": format!("Delete failed: {}", e) }] }
+            "error": { "code": -32603, "message": format!("Delete failed: {}", e) }
         })),
     }
 }
@@ -246,9 +257,7 @@ pub fn handle_pqc_encrypt(id: &Value, args: &Value) -> anyhow::Result<Value> {
         Err(e) => Ok(json!({
             "jsonrpc": "2.0",
             "id": id,
-            "result": {
-                "content": [{ "type": "text", "text": format!("Encryption failed: {}", e) }]
-            }
+            "error": { "code": -32603, "message": format!("Encryption failed: {}", e) }
         })),
     }
 }
@@ -357,7 +366,8 @@ pub fn handle_watchdog_events(_watchdog: &FilesystemWatchdog, id: &Value, _args:
 }
 
 pub fn handle_watchdog_check_path(_watchdog: &FilesystemWatchdog, id: &Value, args: &Value) -> anyhow::Result<Value> {
-    let _path = args["path"].as_str().unwrap_or(".").to_string();
+    let path = args["path"].as_str().unwrap_or(".").to_string();
+    // TODO: call _watchdog.is_path_protected() once exposed
     Ok(json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -852,6 +862,15 @@ pub fn handle_mem_session_start(
     let project = args["project"].as_str().unwrap_or("default");
     let directory = args["directory"].as_str().unwrap_or(".");
     let agent_id = args["agent_id"].as_str().unwrap_or("default-agent");
+
+    // Reject directory traversal attempts
+    let sanitized_dir = directory.replace('\', "/");
+    if sanitized_dir.contains("..") || sanitized_dir.contains('~') {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": "Directory path must not contain '..' or '~'" }
+        }));
+    }
     match sessions.start_session(project, directory) {
         Ok(sid) => {
             let bridge = SessionBridge::global();
@@ -1047,7 +1066,10 @@ pub fn handle_mem_current_project(
             rusqlite::params![project],
             |r| r.get(0),
         )
-        .unwrap_or(0);
+        .unwrap_or_else(|e| {
+            eprintln!("[mem_current_project] Query error: {}", e);
+            0
+        });
     let text = format!("Project: {} | Active observations: {}", project, count);
     Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
 }
@@ -1916,7 +1938,7 @@ pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value
         }
         Err(e) => Ok(json!({
             "jsonrpc": "2.0", "id": id,
-            "result": { "content": [{ "type": "text", "text": format!("Request failed: {}", e) }] }
+            "error": { "code": -32603, "message": format!("Request failed: {}", e) }
         })),
     }
 }
@@ -1992,7 +2014,7 @@ pub fn handle_browser_snapshot(id: &Value, args: &Value) -> anyhow::Result<Value
         }
         Err(e) => Ok(json!({
             "jsonrpc": "2.0", "id": id,
-            "result": { "content": [{ "type": "text", "text": format!("Request failed: {}", e) }] }
+            "error": { "code": -32603, "message": format!("Request failed: {}", e) }
         })),
     }
 }

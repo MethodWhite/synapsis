@@ -674,12 +674,12 @@ impl Database {
             ],
         )?;
         let id = conn.last_insert_rowid();
+        // Insert into FTS index — individual insert is sufficient;
+        // a full rebuild via 'rebuild' would be O(n) on every save and is not needed.
         let _ = conn.execute(
             "INSERT INTO observations_fts(rowid, title, content) VALUES (?1, ?2, ?3)",
             params![id, obs.title, obs.content],
         );
-        let _ =
-            conn.execute_batch("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')");
         Ok(ObservationId::new(id))
     }
 
