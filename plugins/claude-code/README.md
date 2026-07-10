@@ -1,58 +1,22 @@
-# Synapsis MCP for Claude Code
+# Synapsis + Claude Code
 
-Integration plugin for Claude Code CLI with Synapsis MCP server.
-
-## Installation
+## Instalación
 
 ```bash
-# Copy to Claude Code config directory
-cp synapsis-mcp.json ~/.claude/
-cp synapsis-session-start.sh ~/.claude/hooks/
-chmod +x ~/.claude/hooks/synapsis-session-start.sh
+cp mcp-config.json ~/.claude/mcp.json
+# o
+synapsis-autoconfig --apply
 ```
 
-## Configuration
+## Uso
 
-Add to `~/.claude/settings.json`:
+Claude Code puede usar los MCP tools de Synapsis para:
+- `mem_save` — guardar observaciones importantes
+- `mem_search` — buscar en memoria persistente
+- `mem_context` — obtener contexto de sesiones previas
+- `shared_sessions_list` — ver sesiones activas de otras herramientas
 
-```json
-{
-  "mcpServers": {
-    "synapsis": {
-      "command": "synapsis",
-      "args": ["mcp"],
-      "env": {
-        "SYNAPSIS_PROJECT": "claude-code-project"
-      }
-    }
-  }
-}
-```
+## Session hooks
 
-## Features
-
-- ✅ Auto-register session on start
-- ✅ Heartbeat every 30 seconds
-- ✅ Save context after commands
-- ✅ Search memory before coding
-- ✅ Distributed locks for builds
-- ✅ Multi-agent coordination
-
-## Usage
-
-```bash
-# Start Claude Code with Synapsis
-claude
-
-# Synapsis auto-registers and starts heartbeat
-# Context is saved automatically
-```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `/synapsis save <title>` | Save current context |
-| `/synapsis search <query>` | Search memory |
-| `/synapsis context` | Get global context |
-| `/synapsis agents` | List active agents |
+`synapsis-session-start.sh` se ejecuta automáticamente cuando Claude Code
+inicia una sesión, registrándola en el Session Bridge.

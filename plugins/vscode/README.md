@@ -1,18 +1,29 @@
-# Synapsis MCP Templates for VSCode Forks
+# Synapsis + VS Code / Cursor / Windsurf
 
-## VSCode / VSCodium
-Copiar `mcp-settings.json` a `.vscode/`
+## Instalación automática (recomendada)
 
-## Cursor
-Copiar `cursor-mcp.json` a `.cursor/`
+```bash
+synapsis-autoconfig --apply
+```
 
-## Windsurf
-Copiar `windsurf-mcp.json` a `.windsurf/`
+Esto detecta qué IDE tienes instalado y genera la configuración MCP.
 
-## Claude Code (VSCode extension)
-Copiar `claude-code-mcp.json` a `.claude/`
+## Instalación manual
 
-## Comandos
-- `Synapsis: Connect` - Conectar al servidor TCP
-- `Synapsis: Save Context` - Guardar contexto
-- `Synapsis: Search` - Buscar en memoria
+```bash
+# VS Code
+cp mcp-settings.json ~/.vscode/mcp.json
+
+# Cursor
+cp mcp-settings.json ~/.cursor/mcp.json
+
+# Windsurf
+cp mcp-settings.json ~/.windsurf/mcp.json
+```
+
+## Uso
+
+Los MCP tools de Synapsis estarán disponibles en el IDE:
+- `mem_save` / `mem_search`
+- `shared_sessions_list` / `shared_sessions_broadcast`
+- `discovery_scan`
