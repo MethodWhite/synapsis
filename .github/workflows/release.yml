@@ -1,7 +1,7 @@
 name: Release
 on:
   push:
-    tags: [v*, synapsis-v*]v*']
+    tags: [v*, synapsis-v*]
 
 permissions:
   contents: write
