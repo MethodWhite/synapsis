@@ -1,37 +1,22 @@
-# Auto-label PRs by changed files
-# Format: actions/labeler v5
-
 core:
-  - src/core/**/*
-
+  - any: ['src/core/**/*']
 domain:
-  - src/domain/**/*
-
+  - any: ['src/domain/**/*']
 infra:
-  - src/infrastructure/**/*
-
+  - any: ['src/infrastructure/**/*']
 mcp:
-  - src/presentation/mcp/**/*
-  - src/bin/mcp.rs
-
+  - any: ['src/presentation/mcp/**/*', 'src/bin/mcp.rs']
 tools:
-  - src/tools/**/*
-
+  - any: ['src/tools/**/*']
 db:
-  - src/infrastructure/database/**/*
-
+  - any: ['src/infrastructure/database/**/*']
 context:
-  - src/infrastructure/context/**/*
-
+  - any: ['src/infrastructure/context/**/*']
 auth:
-  - src/core/auth/**/*
-
+  - any: ['src/core/auth/**/*']
 ci:
-  - .github/**/*
-
+  - any: ['.github/**/*']
 docs:
-  - '**/*.md'
-  - docs/**/*
-
+  - any: ['**/*.md', 'docs/**/*']
 test:
-  - tests/**/*
+  - any: ['tests/**/*']
