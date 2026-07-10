@@ -1,0 +1,24 @@
+# Release Please — Automated version management
+# Docs: https://github.com/googleapis/release-please
+
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release-type: rust
+          bump-minor-pre-major: true
+          include-component-in-tag: false
+          pull-request-title-pattern: "chore: release ${version}"

@@ -19,9 +19,14 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout synapsis-core
+        uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: crates/core
       - uses: dtolnay/rust-toolchain
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test -- --test-threads=1
+      - run: cargo test --workspace -- --test-threads=1
         env:
           RUST_BACKTRACE: 1
       - uses: actions/upload-artifact@v4
@@ -36,10 +41,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout synapsis-core
+        uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: crates/core
       - uses: dtolnay/rust-toolchain
         with:
           components: rustfmt
-      - run: cargo fmt -- --check
+      - run: cargo fmt --workspace -- --check
 
   clippy:
     name: Clippy
@@ -47,10 +57,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout synapsis-core
+        uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: crates/core
       - uses: dtolnay/rust-toolchain
         with:
           components: clippy
-      - run: cargo clippy
+      - run: cargo clippy --workspace
 
   msrv:
     name: MSRV (1.88.0)
@@ -58,8 +73,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout synapsis-core
+        uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: crates/core
       - uses: dtolnay/rust-toolchain@1.88.0
-      - run: cargo check
+      - run: cargo check --workspace
 
   actionlint:
     name: Validate workflows

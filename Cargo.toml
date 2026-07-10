@@ -1,3 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    ".",
+    "crates/core",
+]
+
 [package]
 name = "synapsis"
 version = "0.9.0"
@@ -10,6 +17,7 @@ license = "MIT"
 default = []
 db-encryption = ["rusqlite/sqlcipher"]
 tui = ["dep:crossterm", "dep:ratatui"]
+core = ["dep:synapsis-core"]
 
 [lib]
 name = "synapsis"
@@ -33,6 +41,7 @@ path = "src/bin/ollama.rs"
 
 [dependencies]
 # Core
+synapsis-core = { path = "crates/core", version = "0.5.1", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rusqlite = { version = "0.31", features = ["bundled", "blob", "serde_json"] }
