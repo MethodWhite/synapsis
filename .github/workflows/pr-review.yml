@@ -102,7 +102,39 @@ jobs:
               });
             }
 
+  deps-auto-approve:
+    name: Auto-approve dependencies
+    if: >
+      github.actor == 'dependabot[bot]' &&
+      !contains(github.event.pull_request.labels.*.name, 'breaking') &&
+      !contains(github.event.pull_request.labels.*.name, 'blocked')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Wait for CI (security audit gates abandoned deps)
+        uses: poseidon/wait-for-status-checks@v0.5.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ignore: 'PR Review,Auto-approve,Enforce labels,Analyze changes,Check conventions,Deps auto-approve'
+          timeout: 600
 
+      - name: Auto-approve dependabot PR
+        uses: hmarr/auto-approve-action@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add deps-approved label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['deps-approved']
+            });
 
   enforce-labels:
     name: Enforce labels
