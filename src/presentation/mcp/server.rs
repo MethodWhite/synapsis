@@ -678,8 +678,10 @@ impl McpServer {
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "session_id": { "type": "string", "description": "Unique session identifier" },
-                            "project": { "type": "string" }
+                            "session_id": { "type": "string", "description": "Unique session identifier (generated if omitted)" },
+                            "project": { "type": "string", "description": "Project name" },
+                            "agent_id": { "type": "string", "description": "Agent type (opencode, cursor, etc)" },
+                            "directory": { "type": "string", "description": "Working directory" }
                         }
                     }
                 },
@@ -1034,6 +1036,37 @@ impl McpServer {
                         "type": "object",
                         "properties": {}
                     }
+                },
+                {
+                    "name": "shared_sessions_list",
+                    "description": "List all active shared sessions across platforms.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "shared_sessions_by_project",
+                    "description": "List sessions for a specific project across all platforms.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project": { "type": "string", "description": "Project name" }
+                        },
+                        "required": ["project"]
+                    }
+                },
+                {
+                    "name": "shared_sessions_broadcast",
+                    "description": "Share an observation with other sessions in the same project across platforms.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": { "type": "string", "description": "Session identifier" },
+                            "observation": { "type": "string", "description": "Observation content to broadcast" }
+                        },
+                        "required": ["session_id", "observation"]
+                    }
                 }
             ]}
         }))
@@ -1111,6 +1144,9 @@ impl McpServer {
             }
             "orchestrator_tree" => tools::handle_orchestrator_tree(&self.orchestrator, id, args),
             "orchestrator_idle" => tools::handle_orchestrator_idle(&self.orchestrator, id),
+            "shared_sessions_list" => tools::handle_shared_sessions_list(id),
+            "shared_sessions_by_project" => tools::handle_shared_sessions_by_project(id, args),
+            "shared_sessions_broadcast" => tools::handle_shared_sessions_broadcast(id, args),
             "auth_classify_agent" => match &self.classifier {
                 Some(c) => tools::handle_auth_classify_agent(c, id, args),
                 None => Ok(

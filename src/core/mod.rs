@@ -51,6 +51,7 @@ pub mod agent_registry_ext;
 pub mod audit_log;
 pub mod chunk_query;
 pub mod providers;
+pub mod session_bridge;
 pub mod session_id;
 pub mod session_manager;
 pub mod task_cleanup;

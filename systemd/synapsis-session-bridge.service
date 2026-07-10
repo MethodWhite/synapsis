@@ -1,0 +1,24 @@
+[Unit]
+Description=Synapsis Session Bridge - Cross-platform session sharing
+Documentation=https://github.com/methodwhite/synapsis
+After=network.target
+Requires=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/methodwhite/Proyectos/synapsis/scripts/session-autolink.sh --daemon
+WorkingDirectory=/home/methodwhite/Proyectos/synapsis
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=10
+
+# Environment
+Environment=SYNAPSIS_URL=http://127.0.0.1:7438
+Environment=POLL_INTERVAL=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

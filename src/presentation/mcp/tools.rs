@@ -1,6 +1,7 @@
 use crate::core::antibrick::AntiBrickEngine;
 use crate::core::auth::permissions::{Permission, PermissionSet};
 use crate::core::orchestrator::Orchestrator;
+use crate::core::session_bridge::{self, SharedSession, SessionBridge};
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
 use crate::infrastructure::agents::{Agent, AgentRegistry, AgentRole};
@@ -868,10 +869,23 @@ pub fn handle_mem_session_start(
 ) -> anyhow::Result<Value> {
     let project = args["project"].as_str().unwrap_or("default");
     let directory = args["directory"].as_str().unwrap_or(".");
+    let agent_id = args["agent_id"].as_str().unwrap_or("default-agent");
     match sessions.start_session(project, directory) {
-        Ok(sid) => Ok(
-            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session started: {}", sid)}]}}),
-        ),
+        Ok(sid) => {
+            let bridge = SessionBridge::global();
+            let shared = SharedSession::new(
+                &sid,
+                agent_id,
+                "synapsis",
+                &session_bridge::detect_hostname(),
+                project,
+                &session_bridge::detect_platform(),
+            );
+            bridge.register_session(shared);
+            Ok(
+                json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session started: {}", sid)}]}}),
+            )
+        }
         Err(e) => {
             Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
         }
@@ -890,6 +904,8 @@ pub fn handle_mem_session_end(
             json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'session_id'"}}),
         );
     }
+    let bridge = SessionBridge::global();
+    bridge.unregister_session(session_id);
     match sessions.end_session(session_id, summary) {
         Ok(_) => Ok(
             json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session {} ended.", session_id)}]}}),
@@ -914,6 +930,70 @@ pub fn handle_mem_session_summary(
             Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
         }
     }
+}
+
+pub fn handle_shared_sessions_list(id: &Value) -> anyhow::Result<Value> {
+    let bridge = SessionBridge::global();
+    let sessions = bridge.get_active_sessions();
+    let list: Vec<Value> = sessions
+        .iter()
+        .map(|s| {
+            json!({
+                "session_id": s.session_id,
+                "agent_id": s.agent_id,
+                "agent_type": s.agent_type,
+                "hostname": s.hostname,
+                "project": s.project,
+                "platform": s.platform,
+                "started_at": s.started_at,
+                "last_active_at": s.last_active_at,
+                "observation_count": s.observation_count,
+                "is_active": s.is_active,
+            })
+        })
+        .collect();
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":serde_json::to_string_pretty(&list).unwrap_or_default()}]}}))
+}
+
+pub fn handle_shared_sessions_by_project(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let project = args["project"].as_str().unwrap_or("");
+    if project.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'project'"}}));
+    }
+    let bridge = SessionBridge::global();
+    let sessions = bridge.get_sessions_by_project(project);
+    let list: Vec<Value> = sessions
+        .iter()
+        .map(|s| {
+            json!({
+                "session_id": s.session_id,
+                "agent_id": s.agent_id,
+                "agent_type": s.agent_type,
+                "hostname": s.hostname,
+                "project": s.project,
+                "platform": s.platform,
+                "started_at": s.started_at,
+                "last_active_at": s.last_active_at,
+                "observation_count": s.observation_count,
+                "is_active": s.is_active,
+            })
+        })
+        .collect();
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":serde_json::to_string_pretty(&list).unwrap_or_default()}]}}))
+}
+
+pub fn handle_shared_sessions_broadcast(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let session_id = args["session_id"].as_str().unwrap_or("");
+    let observation = args["observation"].as_str().unwrap_or("");
+    if session_id.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'session_id'"}}));
+    }
+    if observation.is_empty() {
+        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'observation'"}}));
+    }
+    let bridge = SessionBridge::global();
+    let notifications = bridge.broadcast_observation(session_id, observation);
+    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Broadcast to {} peer(s):\n{}", notifications.len(), notifications.join("\n"))}]}}))
 }
 
 pub fn handle_mem_doctor(db: &Database, id: &Value) -> anyhow::Result<Value> {
