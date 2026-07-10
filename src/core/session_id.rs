@@ -3,6 +3,7 @@
 //! Provides unique session identifiers for CLI instances with cryptographic signatures.
 //! Multiple CLI instances can run simultaneously with distinct identities.
 
+use hmac::KeyInit;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;

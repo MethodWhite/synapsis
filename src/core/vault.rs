@@ -497,7 +497,7 @@ fn compute_hash(data: &[u8]) -> Vec<u8> {
 #[allow(dead_code)]
 fn compute_hmac(key: &[u8], data: &[u8]) -> Vec<u8> {
     use hmac::Mac;
-    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::Mac>::new_from_slice(key)
+    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::KeyInit>::new_from_slice(key)
         .expect("HMAC accepts any key length");
     mac.update(data);
     mac.finalize().into_bytes().to_vec()
@@ -505,7 +505,7 @@ fn compute_hmac(key: &[u8], data: &[u8]) -> Vec<u8> {
 
 fn derive_mac_key(encryption_key: &[u8]) -> Vec<u8> {
     use hmac::Mac;
-    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::Mac>::new_from_slice(encryption_key)
+    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::KeyInit>::new_from_slice(encryption_key)
         .expect("HMAC accepts any key length");
     mac.update(b"synapsis-mac-key-derivation");
     mac.finalize().into_bytes().to_vec()

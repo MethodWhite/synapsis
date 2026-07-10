@@ -48,7 +48,7 @@ uuid = { version = "1.0", features = ["v4", "fast-rng"] }
 # Session ID
 hostname = "0.4"
 getrandom = "0.2"
-hmac-sha1 = "0.2"  # TODO: migrate to hmac crate (SHA-1 deprecated)
+hmac-sha1 = "0.2"
 lazy_static = "1.4"
 hex = "0.4"
 
@@ -61,8 +61,8 @@ tokio = { version = "1", features = ["full"] }
 
 # Crypto
 aes-gcm = "0.10"
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 mdns-sd = "0.11"
 
 # System monitoring

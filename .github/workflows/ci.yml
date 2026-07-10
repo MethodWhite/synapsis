@@ -58,12 +58,12 @@ jobs:
       - run: cargo clippy
 
   msrv:
-    name: MSRV (1.88.0)
+    name: MSRV (1.95.0)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.95.0
       - run: cargo check
 
   actionlint:
