@@ -34,3 +34,4 @@ __pycache__/
 *.py
 *.pyc
 __pycache__/
+node_modules/
