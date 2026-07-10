@@ -72,6 +72,9 @@ jobs:
       needs.analyze.outputs.additions < 500 &&
       needs.analyze.outputs.files < 20
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Wait for CI checks
         uses: poseidon/wait-for-status-checks@v0.5.0
@@ -98,6 +101,8 @@ jobs:
                 labels: ['auto-approved']
               });
             }
+
+
 
   enforce-labels:
     name: Enforce labels
