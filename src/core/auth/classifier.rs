@@ -516,9 +516,11 @@ mod tests {
         let result = classifier.classify(&metadata, ConnectionType::Local, None, false);
 
         assert_eq!(result.agent_class, AgentClass::TrustedCLI);
-        assert!(result
-            .permission_set
-            .has_permission(super::super::permissions::Permission::PqcEncrypt));
+        assert!(
+            result
+                .permission_set
+                .has_permission(super::super::permissions::Permission::PqcEncrypt)
+        );
     }
 
     #[test]
@@ -542,8 +544,10 @@ mod tests {
         let result = classifier.classify(&metadata, ConnectionType::Local, None, false);
 
         assert_eq!(result.agent_class, AgentClass::UnknownAgent);
-        assert!(result
-            .permission_set
-            .has_permission(super::super::permissions::Permission::ReadContext));
+        assert!(
+            result
+                .permission_set
+                .has_permission(super::super::permissions::Permission::ReadContext)
+        );
     }
 }

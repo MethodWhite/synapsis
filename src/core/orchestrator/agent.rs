@@ -4,9 +4,9 @@ use std::sync::MutexGuard;
 
 use crate::core::uuid::Uuid;
 
+use super::Orchestrator;
 use super::timestamp_now;
 use super::types::*;
-use super::Orchestrator;
 
 impl Orchestrator {
     pub fn register_agent(&self, agent_type: &str, skills: Vec<String>) -> String {

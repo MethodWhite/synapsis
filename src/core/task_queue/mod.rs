@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 
 use types::PriorityTask;
 pub use types::{AgentInfo, Priority, Task, TaskQueueEvent, TaskQueueEventType, TaskStatus};

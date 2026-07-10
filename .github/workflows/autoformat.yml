@@ -1,0 +1,30 @@
+name: Auto Format Code
+
+on:
+  workflow_dispatch:  # Solo se ejecuta cuando tú lo decidas
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+          
+      - name: Run cargo fmt
+        run: cargo fmt
+        
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          # Solo hace commit si hubo cambios de formato
+          git diff --staged --quiet || (git commit -m "style: apply cargo fmt to fix CI" && git push)

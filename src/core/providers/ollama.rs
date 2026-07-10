@@ -1,7 +1,7 @@
 //! Ollama Provider Implementation
 
-use crate::domain::provider::LlmProvider;
 use crate::domain::Result;
+use crate::domain::provider::LlmProvider;
 use std::process::Command;
 
 /// Ollama Model Provider

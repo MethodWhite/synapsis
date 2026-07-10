@@ -3,8 +3,8 @@
 //! For actual PQC, integrate pqcrypto-kyber/dilithium crates.
 
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
 use rand::RngCore;
 // sha2 imported for potential key derivation

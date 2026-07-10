@@ -115,18 +115,12 @@ mod mcp_tests {
             .collect();
 
         assert!(tool_names.contains(&"mem_save"), "Should have mem_save");
-        assert!(
-            tool_names.contains(&"mem_search"),
-            "Should have mem_search"
-        );
+        assert!(tool_names.contains(&"mem_search"), "Should have mem_search");
         assert!(
             tool_names.contains(&"mem_timeline"),
             "Should have mem_timeline"
         );
-        assert!(
-            tool_names.contains(&"mem_stats"),
-            "Should have mem_stats"
-        );
+        assert!(tool_names.contains(&"mem_stats"), "Should have mem_stats");
         assert!(
             tool_names.contains(&"skill_register"),
             "Should have skill_register"
@@ -524,10 +518,12 @@ mod mcp_tests {
 
         let resp_json: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
         assert!(resp_json["error"].is_object(), "Should return error");
-        assert!(resp_json["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("Invalid JSON"));
+        assert!(
+            resp_json["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("Invalid JSON")
+        );
     }
 
     #[test]

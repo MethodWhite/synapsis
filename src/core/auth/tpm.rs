@@ -12,7 +12,7 @@
 //! Supports TOTP-based MFA as backup when TPM is not available.
 
 use crate::core::lock_utils::*;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use getrandom::getrandom;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

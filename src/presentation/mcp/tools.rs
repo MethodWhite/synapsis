@@ -6,7 +6,7 @@ use crate::domain::*;
 use crate::infrastructure::agents::{Agent, AgentRegistry, AgentRole};
 use crate::infrastructure::database::Database;
 use crate::infrastructure::skills::{Skill, SkillCategory, SkillRegistry};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::html::{
     count_links, derive_encryption_key, extract_headings, extract_links, extract_meta,
@@ -464,7 +464,7 @@ pub fn handle_db_backup(db: &Database, id: &Value, args: &Value) -> anyhow::Resu
             return Ok(json!({
                 "jsonrpc": "2.0", "id": id,
                 "error": { "code": -32602, "message": e }
-            }))
+            }));
         }
     };
     match db.backup_to(&backup_path) {
@@ -1261,7 +1261,7 @@ pub fn handle_worker_execute(
         _ => {
             return Ok(
                 json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Unknown task_type: {}", task_type_str)}}),
-            )
+            );
         }
     };
     let mut payload = serde_json::json!({});
@@ -1394,7 +1394,7 @@ pub fn handle_auth_check_permission(id: &Value, args: &Value) -> anyhow::Result<
         _ => {
             return Ok(
                 json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Unknown permission: {}", perm_str)}}),
-            )
+            );
         }
     };
     let allowed = perms.has_permission(perm);
@@ -1633,9 +1633,17 @@ pub fn handle_resource_stats(
     id: &Value,
 ) -> anyhow::Result<Value> {
     let stats = resources.get_system_stats();
-    let text = format!("System stats:\n  CPU: {:.1}%\n  Memory: {:.1}%\n  Load (1/5/15): {:.2}/{:.2}/{:.2}\n  Swap: {} / {} bytes\n  Throttle delay: {}ms",
-        stats.cpu_usage_percent, stats.memory_usage_percent, stats.load_average_1min, stats.load_average_5min, stats.load_average_15min,
-        stats.used_swap_bytes, stats.total_swap_bytes, resources.get_throttle_delay_ms());
+    let text = format!(
+        "System stats:\n  CPU: {:.1}%\n  Memory: {:.1}%\n  Load (1/5/15): {:.2}/{:.2}/{:.2}\n  Swap: {} / {} bytes\n  Throttle delay: {}ms",
+        stats.cpu_usage_percent,
+        stats.memory_usage_percent,
+        stats.load_average_1min,
+        stats.load_average_5min,
+        stats.load_average_15min,
+        stats.used_swap_bytes,
+        stats.total_swap_bytes,
+        resources.get_throttle_delay_ms()
+    );
     Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
 }
 
@@ -1651,8 +1659,14 @@ pub fn handle_resource_recommendations(
         );
     }
     let recs = resources.get_agent_recommendations(agent_id);
-    let text = format!("Recommendations for '{}':\n  Max tasks: {}\n  Current tasks: {}\n  Should throttle: {}\n  Throttle delay: {}ms",
-        agent_id, recs.recommended_max_tasks, recs.current_tasks, recs.should_throttle, recs.throttle_delay_ms);
+    let text = format!(
+        "Recommendations for '{}':\n  Max tasks: {}\n  Current tasks: {}\n  Should throttle: {}\n  Throttle delay: {}ms",
+        agent_id,
+        recs.recommended_max_tasks,
+        recs.current_tasks,
+        recs.should_throttle,
+        recs.throttle_delay_ms
+    );
     Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
 }
 
@@ -1738,7 +1752,7 @@ pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value
             return Ok(json!({
                 "jsonrpc": "2.0", "id": id,
                 "error": { "code": -32603, "message": format!("HTTP client error: {}", e) }
-            }))
+            }));
         }
     };
 
@@ -1781,7 +1795,14 @@ pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value
                     let links = count_links(&body);
                     format!(
                         "URL: {}\nStatus: {}\nTitle: {}\nDescription: {}\nOG Title: {}\nOG Desc: {}\nLinks: {}\nSize: {}",
-                        url, status, title, desc, og_title, og_desc, links, format_size2(body_len as u64)
+                        url,
+                        status,
+                        title,
+                        desc,
+                        og_title,
+                        og_desc,
+                        links,
+                        format_size2(body_len as u64)
                     )
                 }
                 "links" => {
@@ -1804,7 +1825,14 @@ pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value
                     let links = count_links(&body);
                     format!(
                         "URL: {}\nStatus: {}\nTitle: {}\nType: {}\nSize: {}\nLinks: {}\nContent-Type: {}\n\n--- Page ---\n{}",
-                        url, status, title, content_type, format_size2(body_len as u64), links, content_type, preview
+                        url,
+                        status,
+                        title,
+                        content_type,
+                        format_size2(body_len as u64),
+                        links,
+                        content_type,
+                        preview
                     )
                 }
             };
@@ -1852,7 +1880,7 @@ pub fn handle_browser_snapshot(id: &Value, args: &Value) -> anyhow::Result<Value
             return Ok(json!({
                 "jsonrpc": "2.0", "id": id,
                 "error": { "code": -32603, "message": format!("HTTP client error: {}", e) }
-            }))
+            }));
         }
     };
 
@@ -1875,7 +1903,14 @@ pub fn handle_browser_snapshot(id: &Value, args: &Value) -> anyhow::Result<Value
 
             let snapshot = format!(
                 "Title: {}\nURL: {}\nStatus: {}\nDescription: {}\nHeadings: {}\nLinks: {}\nText ({}):\n{}",
-                title, url, status, desc, headings, links, text_preview.len(), text_preview
+                title,
+                url,
+                status,
+                desc,
+                headings,
+                links,
+                text_preview.len(),
+                text_preview
             );
 
             Ok(json!({
