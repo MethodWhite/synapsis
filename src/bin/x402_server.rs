@@ -21,18 +21,36 @@ fn handle_client(mut stream: TcpStream, engine: &synapsis::core::x402::X402Engin
 
     let (status, body, content_type) = if request.starts_with("GET /.well-known/x402") {
         let discovery = engine.get_x402_discovery();
-        (200, serde_json::to_string_pretty(&discovery).unwrap_or_default(), "application/json")
+        (
+            200,
+            serde_json::to_string_pretty(&discovery).unwrap_or_default(),
+            "application/json",
+        )
     } else if request.starts_with("GET /features") {
         let features = synapsis::core::x402::all_premium_features();
-        (200, serde_json::to_string_pretty(&features).unwrap_or_default(), "application/json")
+        (
+            200,
+            serde_json::to_string_pretty(&features).unwrap_or_default(),
+            "application/json",
+        )
     } else if request.starts_with("POST /verify") {
         if let Some(body_start) = request.find("\r\n\r\n") {
             let body_str = request[body_start + 4..].trim();
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(body_str) {
-                let tx_hash = payload.get("tx_hash").and_then(|v| v.as_str()).unwrap_or("");
-                let feature = payload.get("feature").and_then(|v| v.as_str()).unwrap_or("");
+                let tx_hash = payload
+                    .get("tx_hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let feature = payload
+                    .get("feature")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if tx_hash.is_empty() || feature.is_empty() {
-                    (400, r#"{"error":"missing tx_hash or feature"}"#.into(), "application/json")
+                    (
+                        400,
+                        r#"{"error":"missing tx_hash or feature"}"#.into(),
+                        "application/json",
+                    )
                 } else {
                     match tokio::runtime::Runtime::new() {
                         Ok(rt) => match rt.block_on(engine.verify_payment(tx_hash, feature)) {
@@ -44,7 +62,11 @@ fn handle_client(mut stream: TcpStream, engine: &synapsis::core::x402::X402Engin
                     }
                 }
             } else {
-                (400, r#"{"error":"invalid JSON"}"#.into(), "application/json")
+                (
+                    400,
+                    r#"{"error":"invalid JSON"}"#.into(),
+                    "application/json",
+                )
             }
         } else {
             (400, r#"{"error":"empty body"}"#.into(), "application/json")
@@ -56,7 +78,15 @@ fn handle_client(mut stream: TcpStream, engine: &synapsis::core::x402::X402Engin
     let response = format!(
         "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {length}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{body}",
         status = status,
-        reason = if status == 200 { "OK" } else if status == 400 { "Bad Request" } else if status == 404 { "Not Found" } else { "Internal Server Error" },
+        reason = if status == 200 {
+            "OK"
+        } else if status == 400 {
+            "Bad Request"
+        } else if status == 404 {
+            "Not Found"
+        } else {
+            "Internal Server Error"
+        },
         content_type = content_type,
         length = body.len(),
         body = body,

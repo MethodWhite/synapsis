@@ -33,30 +33,30 @@ fn main() {
                         println!("{}", synapsis::core::license::current_license_status());
                         std::process::exit(0);
                     }
-                    "verify" => {
-                        match synapsis::core::license::load_license() {
-                            Some(lic) => {
-                                println!("License: VALID");
-                                println!("Customer: {}", lic.data.customer);
-                                println!("Type: {}", lic.data.license_type);
-                                println!("Issued: {}", lic.data.issued_at);
-                                println!("Expires: {}", lic.data.expires_at);
-                                println!("Features: {}", lic.data.features.join(", "));
-                                std::process::exit(0);
-                            }
-                            None => {
-                                eprintln!("License: NOT FOUND or INVALID");
-                                eprintln!("{}", synapsis::core::license::current_license_status());
-                                std::process::exit(1);
-                            }
+                    "verify" => match synapsis::core::license::load_license() {
+                        Some(lic) => {
+                            println!("License: VALID");
+                            println!("Customer: {}", lic.data.customer);
+                            println!("Type: {}", lic.data.license_type);
+                            println!("Issued: {}", lic.data.issued_at);
+                            println!("Expires: {}", lic.data.expires_at);
+                            println!("Features: {}", lic.data.features.join(", "));
+                            std::process::exit(0);
                         }
-                    }
+                        None => {
+                            eprintln!("License: NOT FOUND or INVALID");
+                            eprintln!("{}", synapsis::core::license::current_license_status());
+                            std::process::exit(1);
+                        }
+                    },
                     "sign" => {
-                        let license_path = args.get(3).expect("Usage: synapsis license sign <license.json>");
+                        let license_path = args
+                            .get(3)
+                            .expect("Usage: synapsis license sign <license.json>");
                         let data_str = std::fs::read_to_string(license_path)
                             .expect("Failed to read license file");
-                        let data: synapsis::core::license::LicenseData = serde_json::from_str(&data_str)
-                            .expect("Invalid license JSON");
+                        let data: synapsis::core::license::LicenseData =
+                            serde_json::from_str(&data_str).expect("Invalid license JSON");
                         eprint!("Enter private key: ");
                         let mut privkey = String::new();
                         std::io::stdin().read_line(&mut privkey).ok();
@@ -226,7 +226,9 @@ fn main() {
     });
 
     let transport = match (tls_config, x402) {
-        (Some(cfg), Some(x)) => synapsis::presentation::http::HttpTransport::with_tls_x402(server, cfg, x),
+        (Some(cfg), Some(x)) => {
+            synapsis::presentation::http::HttpTransport::with_tls_x402(server, cfg, x)
+        }
         (Some(cfg), None) => synapsis::presentation::http::HttpTransport::with_tls(server, cfg),
         (None, Some(x)) => synapsis::presentation::http::HttpTransport::with_x402(server, x),
         (None, None) => synapsis::presentation::http::HttpTransport::new(server),

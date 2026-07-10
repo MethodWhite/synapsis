@@ -26,14 +26,17 @@ impl SignedLicense {
             _ => return Ok(()),
         };
         let pubkey_bytes = hex::decode(pubkey_hex).map_err(|e| format!("Invalid pubkey: {}", e))?;
-        let verifying_key =
-            VerifyingKey::from_bytes(&pubkey_bytes.try_into().map_err(|_| "Invalid pubkey length")?)
-                .map_err(|e| format!("Invalid pubkey: {}", e))?;
+        let verifying_key = VerifyingKey::from_bytes(
+            &pubkey_bytes
+                .try_into()
+                .map_err(|_| "Invalid pubkey length")?,
+        )
+        .map_err(|e| format!("Invalid pubkey: {}", e))?;
 
         let data_json =
             serde_json::to_string(&self.data).map_err(|e| format!("Serialization: {}", e))?;
-        let sig_bytes = hex::decode(&self.signature)
-            .map_err(|e| format!("Invalid signature hex: {}", e))?;
+        let sig_bytes =
+            hex::decode(&self.signature).map_err(|e| format!("Invalid signature hex: {}", e))?;
         let signature =
             Signature::from_slice(&sig_bytes).map_err(|e| format!("Invalid signature: {}", e))?;
 
@@ -73,10 +76,11 @@ pub fn sign_license(data: LicenseData, privkey_hex: &str) -> Result<SignedLicens
     let privkey_bytes =
         hex::decode(privkey_hex).map_err(|e| format!("Invalid private key hex: {}", e))?;
     let signing_key = SigningKey::from_bytes(
-        &privkey_bytes.try_into().map_err(|_| "Invalid private key length (expected 32 bytes)")?,
+        &privkey_bytes
+            .try_into()
+            .map_err(|_| "Invalid private key length (expected 32 bytes)")?,
     );
-    let data_json =
-        serde_json::to_string(&data).map_err(|e| format!("Serialization: {}", e))?;
+    let data_json = serde_json::to_string(&data).map_err(|e| format!("Serialization: {}", e))?;
     let signature = signing_key.sign(data_json.as_bytes());
     Ok(SignedLicense {
         data,

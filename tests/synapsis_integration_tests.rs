@@ -14,7 +14,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 mod session_bridge_tests {
-    use synapsis::core::session_bridge::{detect_hostname, detect_platform, SessionBridge, SharedSession};
+    use synapsis::core::session_bridge::{
+        SessionBridge, SharedSession, detect_hostname, detect_platform,
+    };
 
     /// Helper: create a test session with deterministic fields.
     fn make_session(id: &str, agent: &str, project: &str, platform: &str) -> SharedSession {
@@ -55,7 +57,11 @@ mod session_bridge_tests {
 
         // Broadcast from session-1 within project-y -> should reach session-2 only
         let recipients = bridge.broadcast_observation("sess-bcast-1", "test observation");
-        assert_eq!(recipients.len(), 1, "should reach exactly 1 recipient in same project");
+        assert_eq!(
+            recipients.len(),
+            1,
+            "should reach exactly 1 recipient in same project"
+        );
         assert!(
             recipients[0].contains("sess-bcast-2"),
             "recipient should be session-2, got: {}",
@@ -64,18 +70,33 @@ mod session_bridge_tests {
 
         // Broadcast from session-3 in project-z -> no other sessions there
         let recipients_z = bridge.broadcast_observation("sess-bcast-3", "solo update");
-        assert!(recipients_z.is_empty(), "no recipients for solitary project session");
+        assert!(
+            recipients_z.is_empty(),
+            "no recipients for solitary project session"
+        );
 
         // Verify observation counts incremented
         let all = bridge.get_active_sessions();
-        let s1_after: Vec<_> = all.iter().filter(|s| s.session_id == "sess-bcast-1").collect();
-        let s2_after: Vec<_> = all.iter().filter(|s| s.session_id == "sess-bcast-2").collect();
+        let s1_after: Vec<_> = all
+            .iter()
+            .filter(|s| s.session_id == "sess-bcast-1")
+            .collect();
+        let s2_after: Vec<_> = all
+            .iter()
+            .filter(|s| s.session_id == "sess-bcast-2")
+            .collect();
         assert!(!s1_after.is_empty(), "session-1 should still exist");
         assert!(!s2_after.is_empty(), "session-2 should still exist");
         // NOTE: broadcast_observation increments ALL sessions in the project,
         // including the broadcaster (source code behavior).
-        assert_eq!(s1_after[0].observation_count, 1, "all project sessions incremented");
-        assert_eq!(s2_after[0].observation_count, 1, "recipient count incremented");
+        assert_eq!(
+            s1_after[0].observation_count, 1,
+            "all project sessions incremented"
+        );
+        assert_eq!(
+            s2_after[0].observation_count, 1,
+            "recipient count incremented"
+        );
 
         // Cleanup
         bridge.unregister_session("sess-bcast-1");
@@ -98,11 +119,19 @@ mod session_bridge_tests {
         );
 
         // Touch it
-        let before = active.iter().find(|s| s.session_id == "sess-lifecycle").unwrap().last_active_at;
+        let before = active
+            .iter()
+            .find(|s| s.session_id == "sess-lifecycle")
+            .unwrap()
+            .last_active_at;
         std::thread::sleep(std::time::Duration::from_millis(10));
         bridge.touch_session("sess-lifecycle");
         let all = bridge.get_active_sessions();
-        let after = all.iter().find(|s| s.session_id == "sess-lifecycle").unwrap().last_active_at;
+        let after = all
+            .iter()
+            .find(|s| s.session_id == "sess-lifecycle")
+            .unwrap()
+            .last_active_at;
         assert!(after >= before, "last_active_at should advance on touch");
 
         // Unregister
@@ -160,15 +189,27 @@ mod session_bridge_tests {
         // Filter by platform (within the session bridge, not by project)
         let opencode = bridge.get_sessions_by_platform("OpenCode");
         // Count only our test sessions
-        let our_opencode = opencode.iter().filter(|s| s.project == plat_project).count();
-        assert_eq!(our_opencode, 2, "OpenCode should have 2 sessions in test project");
+        let our_opencode = opencode
+            .iter()
+            .filter(|s| s.project == plat_project)
+            .count();
+        assert_eq!(
+            our_opencode, 2,
+            "OpenCode should have 2 sessions in test project"
+        );
 
         let cursor = bridge.get_sessions_by_platform("Cursor");
         let our_cursor = cursor.iter().filter(|s| s.project == plat_project).count();
-        assert_eq!(our_cursor, 1, "Cursor should have 1 session in test project");
+        assert_eq!(
+            our_cursor, 1,
+            "Cursor should have 1 session in test project"
+        );
 
         let unknown = bridge.get_sessions_by_platform("Unknown");
-        assert!(unknown.is_empty(), "Unknown platform should have 0 sessions");
+        assert!(
+            unknown.is_empty(),
+            "Unknown platform should have 0 sessions"
+        );
 
         // Cleanup
         bridge.unregister_session("sess-plat-1");
@@ -185,7 +226,14 @@ mod session_bridge_tests {
 
     #[test]
     fn test_shared_session_construction() {
-        let s = SharedSession::new("test-id", "test-agent", "cli", "my-host", "my-project", "OpenCode");
+        let s = SharedSession::new(
+            "test-id",
+            "test-agent",
+            "cli",
+            "my-host",
+            "my-project",
+            "OpenCode",
+        );
 
         assert_eq!(s.session_id, "test-id");
         assert_eq!(s.agent_id, "test-agent");
@@ -231,7 +279,10 @@ mod session_bridge_tests {
     fn test_broadcast_from_nonexistent_session() {
         let bridge = SessionBridge::global();
         let recipients = bridge.broadcast_observation("ghost-session", "test");
-        assert!(recipients.is_empty(), "no recipients expected from unknown session");
+        assert!(
+            recipients.is_empty(),
+            "no recipients expected from unknown session"
+        );
     }
 
     #[test]
@@ -245,13 +296,25 @@ mod session_bridge_tests {
 
         // Multiple broadcasts
         for i in 0..5 {
-            let recipients = bridge.broadcast_observation("sess-consec-1", &format!("update {}", i));
-            assert_eq!(recipients.len(), 1, "broadcast {} should reach 1 recipient", i);
+            let recipients =
+                bridge.broadcast_observation("sess-consec-1", &format!("update {}", i));
+            assert_eq!(
+                recipients.len(),
+                1,
+                "broadcast {} should reach 1 recipient",
+                i
+            );
         }
 
         let all = bridge.get_active_sessions();
-        let s2_after = all.iter().find(|s| s.session_id == "sess-consec-2").unwrap();
-        assert_eq!(s2_after.observation_count, 5, "recipient should have 5 observations");
+        let s2_after = all
+            .iter()
+            .find(|s| s.session_id == "sess-consec-2")
+            .unwrap();
+        assert_eq!(
+            s2_after.observation_count, 5,
+            "recipient should have 5 observations"
+        );
 
         bridge.unregister_session("sess-consec-1");
         bridge.unregister_session("sess-consec-2");
@@ -271,7 +334,10 @@ mod platform_catalog_tests {
     fn test_all_platforms_has_entries() {
         let platforms = all_platforms();
         assert!(!platforms.is_empty(), "Platform catalog must not be empty");
-        assert!(platforms.len() >= 30, "Should have at least 30 platforms registered");
+        assert!(
+            platforms.len() >= 30,
+            "Should have at least 30 platforms registered"
+        );
     }
 
     #[test]
@@ -293,8 +359,16 @@ mod platform_catalog_tests {
             assert!(!p.name.is_empty(), "Platform must have a name");
             assert!(!p.country.is_empty(), "{} must have a country", p.name);
             assert!(!p.homepage.is_empty(), "{} must have a homepage", p.name);
-            assert!(!p.description.is_empty(), "{} must have a description", p.name);
-            assert!(!p.detection_hints.is_empty(), "{} must have detection hints", p.name);
+            assert!(
+                !p.description.is_empty(),
+                "{} must have a description",
+                p.name
+            );
+            assert!(
+                !p.detection_hints.is_empty(),
+                "{} must have detection hints",
+                p.name
+            );
         }
     }
 
@@ -302,10 +376,22 @@ mod platform_catalog_tests {
     fn test_group_by_country_includes_chinese_and_western() {
         let platforms = all_platforms();
         let groups = group_by_country(&platforms);
-        assert!(groups.contains_key("Chinese Platforms"), "Should have Chinese Platforms group");
-        assert!(groups.contains_key("Western Platforms"), "Should have Western Platforms group");
-        assert!(!groups["Chinese Platforms"].is_empty(), "Chinese group should have entries");
-        assert!(!groups["Western Platforms"].is_empty(), "Western group should have entries");
+        assert!(
+            groups.contains_key("Chinese Platforms"),
+            "Should have Chinese Platforms group"
+        );
+        assert!(
+            groups.contains_key("Western Platforms"),
+            "Should have Western Platforms group"
+        );
+        assert!(
+            !groups["Chinese Platforms"].is_empty(),
+            "Chinese group should have entries"
+        );
+        assert!(
+            !groups["Western Platforms"].is_empty(),
+            "Western group should have entries"
+        );
     }
 
     #[test]
@@ -313,21 +399,31 @@ mod platform_catalog_tests {
         let platforms = all_platforms();
         let groups = group_by_country(&platforms);
         let total_grouped: usize = groups.values().map(|v| v.len()).sum();
-        assert_eq!(total_grouped, platforms.len(), "All platforms should be grouped");
+        assert_eq!(
+            total_grouped,
+            platforms.len(),
+            "All platforms should be grouped"
+        );
     }
 
     #[test]
     fn test_generate_mcp_configs_non_empty() {
         let platforms = all_platforms();
         let configs = generate_mcp_configs(&platforms);
-        assert!(!configs.is_empty(), "Should generate configs for platforms with templates");
+        assert!(
+            !configs.is_empty(),
+            "Should generate configs for platforms with templates"
+        );
     }
 
     #[test]
     fn test_generate_mcp_configs_matches_templates() {
         let platforms = all_platforms();
         let configs = generate_mcp_configs(&platforms);
-        let with_template_count = platforms.iter().filter(|p| p.mcp_config_template.is_some()).count();
+        let with_template_count = platforms
+            .iter()
+            .filter(|p| p.mcp_config_template.is_some())
+            .count();
         assert_eq!(
             configs.len(),
             with_template_count,
@@ -362,7 +458,10 @@ mod platform_catalog_tests {
         let names: Vec<&str> = installed.iter().map(|p| p.name.as_str()).collect();
         println!("Detected platforms: {:?}", names);
         // Should not panic and should return a Vec
-        assert!(installed.len() <= all_platforms().len(), "Cannot detect more than available");
+        assert!(
+            installed.len() <= all_platforms().len(),
+            "Cannot detect more than available"
+        );
     }
 
     #[test]
@@ -373,29 +472,52 @@ mod platform_catalog_tests {
         let names: Vec<&str> = installed.iter().map(|p| p.name.as_str()).collect();
         println!("Detected in environment: {:?}", names);
         // At least should not be more than total platforms
-        assert!(installed.len() < all_platforms().len() || installed.is_empty(),
-            "Should not detect all platforms (some won't be installed)");
+        assert!(
+            installed.len() < all_platforms().len() || installed.is_empty(),
+            "Should not detect all platforms (some won't be installed)"
+        );
     }
 
     #[test]
     fn test_cli_tools_category_present() {
         let platforms = all_platforms();
-        let cli_tools: Vec<_> = platforms.iter().filter(|p| {
-            matches!(p.category, synapsis::core::platform_catalog::PlatformCategory::CliTool)
-        }).collect();
+        let cli_tools: Vec<_> = platforms
+            .iter()
+            .filter(|p| {
+                matches!(
+                    p.category,
+                    synapsis::core::platform_catalog::PlatformCategory::CliTool
+                )
+            })
+            .collect();
         assert!(!cli_tools.is_empty(), "Should have CLI tool platforms");
-        assert!(cli_tools.iter().any(|p| p.name == "OpenCode"), "OpenCode should be a CLI tool");
-        assert!(cli_tools.iter().any(|p| p.name == "Claude Code"), "Claude Code should be a CLI tool");
+        assert!(
+            cli_tools.iter().any(|p| p.name == "OpenCode"),
+            "OpenCode should be a CLI tool"
+        );
+        assert!(
+            cli_tools.iter().any(|p| p.name == "Claude Code"),
+            "Claude Code should be a CLI tool"
+        );
     }
 
     #[test]
     fn test_chinese_platforms_category_present() {
         let platforms = all_platforms();
-        let chinese: Vec<_> = platforms.iter().filter(|p| {
-            matches!(p.category, synapsis::core::platform_catalog::PlatformCategory::ChineseAiPlatform)
-        }).collect();
+        let chinese: Vec<_> = platforms
+            .iter()
+            .filter(|p| {
+                matches!(
+                    p.category,
+                    synapsis::core::platform_catalog::PlatformCategory::ChineseAiPlatform
+                )
+            })
+            .collect();
         assert!(!chinese.is_empty(), "Should have Chinese AI platforms");
-        assert!(chinese.iter().any(|p| p.name.contains("DeepSeek")), "DeepSeek should be a Chinese platform");
+        assert!(
+            chinese.iter().any(|p| p.name.contains("DeepSeek")),
+            "DeepSeek should be a Chinese platform"
+        );
     }
 
     #[test]
@@ -419,8 +541,8 @@ mod platform_catalog_tests {
 
 mod mcp_autoconfig_tests {
     use synapsis::core::mcp_autoconfig::{
-        detect_and_generate_configs, generate_synapsis_mcp_entry, get_config_target_path,
-        write_configs, AutoConfigReport, McpConfigEntry,
+        AutoConfigReport, McpConfigEntry, detect_and_generate_configs, generate_synapsis_mcp_entry,
+        get_config_target_path, write_configs,
     };
 
     #[test]
@@ -432,10 +554,15 @@ mod mcp_autoconfig_tests {
             "Should generate at least some configs (synapsis self-entry) or have empty skipped"
         );
         // The synapsis self-entry should always be generated
-        let synapsis_entries: Vec<_> = report.generated.iter()
+        let synapsis_entries: Vec<_> = report
+            .generated
+            .iter()
             .filter(|e| e.config_path.contains("opencode.jsonc"))
             .collect();
-        assert!(!synapsis_entries.is_empty(), "Should generate synapsis opencode entry");
+        assert!(
+            !synapsis_entries.is_empty(),
+            "Should generate synapsis opencode entry"
+        );
     }
 
     #[test]
@@ -450,9 +577,18 @@ mod mcp_autoconfig_tests {
             skipped: vec!["UnusedPlatform".into()],
         };
         let json = serde_json::to_string(&report).expect("Report should serialize");
-        assert!(json.contains("TestPlatform"), "JSON should contain platform name");
-        assert!(json.contains("skipped"), "JSON should contain skipped field");
-        assert!(json.contains("UnusedPlatform"), "JSON should contain skipped platform");
+        assert!(
+            json.contains("TestPlatform"),
+            "JSON should contain platform name"
+        );
+        assert!(
+            json.contains("skipped"),
+            "JSON should contain skipped field"
+        );
+        assert!(
+            json.contains("UnusedPlatform"),
+            "JSON should contain skipped platform"
+        );
     }
 
     #[test]
@@ -476,13 +612,24 @@ mod mcp_autoconfig_tests {
                 platform
             );
             let path = path.unwrap();
-            assert!(!path.is_empty(), "Path for '{}' should not be empty", platform);
-            assert!(path.contains(platform.split(' ').next().unwrap_or(platform).to_lowercase().as_str())
-                || path.contains(".config")
-                || path.contains(".cursor")
-                || path.contains(".windsurf")
-                || path.contains(".vscode")
-                || path.contains(".continue"),
+            assert!(
+                !path.is_empty(),
+                "Path for '{}' should not be empty",
+                platform
+            );
+            assert!(
+                path.contains(
+                    platform
+                        .split(' ')
+                        .next()
+                        .unwrap_or(platform)
+                        .to_lowercase()
+                        .as_str()
+                ) || path.contains(".config")
+                    || path.contains(".cursor")
+                    || path.contains(".windsurf")
+                    || path.contains(".vscode")
+                    || path.contains(".continue"),
                 "Path '{}' should look like a config path for '{}'",
                 path,
                 platform
@@ -493,7 +640,10 @@ mod mcp_autoconfig_tests {
     #[test]
     fn test_get_config_target_path_jetbrains_returns_none() {
         let path = get_config_target_path("JetBrains IntelliJ IDEA");
-        assert!(path.is_none(), "JetBrains platforms should return None (no MCP config support yet)");
+        assert!(
+            path.is_none(),
+            "JetBrains platforms should return None (no MCP config support yet)"
+        );
     }
 
     #[test]
@@ -506,19 +656,31 @@ mod mcp_autoconfig_tests {
     fn test_generate_synapsis_mcp_entry() {
         let entry = generate_synapsis_mcp_entry();
         assert_eq!(entry.platform_name, "OpenCode");
-        assert!(entry.config_path.contains("opencode.jsonc"), "Path should be opencode config");
+        assert!(
+            entry.config_path.contains("opencode.jsonc"),
+            "Path should be opencode config"
+        );
         assert!(entry.installed, "Synapsis should be marked as installed");
         // Config content should have mcpServers with synapsis entry
-        let servers = entry.config_content.get("mcpServers")
+        let servers = entry
+            .config_content
+            .get("mcpServers")
             .expect("Config should have mcpServers");
-        let synapsis_entry = servers.get("synapsis")
+        let synapsis_entry = servers
+            .get("synapsis")
             .expect("Should have synapsis server entry");
         assert!(
-            synapsis_entry.get("command").and_then(|c| c.as_str()).is_some(),
+            synapsis_entry
+                .get("command")
+                .and_then(|c| c.as_str())
+                .is_some(),
             "Synapsis entry should have a command"
         );
         assert!(
-            synapsis_entry.get("args").and_then(|a| a.as_array()).is_some(),
+            synapsis_entry
+                .get("args")
+                .and_then(|a| a.as_array())
+                .is_some(),
             "Synapsis entry should have args array"
         );
     }
@@ -586,9 +748,18 @@ mod discovery_bridge_tests {
     #[test]
     fn test_discovery_report_structure() {
         let report = minimal_report();
-        assert!(!report.local_tools.is_empty(), "Should have at least one local tool");
-        assert!(report.mcp_servers.is_empty(), "Should start with empty MCP servers");
-        assert!(report.network_nodes.is_empty(), "Should start with empty network nodes");
+        assert!(
+            !report.local_tools.is_empty(),
+            "Should have at least one local tool"
+        );
+        assert!(
+            report.mcp_servers.is_empty(),
+            "Should start with empty MCP servers"
+        );
+        assert!(
+            report.network_nodes.is_empty(),
+            "Should start with empty network nodes"
+        );
         assert!(report.auto_configured.is_empty(), "Should start empty");
         assert!(report.errors.is_empty(), "Should start with no errors");
         assert!(report.platform_matches.is_empty(), "Should start empty");
@@ -623,15 +794,13 @@ mod discovery_bridge_tests {
     fn test_report_summary_with_data() {
         let report = DiscoveryReport {
             local_tools: vec!["a".into(), "b".into(), "c".into()],
-            mcp_servers: vec![
-                synapsis::core::discovery_net::McpServerInfo {
-                    name: "server1".into(),
-                    host: "192.168.1.1".into(),
-                    port: 8080,
-                    capabilities: vec![],
-                    protocol: "mcp".into(),
-                },
-            ],
+            mcp_servers: vec![synapsis::core::discovery_net::McpServerInfo {
+                name: "server1".into(),
+                host: "192.168.1.1".into(),
+                port: 8080,
+                capabilities: vec![],
+                protocol: "mcp".into(),
+            }],
             network_nodes: vec![("node1".into(), "10.0.0.1".into())],
             auto_configured: vec!["synapsis".into()],
             errors: vec!["some error".into()],
@@ -654,13 +823,18 @@ mod discovery_bridge_tests {
             Ok(bridge) => {
                 let report = bridge.discover_all();
                 // discover_all should always return a valid report even with no network
-                assert!(!report.local_tools.is_empty() || report.errors.is_empty(),
-                    "Should discover tools or have no errors");
+                assert!(
+                    !report.local_tools.is_empty() || report.errors.is_empty(),
+                    "Should discover tools or have no errors"
+                );
                 println!("Discovered {} local tools", report.local_tools.len());
                 println!("Discovered {} network nodes", report.network_nodes.len());
             }
             Err(e) => {
-                println!("Network discovery not available (expected in some environments): {}", e);
+                println!(
+                    "Network discovery not available (expected in some environments): {}",
+                    e
+                );
             }
         }
     }
@@ -679,8 +853,10 @@ mod discovery_bridge_tests {
         bridge.register_discovered_agents(&report);
 
         // Verify sessions were registered
-        let sessions = synapsis::core::session_bridge::SessionBridge::global().get_active_sessions();
-        let discovery_sessions: Vec<_> = sessions.iter()
+        let sessions =
+            synapsis::core::session_bridge::SessionBridge::global().get_active_sessions();
+        let discovery_sessions: Vec<_> = sessions
+            .iter()
             .filter(|s| s.session_id.starts_with("discovery-"))
             .collect();
         assert!(
@@ -703,10 +879,15 @@ mod discovery_bridge_tests {
         match DiscoveryBridge::new() {
             Ok(bridge) => {
                 let report = bridge.full_discovery_flow();
-                assert!(!report.local_tools.is_empty() || report.network_nodes.is_empty(),
-                    "Discovery should run without panicking");
-                println!("Full discovery completed: {} tools, {} network nodes",
-                    report.local_tools.len(), report.network_nodes.len());
+                assert!(
+                    !report.local_tools.is_empty() || report.network_nodes.is_empty(),
+                    "Discovery should run without panicking"
+                );
+                println!(
+                    "Full discovery completed: {} tools, {} network nodes",
+                    report.local_tools.len(),
+                    report.network_nodes.len()
+                );
             }
             Err(e) => {
                 println!("Skipping full discovery flow: {}", e);
@@ -740,9 +921,15 @@ mod https_tls_tests {
         let (cert, key) = generate_self_signed_cert().expect("Cert generation failed");
         // DER-encoded X.509 certs start with 0x30 0x82 (SEQUENCE of length > 127)
         // or 0x30 0x<short length> for small certs
-        assert_eq!(cert[0], 0x30, "DER certificate should start with ASN.1 SEQUENCE (0x30)");
+        assert_eq!(
+            cert[0], 0x30,
+            "DER certificate should start with ASN.1 SEQUENCE (0x30)"
+        );
         // DER-encoded PKCS8 private keys also start with 0x30
-        assert_eq!(key[0], 0x30, "DER private key should start with ASN.1 SEQUENCE (0x30)");
+        assert_eq!(
+            key[0], 0x30,
+            "DER private key should start with ASN.1 SEQUENCE (0x30)"
+        );
     }
 
     #[test]
@@ -789,7 +976,10 @@ mod https_tls_tests {
         // Attempt to parse with rcgen to verify validity
         // Use rcgen's CertificateDer type from rustls pki_types
         let cert_parsed = rustls::pki_types::CertificateDer::from(cert_der);
-        assert!(!cert_parsed.is_empty(), "Parsed certificate should not be empty");
+        assert!(
+            !cert_parsed.is_empty(),
+            "Parsed certificate should not be empty"
+        );
     }
 
     #[test]
@@ -831,7 +1021,8 @@ mod cross_module_tests {
         let platforms = all_platforms();
 
         // Platforms with MCP templates that SHOULD have config paths
-        let with_templates: Vec<_> = platforms.iter()
+        let with_templates: Vec<_> = platforms
+            .iter()
             .filter(|p| p.mcp_config_template.is_some())
             .collect();
 
@@ -849,21 +1040,31 @@ mod cross_module_tests {
             if path.is_none() {
                 if known_gaps.contains(&platform.name.as_str()) {
                     // Known coverage gap — report but don't fail
-                    println!("COVERAGE GAP: '{}' has MCP template but no config target path", platform.name);
+                    println!(
+                        "COVERAGE GAP: '{}' has MCP template but no config target path",
+                        platform.name
+                    );
                 } else {
-                    panic!("Platform '{}' has MCP template but no config target path", platform.name);
+                    panic!(
+                        "Platform '{}' has MCP template but no config target path",
+                        platform.name
+                    );
                 }
             }
         }
 
         // JetBrains products should NOT have config paths (no MCP config support yet)
-        let jetbrains: Vec<_> = platforms.iter()
+        let jetbrains: Vec<_> = platforms
+            .iter()
             .filter(|p| p.name.contains("JetBrains"))
             .collect();
         for jb in &jetbrains {
             let path = get_config_target_path(&jb.name);
-            assert!(path.is_none(),
-                "JetBrains platform '{}' should not have config path yet", jb.name);
+            assert!(
+                path.is_none(),
+                "JetBrains platform '{}' should not have config path yet",
+                jb.name
+            );
         }
     }
 
@@ -890,11 +1091,26 @@ mod cross_module_tests {
                 let report = bridge.discover_all();
                 let summary = DiscoveryBridge::report_summary(&report);
                 // The report should have all expected summary fields
-                assert!(summary.contains_key("local_tools"), "Summary should have local_tools");
-                assert!(summary.contains_key("mcp_servers"), "Summary should have mcp_servers");
-                assert!(summary.contains_key("network_nodes"), "Summary should have network_nodes");
-                assert!(summary.contains_key("auto_configured"), "Summary should have auto_configured");
-                assert!(summary.contains_key("platform_matches"), "Summary should have platform_matches");
+                assert!(
+                    summary.contains_key("local_tools"),
+                    "Summary should have local_tools"
+                );
+                assert!(
+                    summary.contains_key("mcp_servers"),
+                    "Summary should have mcp_servers"
+                );
+                assert!(
+                    summary.contains_key("network_nodes"),
+                    "Summary should have network_nodes"
+                );
+                assert!(
+                    summary.contains_key("auto_configured"),
+                    "Summary should have auto_configured"
+                );
+                assert!(
+                    summary.contains_key("platform_matches"),
+                    "Summary should have platform_matches"
+                );
                 assert!(summary.contains_key("errors"), "Summary should have errors");
             }
             Err(e) => {

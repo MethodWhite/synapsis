@@ -17,7 +17,7 @@
 //! - **Discovery Scan** uses `println!` which mixes with MCP stdout, so it's tested
 //!   in-process only.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -57,7 +57,10 @@ fn spawn_mcp() -> Child {
 }
 
 fn get_mcp_binary() -> String {
-    for c in &["./target/debug/synapsis-mcp", "./target/release/synapsis-mcp"] {
+    for c in &[
+        "./target/debug/synapsis-mcp",
+        "./target/release/synapsis-mcp",
+    ] {
         if std::path::Path::new(c).exists() {
             return c.to_string();
         }
@@ -71,13 +74,19 @@ fn get_mcp_binary() -> String {
 
 struct ChildStdinGuard(std::process::ChildStdin);
 impl Write for ChildStdinGuard {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> { self.0.write(buf) }
-    fn flush(&mut self) -> std::io::Result<()> { self.0.flush() }
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
+    }
 }
 
 struct ChildStdoutGuard(std::process::ChildStdout);
 impl std::io::Read for ChildStdoutGuard {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> { self.0.read(buf) }
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(buf)
+    }
 }
 
 /// Read the next JSON response line from stdout, skipping any non-JSON lines
@@ -108,10 +117,7 @@ fn read_json_response(reader: &mut BufReader<ChildStdoutGuard>) -> Value {
     }
 }
 
-fn send_initialize(
-    stdin: &mut ChildStdinGuard,
-    reader: &mut BufReader<ChildStdoutGuard>,
-) -> Value {
+fn send_initialize(stdin: &mut ChildStdinGuard, reader: &mut BufReader<ChildStdoutGuard>) -> Value {
     let req = json!({
         "jsonrpc": "2.0", "method": "initialize",
         "params": {"protocolVersion": "2024-11-05", "clientInfo": {"name": "cross-test", "version": "1.0.0"}},
@@ -143,13 +149,17 @@ fn get_text(resp: &Value) -> String {
         }
     }
     if resp.get("error").is_some() {
-        return format!("ERROR: {}", resp["error"]["message"].as_str().unwrap_or("?"));
+        return format!(
+            "ERROR: {}",
+            resp["error"]["message"].as_str().unwrap_or("?")
+        );
     }
     resp.to_string()
 }
 
 fn with_mcp_fresh<F>(f: F)
-where F: FnOnce(&mut ChildStdinGuard, &mut BufReader<ChildStdoutGuard>),
+where
+    F: FnOnce(&mut ChildStdinGuard, &mut BufReader<ChildStdoutGuard>),
 {
     let mut child = start_mcp_server_fresh();
     let mut stdin = ChildStdinGuard(child.stdin.take().expect("stdin"));
@@ -161,7 +171,8 @@ where F: FnOnce(&mut ChildStdinGuard, &mut BufReader<ChildStdoutGuard>),
 }
 
 fn with_mcp_shared<F>(f: F)
-where F: FnOnce(&mut ChildStdinGuard, &mut BufReader<ChildStdoutGuard>),
+where
+    F: FnOnce(&mut ChildStdinGuard, &mut BufReader<ChildStdoutGuard>),
 {
     let mut child = start_mcp_server_shared();
     let mut stdin = ChildStdinGuard(child.stdin.take().expect("stdin"));
@@ -182,12 +193,18 @@ fn create_inprocess_server() -> (
     synapsis::presentation::mcp::McpServer,
 ) {
     let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     let data_dir = format!("/tmp/synapsis-test-cross-inproc-{}", ts);
     std::fs::create_dir_all(&data_dir).ok();
     // SAFETY: test-scoped env change
-    unsafe { std::env::set_var("SYNAPSIS_DATA_DIR", &data_dir); }
-    unsafe { std::env::set_var("SYNAPSIS_QUIET", "1"); }
+    unsafe {
+        std::env::set_var("SYNAPSIS_DATA_DIR", &data_dir);
+    }
+    unsafe {
+        std::env::set_var("SYNAPSIS_QUIET", "1");
+    }
 
     let db = Arc::new(synapsis::infrastructure::database::Database::new());
     let orch = Arc::new(synapsis::core::orchestrator::Orchestrator::new());
@@ -237,25 +254,38 @@ fn test_cli_to_cli_opencode_saves_cursor_retrieves() {
 
     // Phase 1: OpenCode saves
     with_mcp_fresh(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_save", &json!({
-            "title": "API design decision",
-            "content": "Use REST over GraphQL for user service",
-            "project": "my-app",
-            "type": "architecture"
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_save",
+            &json!({
+                "title": "API design decision",
+                "content": "Use REST over GraphQL for user service",
+                "project": "my-app",
+                "type": "architecture"
+            }),
+        );
         let text = get_text(&resp);
         assert!(text.contains("Saved"), "OpenCode save: {}", text);
     });
 
     // Phase 2: Cursor retrieves
     with_mcp_shared(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_search", &json!({
-            "query": "REST over GraphQL",
-            "limit": 10
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_search",
+            &json!({
+                "query": "REST over GraphQL",
+                "limit": 10
+            }),
+        );
         let text = get_text(&resp);
-        assert!(text.contains("REST") && text.contains("GraphQL"),
-            "Cursor should find OpenCode observation: {}", text);
+        assert!(
+            text.contains("REST") && text.contains("GraphQL"),
+            "Cursor should find OpenCode observation: {}",
+            text
+        );
     });
 
     cleanup_old_dirs();
@@ -269,11 +299,16 @@ fn test_cli_to_tui_opencode_saves_tui_reads_context() {
     // OpenCode saves 3 observations
     with_mcp_fresh(|stdin, reader| {
         for i in 1..=3 {
-            let resp = send_tool_call(stdin, reader, "mem_save", &json!({
-                "title": format!("Observation {}", i),
-                "content": format!("Test content number {}", i),
-                "project": "cross-test"
-            }));
+            let resp = send_tool_call(
+                stdin,
+                reader,
+                "mem_save",
+                &json!({
+                    "title": format!("Observation {}", i),
+                    "content": format!("Test content number {}", i),
+                    "project": "cross-test"
+                }),
+            );
             assert!(get_text(&resp).contains("Saved"), "Save {}", i);
         }
     });
@@ -281,23 +316,39 @@ fn test_cli_to_tui_opencode_saves_tui_reads_context() {
     // TUI retrieves context
     with_mcp_shared(|stdin, reader| {
         // mem_context uses DB persistence
-        let resp = send_tool_call(stdin, reader, "mem_context", &json!({
-            "project": "cross-test",
-            "limit": 10
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_context",
+            &json!({
+                "project": "cross-test",
+                "limit": 10
+            }),
+        );
         let text = get_text(&resp);
-        assert!(text.contains("cross-test") || text.contains("Observation"),
-            "TUI context should show cross-test data: {}", text);
+        assert!(
+            text.contains("cross-test") || text.contains("Observation"),
+            "TUI context should show cross-test data: {}",
+            text
+        );
 
         // Also verify via search
-        let resp2 = send_tool_call(stdin, reader, "mem_search", &json!({
-            "query": "Test content number",
-            "project": "cross-test",
-            "limit": 10
-        }));
+        let resp2 = send_tool_call(
+            stdin,
+            reader,
+            "mem_search",
+            &json!({
+                "query": "Test content number",
+                "project": "cross-test",
+                "limit": 10
+            }),
+        );
         let text2 = get_text(&resp2);
-        assert!(text2.contains("3") || text2.contains("result"),
-            "Search should find 3 obs: {}", text2);
+        assert!(
+            text2.contains("3") || text2.contains("result"),
+            "Search should find 3 obs: {}",
+            text2
+        );
     });
 
     cleanup_old_dirs();
@@ -310,27 +361,48 @@ fn test_cli_to_ide_session_sharing() {
     let (_db, _orch, server) = create_inprocess_server();
 
     // Start session as opencode-agent
-    let resp = inproc_call(&server, "mem_session_start", &json!({
-        "project": "shared-proj",
-        "directory": "/home/user/project",
-        "agent_id": "opencode-agent"
-    }));
+    let resp = inproc_call(
+        &server,
+        "mem_session_start",
+        &json!({
+            "project": "shared-proj",
+            "directory": "/home/user/project",
+            "agent_id": "opencode-agent"
+        }),
+    );
     let text = get_text(&resp);
     eprintln!("[test] session_start response: {}", text);
     assert!(text.contains("Session started"), "Session start: {}", text);
 
     // Verify IDE (cursor) sees the session via shared_sessions_by_project
-    let resp = inproc_call(&server, "shared_sessions_by_project", &json!({
-        "project": "shared-proj"
-    }));
+    let resp = inproc_call(
+        &server,
+        "shared_sessions_by_project",
+        &json!({
+            "project": "shared-proj"
+        }),
+    );
     let text = get_text(&resp);
     eprintln!("[test] shared_sessions_by_project response: {}", text);
     // The response is a JSON array of sessions; should not be empty
-    assert!(!text.contains("[]"), "Sessions should not be empty: {}",
-        if text.len() > 200 { &text[..200] } else { &text });
-    assert!(text.contains("shared-proj") || text.contains("opencode"),
+    assert!(
+        !text.contains("[]"),
+        "Sessions should not be empty: {}",
+        if text.len() > 200 {
+            &text[..200]
+        } else {
+            &text
+        }
+    );
+    assert!(
+        text.contains("shared-proj") || text.contains("opencode"),
         "IDE should see OpenCode's session session: {}",
-        if text.len() > 200 { &text[..200] } else { &text });
+        if text.len() > 200 {
+            &text[..200]
+        } else {
+            &text
+        }
+    );
 }
 
 /// Test 4: TUI -> IDE   TUI saves, IDE searches
@@ -340,32 +412,50 @@ fn test_tui_to_ide_tui_saves_ide_searches() {
 
     // TUI agent saves
     with_mcp_fresh(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_save", &json!({
-            "title": "TUI Observation",
-            "content": "Saved from TUI with Chinese: 模型选择决策",
-            "project": "cross-app",
-            "type": "discovery"
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_save",
+            &json!({
+                "title": "TUI Observation",
+                "content": "Saved from TUI with Chinese: 模型选择决策",
+                "project": "cross-app",
+                "type": "discovery"
+            }),
+        );
         assert!(get_text(&resp).contains("Saved"), "TUI save");
     });
 
     // IDE agent searches
     with_mcp_shared(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_search", &json!({
-            "query": "TUI Observation",
-            "limit": 10
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_search",
+            &json!({
+                "query": "TUI Observation",
+                "limit": 10
+            }),
+        );
         let text = get_text(&resp);
         assert!(text.contains("TUI"), "IDE should find TUI data: {}", text);
 
         // Search Chinese content
-        let resp2 = send_tool_call(stdin, reader, "mem_search", &json!({
-            "query": "模型选择",
-            "limit": 10
-        }));
+        let resp2 = send_tool_call(
+            stdin,
+            reader,
+            "mem_search",
+            &json!({
+                "query": "模型选择",
+                "limit": 10
+            }),
+        );
         let text2 = get_text(&resp2);
-        assert!(text2.contains("Found") || text2.contains("模型"),
-            "IDE should find Chinese content: {}", text2);
+        assert!(
+            text2.contains("Found") || text2.contains("模型"),
+            "IDE should find Chinese content: {}",
+            text2
+        );
     });
 
     cleanup_old_dirs();
@@ -378,39 +468,62 @@ fn test_tui_to_tui_two_instances_share_data() {
 
     // TUI-1 saves
     with_mcp_fresh(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_save", &json!({
-            "title": "TUI-1 Note",
-            "content": "Data from first TUI instance",
-            "project": "shared-tui"
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_save",
+            &json!({
+                "title": "TUI-1 Note",
+                "content": "Data from first TUI instance",
+                "project": "shared-tui"
+            }),
+        );
         assert!(get_text(&resp).contains("Saved"), "TUI-1 save");
     });
 
     // TUI-2 searches & saves
     with_mcp_shared(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_search", &json!({
-            "query": "TUI-1 Note",
-            "limit": 10
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_search",
+            &json!({
+                "query": "TUI-1 Note",
+                "limit": 10
+            }),
+        );
         assert!(get_text(&resp).contains("TUI-1"), "TUI-2 sees TUI-1");
 
-        let resp = send_tool_call(stdin, reader, "mem_save", &json!({
-            "title": "TUI-2 Note",
-            "content": "Data from second TUI instance",
-            "project": "shared-tui"
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_save",
+            &json!({
+                "title": "TUI-2 Note",
+                "content": "Data from second TUI instance",
+                "project": "shared-tui"
+            }),
+        );
         assert!(get_text(&resp).contains("Saved"), "TUI-2 save");
     });
 
     // TUI-1 verifies both
     with_mcp_shared(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_search", &json!({
-            "query": "TUI instance",
-            "limit": 10
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_search",
+            &json!({
+                "query": "TUI instance",
+                "limit": 10
+            }),
+        );
         let text = get_text(&resp);
-        assert!(text.contains("TUI-1") && text.contains("TUI-2"),
-            "Both TUI entries visible: {}", text);
+        assert!(
+            text.contains("TUI-1") && text.contains("TUI-2"),
+            "Both TUI entries visible: {}",
+            text
+        );
     });
 
     cleanup_old_dirs();
@@ -422,36 +535,74 @@ fn test_ide_to_ide_session_sharing() {
     let (_db, _orch, server) = create_inprocess_server();
 
     // Cursor starts session
-    let resp = inproc_call(&server, "mem_session_start", &json!({
-        "project": "ide-shared",
-        "directory": "/workspace/project",
-        "agent_id": "cursor"
-    }));
+    let resp = inproc_call(
+        &server,
+        "mem_session_start",
+        &json!({
+            "project": "ide-shared",
+            "directory": "/workspace/project",
+            "agent_id": "cursor"
+        }),
+    );
     let text = get_text(&resp);
     eprintln!("[test] cursor session_start: {}", text);
-    assert!(text.contains("Session started"), "Cursor session start: {}", text);
+    assert!(
+        text.contains("Session started"),
+        "Cursor session start: {}",
+        text
+    );
 
     // VS Code checks shared sessions
-    let resp = inproc_call(&server, "shared_sessions_by_project", &json!({
-        "project": "ide-shared"
-    }));
+    let resp = inproc_call(
+        &server,
+        "shared_sessions_by_project",
+        &json!({
+            "project": "ide-shared"
+        }),
+    );
     let text = get_text(&resp);
     eprintln!("[test] vscode sees: {}", text);
-    assert!(!text.contains("[]"), "Should not be empty: {}",
-        if text.len() > 200 { &text[..200] } else { &text });
-    assert!(text.contains("cursor") || text.contains("ide-shared"),
+    assert!(
+        !text.contains("[]"),
+        "Should not be empty: {}",
+        if text.len() > 200 {
+            &text[..200]
+        } else {
+            &text
+        }
+    );
+    assert!(
+        text.contains("cursor") || text.contains("ide-shared"),
         "VS Code should see Cursor's session: {}",
-        if text.len() > 200 { &text[..200] } else { &text });
+        if text.len() > 200 {
+            &text[..200]
+        } else {
+            &text
+        }
+    );
 
     // shared_sessions_list should also show it
     let resp = inproc_call(&server, "shared_sessions_list", &json!({}));
     let text = get_text(&resp);
     eprintln!("[test] shared_sessions_list: {}", text);
-    assert!(!text.contains("[]"), "List should not be empty: {}",
-        if text.len() > 200 { &text[..200] } else { &text });
-    assert!(text.contains("cursor") || text.contains("ide-shared"),
+    assert!(
+        !text.contains("[]"),
+        "List should not be empty: {}",
+        if text.len() > 200 {
+            &text[..200]
+        } else {
+            &text
+        }
+    );
+    assert!(
+        text.contains("cursor") || text.contains("ide-shared"),
         "List should show cursor: {}",
-        if text.len() > 200 { &text[..200] } else { &text });
+        if text.len() > 200 {
+            &text[..200]
+        } else {
+            &text
+        }
+    );
 }
 
 /// Test 7: Session Bridge broadcast
@@ -463,37 +614,63 @@ fn test_session_bridge_broadcast() {
     let agents = ["cli-agent", "tui-agent", "ide-agent"];
     let mut session_ids = Vec::new();
     for agent in &agents {
-        let resp = inproc_call(&server, "mem_session_start", &json!({
-            "project": "broadcast-proj",
-            "directory": "/shared/workspace",
-            "agent_id": agent
-        }));
+        let resp = inproc_call(
+            &server,
+            "mem_session_start",
+            &json!({
+                "project": "broadcast-proj",
+                "directory": "/shared/workspace",
+                "agent_id": agent
+            }),
+        );
         let text = get_text(&resp);
         eprintln!("[test] start {}: {}", agent, text);
-        let sid = text.trim().trim_start_matches("Session started: ").to_string();
+        let sid = text
+            .trim()
+            .trim_start_matches("Session started: ")
+            .to_string();
         session_ids.push(sid);
     }
 
     // Verify all 3 are visible
-    let resp = inproc_call(&server, "shared_sessions_by_project", &json!({
-        "project": "broadcast-proj"
-    }));
+    let resp = inproc_call(
+        &server,
+        "shared_sessions_by_project",
+        &json!({
+            "project": "broadcast-proj"
+        }),
+    );
     let text = get_text(&resp);
     eprintln!("[test] broadcast agents: {}", text);
     for agent in &agents {
-        assert!(text.contains(agent), "Should contain {}: {}",
-            agent, if text.len() > 300 { &text[..300] } else { &text });
+        assert!(
+            text.contains(agent),
+            "Should contain {}: {}",
+            agent,
+            if text.len() > 300 {
+                &text[..300]
+            } else {
+                &text
+            }
+        );
     }
 
     // Broadcast from first agent
-    let resp = inproc_call(&server, "shared_sessions_broadcast", &json!({
-        "session_id": &session_ids[0],
-        "observation": "Important finding shared across all agents"
-    }));
+    let resp = inproc_call(
+        &server,
+        "shared_sessions_broadcast",
+        &json!({
+            "session_id": &session_ids[0],
+            "observation": "Important finding shared across all agents"
+        }),
+    );
     let text = get_text(&resp);
     eprintln!("[test] broadcast result: {}", text);
-    assert!(text.contains("Broadcast") || text.contains("peer(s)"),
-        "Broadcast should succeed: {}", text);
+    assert!(
+        text.contains("Broadcast") || text.contains("peer(s)"),
+        "Broadcast should succeed: {}",
+        text
+    );
 }
 
 /// Test 8: Discovery scan via MCP (in-process only, due to println! on stdout)
@@ -506,11 +683,17 @@ fn test_discovery_scan_via_mcp() {
     eprintln!("[test] discovery_scan: {}", text);
 
     // Should mention discovery
-    assert!(text.contains("Discovery scan") || text.contains("discovery"),
-        "Response should mention discovery: {}", text);
+    assert!(
+        text.contains("Discovery scan") || text.contains("discovery"),
+        "Response should mention discovery: {}",
+        text
+    );
     // Should reference tools/local/network
-    assert!(text.contains("local_tools") || text.contains("tools") || text.contains("Local"),
-        "Response should mention tools: {}", text);
+    assert!(
+        text.contains("local_tools") || text.contains("tools") || text.contains("Local"),
+        "Response should mention tools: {}",
+        text
+    );
 }
 
 /// Test 9: Unknown tool returns error
@@ -520,8 +703,11 @@ fn test_unknown_tool_error() {
     with_mcp_fresh(|stdin, reader| {
         let resp = send_tool_call(stdin, reader, "nonexistent_tool_xyz", &json!({}));
         // Should get error
-        assert!(resp.get("error").is_some() || get_text(&resp).contains("Unknown"),
-            "Unknown tool should produce error: {}", get_text(&resp));
+        assert!(
+            resp.get("error").is_some() || get_text(&resp).contains("Unknown"),
+            "Unknown tool should produce error: {}",
+            get_text(&resp)
+        );
     });
     cleanup_old_dirs();
 }
@@ -535,43 +721,69 @@ fn test_cross_platform_data_sharing() {
 
     // Agent Alpha saves
     with_mcp_fresh(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_save", &json!({
-            "title": "Agent Alpha data",
-            "content": "Observations from first agent process",
-            "project": "shared-db-test"
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_save",
+            &json!({
+                "title": "Agent Alpha data",
+                "content": "Observations from first agent process",
+                "project": "shared-db-test"
+            }),
+        );
         assert!(get_text(&resp).contains("Saved"), "Alpha save");
     });
 
     // Agent Beta saves
     with_mcp_shared(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_save", &json!({
-            "title": "Agent Beta data",
-            "content": "Observations from second agent process",
-            "project": "shared-db-test"
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_save",
+            &json!({
+                "title": "Agent Beta data",
+                "content": "Observations from second agent process",
+                "project": "shared-db-test"
+            }),
+        );
         assert!(get_text(&resp).contains("Saved"), "Beta save");
     });
 
     // Agent Gamma retrieves everything via search
     with_mcp_shared(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_search", &json!({
-            "query": "Observations",
-            "project": "shared-db-test",
-            "limit": 20
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_search",
+            &json!({
+                "query": "Observations",
+                "project": "shared-db-test",
+                "limit": 20
+            }),
+        );
         let text = get_text(&resp);
-        assert!(text.contains("Agent Alpha") && text.contains("Agent Beta"),
-            "All agents' data should be visible: {}", text);
+        assert!(
+            text.contains("Agent Alpha") && text.contains("Agent Beta"),
+            "All agents' data should be visible: {}",
+            text
+        );
 
         // Also test mem_context
-        let resp2 = send_tool_call(stdin, reader, "mem_context", &json!({
-            "project": "shared-db-test",
-            "limit": 10
-        }));
+        let resp2 = send_tool_call(
+            stdin,
+            reader,
+            "mem_context",
+            &json!({
+                "project": "shared-db-test",
+                "limit": 10
+            }),
+        );
         let text2 = get_text(&resp2);
-        assert!(text2.contains("Agent Alpha") || text2.contains("shared-db-test"),
-            "Context should show shared data: {}", text2);
+        assert!(
+            text2.contains("Agent Alpha") || text2.contains("shared-db-test"),
+            "Context should show shared data: {}",
+            text2
+        );
     });
 
     cleanup_old_dirs();
@@ -585,11 +797,16 @@ fn test_multi_agent_stats() {
     // Save observations from first agent
     with_mcp_fresh(|stdin, reader| {
         for i in 1..=3 {
-            send_tool_call(stdin, reader, "mem_save", &json!({
-                "title": format!("Stats test {}", i),
-                "content": format!("Stats content {}", i),
-                "project": "stats-project"
-            }));
+            send_tool_call(
+                stdin,
+                reader,
+                "mem_save",
+                &json!({
+                    "title": format!("Stats test {}", i),
+                    "content": format!("Stats content {}", i),
+                    "project": "stats-project"
+                }),
+            );
         }
     });
 
@@ -597,8 +814,11 @@ fn test_multi_agent_stats() {
     with_mcp_shared(|stdin, reader| {
         let resp = send_tool_call(stdin, reader, "mem_stats", &json!({}));
         let text = get_text(&resp);
-        assert!(text.contains("Observations") || text.contains("observations"),
-            "Stats should show count: {}", text);
+        assert!(
+            text.contains("Observations") || text.contains("observations"),
+            "Stats should show count: {}",
+            text
+        );
     });
 
     cleanup_old_dirs();
@@ -611,19 +831,33 @@ fn test_cli_to_cli_error_recovery() {
 
     // Save with minimal args
     with_mcp_fresh(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_save", &json!({
-            "title": "Minimal",
-            "content": "Minimal content"
-        }));
-        assert!(get_text(&resp).contains("Saved"), "Minimal save: {}", get_text(&resp));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_save",
+            &json!({
+                "title": "Minimal",
+                "content": "Minimal content"
+            }),
+        );
+        assert!(
+            get_text(&resp).contains("Saved"),
+            "Minimal save: {}",
+            get_text(&resp)
+        );
     });
 
     // Retrieve it
     with_mcp_shared(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_search", &json!({
-            "query": "Minimal content",
-            "limit": 10
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_search",
+            &json!({
+                "query": "Minimal content",
+                "limit": 10
+            }),
+        );
         let text = get_text(&resp);
         assert!(text.contains("Minimal"), "Search: {}", text);
     });
@@ -637,17 +871,24 @@ fn test_mem_doctor_diagnostics() {
     let (_db, _orch, server) = create_inprocess_server();
 
     // Save something first
-    inproc_call(&server, "mem_save", &json!({
-        "title": "Diag test",
-        "content": "For diagnostics",
-        "project": "diag"
-    }));
+    inproc_call(
+        &server,
+        "mem_save",
+        &json!({
+            "title": "Diag test",
+            "content": "For diagnostics",
+            "project": "diag"
+        }),
+    );
 
     let resp = inproc_call(&server, "mem_doctor", &json!({}));
     let text = get_text(&resp);
     eprintln!("[test] mem_doctor: {}", text);
-    assert!(text.contains("Status") || text.contains("Diagnostics") || text.contains("Observations"),
-        "Doctor should return diagnostic info: {}", text);
+    assert!(
+        text.contains("Status") || text.contains("Diagnostics") || text.contains("Observations"),
+        "Doctor should return diagnostic info: {}",
+        text
+    );
 }
 
 /// Test 14: In-process: mcp_call validation
@@ -658,8 +899,11 @@ fn test_mcp_call_validation() {
     // mcp_call without required params should error
     let resp = inproc_call(&server, "mcp_call", &json!({}));
     let text = get_text(&resp);
-    assert!(text.contains("Missing") || resp.get("error").is_some(),
-        "mcp_call without params should error: {}", text);
+    assert!(
+        text.contains("Missing") || resp.get("error").is_some(),
+        "mcp_call without params should error: {}",
+        text
+    );
 }
 
 /// Test 15: Cross-platform: Chinese content roundtrip
@@ -669,24 +913,37 @@ fn test_chinese_content_roundtrip() {
 
     // Save Chinese content from first agent
     with_mcp_fresh(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_save", &json!({
-            "title": "模型选择决策",
-            "content": "使用 Qwen2.5-72B 用于代码生成，DeepSeek-V3 用于推理",
-            "project": "i18n-app",
-            "type": "architecture"
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_save",
+            &json!({
+                "title": "模型选择决策",
+                "content": "使用 Qwen2.5-72B 用于代码生成，DeepSeek-V3 用于推理",
+                "project": "i18n-app",
+                "type": "architecture"
+            }),
+        );
         assert!(get_text(&resp).contains("Saved"), "Chinese save");
     });
 
     // Retrieve from second agent
     with_mcp_shared(|stdin, reader| {
-        let resp = send_tool_call(stdin, reader, "mem_search", &json!({
-            "query": "Qwen2.5",
-            "limit": 10
-        }));
+        let resp = send_tool_call(
+            stdin,
+            reader,
+            "mem_search",
+            &json!({
+                "query": "Qwen2.5",
+                "limit": 10
+            }),
+        );
         let text = get_text(&resp);
-        assert!(text.contains("Qwen2.5") || text.contains("模型"),
-            "Chinese content retrievable: {}", text);
+        assert!(
+            text.contains("Qwen2.5") || text.contains("模型"),
+            "Chinese content retrievable: {}",
+            text
+        );
     });
 
     cleanup_old_dirs();
@@ -698,18 +955,28 @@ fn test_task_cross_platform() {
     let (_db, _orch, server) = create_inprocess_server();
 
     // Create a task
-    let resp = inproc_call(&server, "task_create", &json!({
-        "title": "Cross-platform task",
-        "description": "Task created from test",
-        "priority": 1
-    }));
+    let resp = inproc_call(
+        &server,
+        "task_create",
+        &json!({
+            "title": "Cross-platform task",
+            "description": "Task created from test",
+            "priority": 1
+        }),
+    );
     let text = get_text(&resp);
-    assert!(text.contains("Task created") || text.contains("task"),
-        "Task create: {}", text);
+    assert!(
+        text.contains("Task created") || text.contains("task"),
+        "Task create: {}",
+        text
+    );
 
     // List tasks
     let resp = inproc_call(&server, "task_list", &json!({}));
     let text = get_text(&resp);
-    assert!(text.contains("task") || text.contains("Task"),
-        "Task list: {}", text);
+    assert!(
+        text.contains("task") || text.contains("Task"),
+        "Task list: {}",
+        text
+    );
 }

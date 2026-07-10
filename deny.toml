@@ -1,12 +1,9 @@
 [advisories]
-vulnerability = "deny"
-unmaintained = "deny"
+unmaintained = "all"
 yanked = "warn"
-notice = "warn"
 ignore = []
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -16,10 +13,8 @@ allow = [
     "Zlib",
     "MPL-2.0",
     "Unicode-3.0",
+    "CDLA-Permissive-2.0",
 ]
-copyleft = "warn"
-allow-osi-fsf-free = "either"
-default = "deny"
 confidence-threshold = 0.93
 
 [bans]

@@ -9,7 +9,7 @@ use std::sync::Mutex;
 pub struct PremiumFeature {
     pub name: String,
     pub description: String,
-    pub price_usdc: f64,         // Price in USDC per call
+    pub price_usdc: f64, // Price in USDC per call
     pub category: FeatureCategory,
 }
 
@@ -26,14 +26,54 @@ pub enum FeatureCategory {
 /// All premium features available via x402
 pub fn all_premium_features() -> Vec<PremiumFeature> {
     vec![
-        PremiumFeature { name: "pqc-encrypt".into(), description: "Post-quantum encryption (Kyber-768)".into(), price_usdc: 0.001, category: FeatureCategory::Security },
-        PremiumFeature { name: "session-bridge-multi".into(), description: "Multi-host session bridge (beyond local network)".into(), price_usdc: 0.01, category: FeatureCategory::Storage },
-        PremiumFeature { name: "web-search".into(), description: "Web search via external API".into(), price_usdc: 0.005, category: FeatureCategory::WebSearch },
-        PremiumFeature { name: "ai-analysis".into(), description: "AI-powered content analysis".into(), price_usdc: 0.01, category: FeatureCategory::AiAnalysis },
-        PremiumFeature { name: "crypto-data".into(), description: "Real-time cryptocurrency market data".into(), price_usdc: 0.005, category: FeatureCategory::CryptoData },
-        PremiumFeature { name: "sec-filings".into(), description: "SEC EDGAR filing search and retrieval".into(), price_usdc: 0.01, category: FeatureCategory::FinancialData },
-        PremiumFeature { name: "news-sentiment".into(), description: "News aggregation with sentiment analysis".into(), price_usdc: 0.005, category: FeatureCategory::AiAnalysis },
-        PremiumFeature { name: "company-intel".into(), description: "Company intelligence and competitor analysis".into(), price_usdc: 0.01, category: FeatureCategory::FinancialData },
+        PremiumFeature {
+            name: "pqc-encrypt".into(),
+            description: "Post-quantum encryption (Kyber-768)".into(),
+            price_usdc: 0.001,
+            category: FeatureCategory::Security,
+        },
+        PremiumFeature {
+            name: "session-bridge-multi".into(),
+            description: "Multi-host session bridge (beyond local network)".into(),
+            price_usdc: 0.01,
+            category: FeatureCategory::Storage,
+        },
+        PremiumFeature {
+            name: "web-search".into(),
+            description: "Web search via external API".into(),
+            price_usdc: 0.005,
+            category: FeatureCategory::WebSearch,
+        },
+        PremiumFeature {
+            name: "ai-analysis".into(),
+            description: "AI-powered content analysis".into(),
+            price_usdc: 0.01,
+            category: FeatureCategory::AiAnalysis,
+        },
+        PremiumFeature {
+            name: "crypto-data".into(),
+            description: "Real-time cryptocurrency market data".into(),
+            price_usdc: 0.005,
+            category: FeatureCategory::CryptoData,
+        },
+        PremiumFeature {
+            name: "sec-filings".into(),
+            description: "SEC EDGAR filing search and retrieval".into(),
+            price_usdc: 0.01,
+            category: FeatureCategory::FinancialData,
+        },
+        PremiumFeature {
+            name: "news-sentiment".into(),
+            description: "News aggregation with sentiment analysis".into(),
+            price_usdc: 0.005,
+            category: FeatureCategory::AiAnalysis,
+        },
+        PremiumFeature {
+            name: "company-intel".into(),
+            description: "Company intelligence and competitor analysis".into(),
+            price_usdc: 0.01,
+            category: FeatureCategory::FinancialData,
+        },
     ]
 }
 
@@ -45,7 +85,7 @@ pub struct PaymentRecord {
     pub amount_usdc: f64,
     pub payer_wallet: String,
     pub verified_at: i64,
-    pub expires_at: i64,        // Payment valid for 24h
+    pub expires_at: i64, // Payment valid for 24h
 }
 
 pub struct X402Engine {
@@ -92,7 +132,9 @@ impl X402Engine {
             let cached = self.verified_payments.lock().unwrap();
             if let Some(p) = cached.iter().find(|p| p.tx_hash == tx_hash) {
                 let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64;
                 if p.expires_at > now {
                     return Ok(true);
                 }
@@ -108,7 +150,8 @@ impl X402Engine {
             "id": 1,
         });
 
-        let resp = client.post(&self.rpc_url)
+        let resp = client
+            .post(&self.rpc_url)
             .json(&payload)
             .send()
             .await
@@ -122,7 +165,9 @@ impl X402Engine {
         if let Some(result) = resp.get("result") {
             if !result.is_null() {
                 let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64;
                 let record = PaymentRecord {
                     tx_hash: tx_hash.to_string(),
                     feature: feature.to_string(),
@@ -141,9 +186,13 @@ impl X402Engine {
     /// Check if a feature is already paid for
     pub fn is_feature_paid(&self, feature: &str) -> bool {
         let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let cached = self.verified_payments.lock().unwrap();
-        cached.iter().any(|p| p.feature == feature && p.expires_at > now)
+        cached
+            .iter()
+            .any(|p| p.feature == feature && p.expires_at > now)
     }
 
     /// Get premium features that require x402
