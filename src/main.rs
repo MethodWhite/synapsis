@@ -16,11 +16,44 @@ fn main() {
             "--help" | "-h" => {
                 eprintln!("synapsis v{}", env!("CARGO_PKG_VERSION"));
                 eprintln!("Usage: synapsis [--version | --help]");
+                eprintln!("       synapsis license <status|verify>");
                 eprintln!("       synapsis [--tls-cert <path> --tls-key <path>]");
                 eprintln!("Without arguments, starts the HTTP/SSE MCP server on port 7438.");
                 eprintln!("Use --tls-cert and --tls-key to enable HTTPS.");
                 eprintln!("Env: SYNAPSIS_PORT, SYNAPSIS_TLS_CERT, SYNAPSIS_TLS_KEY");
+                eprintln!("     SYNAPSIS_LICENSE (path to license file)");
                 std::process::exit(0);
+            }
+            "license" => {
+                let sub = args.get(2).map(|s| s.as_str()).unwrap_or("");
+                match sub {
+                    "status" => {
+                        println!("{}", synapsis::core::license::current_license_status());
+                        std::process::exit(0);
+                    }
+                    "verify" => {
+                        match synapsis::core::license::load_license() {
+                            Some(lic) => {
+                                println!("License: VALID");
+                                println!("Customer: {}", lic.data.customer);
+                                println!("Type: {}", lic.data.license_type);
+                                println!("Issued: {}", lic.data.issued_at);
+                                println!("Expires: {}", lic.data.expires_at);
+                                println!("Features: {}", lic.data.features.join(", "));
+                                std::process::exit(0);
+                            }
+                            None => {
+                                eprintln!("License: NOT FOUND or INVALID");
+                                eprintln!("{}", synapsis::core::license::current_license_status());
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    _ => {
+                        eprintln!("Usage: synapsis license <status|verify>");
+                        std::process::exit(1);
+                    }
+                }
             }
             _ => {}
         }
@@ -115,6 +148,11 @@ fn main() {
     );
     eprintln!("║  Multi-Agent: enabled                                  ║");
     eprintln!("╚══════════════════════════════════════════════════════════╝");
+
+    let license_status = synapsis::core::license::current_license_status();
+    if license_status.starts_with("License: NOT FOUND") {
+        eprintln!("[Synapsis] {}", license_status);
+    }
 
     let db = Arc::new(synapsis::infrastructure::database::Database::new());
     let orchestrator = Arc::new(synapsis::core::orchestrator::Orchestrator::new());

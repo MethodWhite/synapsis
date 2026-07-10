@@ -36,6 +36,10 @@ path = "src/bin/ollama.rs"
 name = "synapsis-autoconfig"
 path = "src/bin/autoconfig.rs"
 
+[[bin]]
+name = "synapsis-keygen"
+path = "src/bin/keygen.rs"
+
 [dependencies]
 # Core
 synapsis-core = { git = "https://github.com/MethodWhite/synapsis-core", optional = true }
@@ -46,6 +50,8 @@ dirs = "5.0"
 anyhow = "1.0"
 base64 = "0.22"
 rand = "0.8"
+ed25519-dalek = { version = "2", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking"], default-features = false }
 uuid = { version = "1.0", features = ["v4", "fast-rng"] }
 
