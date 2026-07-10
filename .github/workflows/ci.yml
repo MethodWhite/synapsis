@@ -152,12 +152,14 @@ jobs:
     permissions:
       contents: read
       statuses: write
+    env:
+      NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/github-script@v7
         with:
           script: |
-            const results = '${{ toJSON(needs) }}';
+            const results = process.env.NEEDS_JSON;
             const parsed = JSON.parse(results);
             const allSuccess = Object.values(parsed).every(n => n.result === 'success');
             await github.rest.repos.createCommitStatus({
