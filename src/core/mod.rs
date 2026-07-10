@@ -7,6 +7,7 @@ pub mod auto_integrate;
 pub mod discovery;
 pub mod discovery_net;
 pub mod lock_utils;
+pub mod mcp_autoconfig;
 pub mod orchestrator;
 pub mod platform_catalog;
 pub use platform_catalog::*;

@@ -32,6 +32,10 @@ path = "src/bin/server.rs"
 name = "synapsis-ollama"
 path = "src/bin/ollama.rs"
 
+[[bin]]
+name = "synapsis-autoconfig"
+path = "src/bin/autoconfig.rs"
+
 [dependencies]
 # Core
 synapsis-core = { git = "https://github.com/MethodWhite/synapsis-core", optional = true }
