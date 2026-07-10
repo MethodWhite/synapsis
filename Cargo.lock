@@ -2647,7 +2647,6 @@ dependencies = [
 [[package]]
 name = "synapsis-core"
 version = "0.5.1"
-source = "git+https://github.com/MethodWhite/synapsis-core#6108c601c539061ddc4934cde5b7672436ded615"
 dependencies = [
  "aes-gcm",
  "anyhow",

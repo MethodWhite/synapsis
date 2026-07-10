@@ -134,7 +134,7 @@ pub fn generate_synapsis_mcp_entry() -> McpConfigEntry {
         .to_string();
 
     let config_content = serde_json::json!({
-        "mcpServers": {
+        "mcp": {
             "synapsis": {
                 "command": exe_path,
                 "args": []
@@ -172,14 +172,11 @@ fn wrap_synapsis_entry(platform_name: &str) -> serde_json::Value {
     });
 
     match platform_name {
-        "OpenCode" | "Cursor" | "Windsurf" | "Gemini CLI" | "Cline" | "VS Code + Copilot"
-        | "Claude Code" | "Continue.dev" | "Synapsis TUI" => {
-            serde_json::json!({
-                "mcpServers": {
-                    "synapsis": synapsis_server
-                }
-            })
-        }
+        "OpenCode" => serde_json::json!({ "mcp": { "synapsis": synapsis_server } }),
+        "Cursor" | "Windsurf" | "Gemini CLI" | "Cline" | "VS Code + Copilot"
+        | "Claude Code" | "Continue.dev" | "Synapsis TUI" => serde_json::json!({
+            "mcpServers": { "synapsis": synapsis_server }
+        }),
         _ => synapsis_server,
     }
 }
@@ -200,7 +197,20 @@ fn merge_with_existing(path: &std::path::Path, new_content: &serde_json::Value) 
     {
         let mut merged = existing_obj.clone();
         for (key, value) in new_obj {
-            if let (Some(existing_val), Some(new_map)) = (merged.get(key), value.as_object()) {
+            if key == "mcpServers" || key == "mcp" {
+                // Merge into the correct section depending on platform
+                if let Some(new_map) = value.as_object() {
+                    let mut target = merged.get(key)
+                        .and_then(|v| v.as_object().cloned())
+                        .unwrap_or_default();
+                    for (k, v) in new_map {
+                        target.insert(k.clone(), v.clone());
+                    }
+                    merged.insert(key.clone(), serde_json::Value::Object(target));
+                } else {
+                    merged.insert(key.clone(), value.clone());
+                }
+            } else if let (Some(existing_val), Some(new_map)) = (merged.get(key), value.as_object()) {
                 if let Some(existing_map) = existing_val.as_object() {
                     let mut server_map = existing_map.clone();
                     for (k, v) in new_map {
