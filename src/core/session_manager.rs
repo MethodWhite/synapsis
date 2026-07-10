@@ -39,7 +39,7 @@ impl SessionManager {
         let conn = self.db.get_conn();
 
         conn.execute(
-            "INSERT INTO sessions (id, project, directory, started_at, observation_count)
+            "INSERT INTO sessions (id, project_key, directory, started_at, observation_count)
              VALUES (?1, ?2, ?3, ?4, 0)",
             [
                 &session_id,
@@ -88,7 +88,7 @@ impl SessionManager {
 
         // Get session info
         let (project, directory, started_at): (String, String, i64) = conn.query_row(
-            "SELECT project, directory, started_at FROM sessions WHERE id = ?1",
+            "SELECT project_key, directory, started_at FROM sessions WHERE id = ?1",
             [session_id],
             |row: &rusqlite::Row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
@@ -123,7 +123,7 @@ impl SessionManager {
 
         let session = conn
             .query_row(
-                "SELECT id, project, directory, started_at, ended_at, summary, observation_count
+                "SELECT id, project_key, directory, started_at, ended_at, summary, observation_count
              FROM sessions WHERE id = ?1",
                 [session_id],
                 |row: &rusqlite::Row| {
@@ -148,7 +148,7 @@ impl SessionManager {
         let conn = self.db.get_conn();
 
         let mut stmt = conn.prepare(
-            "SELECT id, project, directory, started_at, ended_at, summary, observation_count
+            "SELECT id, project_key, directory, started_at, ended_at, summary, observation_count
              FROM sessions ORDER BY started_at DESC LIMIT ?1",
         )?;
 
