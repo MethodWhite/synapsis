@@ -36,7 +36,7 @@ struct RelevanceModel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct RelevanceWeights {
+pub struct RelevanceWeights {
     pub recency: f64,
     pub frequency: f64,
     pub affinity: f64,
@@ -224,7 +224,7 @@ impl RelevanceEngine {
         let predicted = self.predict_next(current);
 
         // Basado en patrones aprendidos
-        let mut suggestions = predicted;
+        let suggestions = predicted;
 
         suggestions
     }
@@ -233,7 +233,7 @@ impl RelevanceEngine {
     pub fn update_weights(&mut self, feedback: RelevanceFeedback) {
         match feedback {
             RelevanceFeedback::Accessed {
-                context_id,
+                context_id: _,
                 helpful,
             } => {
                 if helpful {
@@ -246,7 +246,7 @@ impl RelevanceEngine {
                 self.normalize_weights();
             }
             RelevanceFeedback::NotAccessed {
-                context_id,
+                context_id: _,
                 expected,
             } => {
                 if expected {

@@ -22,18 +22,22 @@ jobs:
           fetch-depth: 0
       - name: Analyze PR changes
         id: changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
-          ADDITIONS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{s+=$1} END {print s+0}')
-          DELETIONS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{s+=$2} END {print s+0}')
+          FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD" | wc -l)
+          ADDITIONS=$(git diff --numstat "origin/${BASE_REF}...HEAD" | awk '{s+=$1} END {print s+0}')
+          DELETIONS=$(git diff --numstat "origin/${BASE_REF}...HEAD" | awk '{s+=$2} END {print s+0}')
           echo "files=$FILES" >> "$GITHUB_OUTPUT"
           echo "additions=$ADDITIONS" >> "$GITHUB_OUTPUT"
           echo "deletions=$DELETIONS" >> "$GITHUB_OUTPUT"
 
       - name: Check migration version
         if: contains(github.event.pull_request.labels.*.name, 'database')
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if git diff origin/${{ github.base_ref }}...HEAD -- src/infrastructure/database/mod.rs | grep -q 'version <\|schema_version'; then
+          if git diff "origin/${BASE_REF}...HEAD" -- src/infrastructure/database/mod.rs | grep -q 'version <\|schema_version'; then
             echo "Migration version bump detected"
           else
             echo "Database PR without schema version bump!"
@@ -49,9 +53,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate PR title
         id: conventions
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          TITLE="${{ github.event.pull_request.title }}"
-          if echo "$TITLE" | grep -qE '^(feat|fix|refactor|test|docs|ci|config|perf|style|chore|db|mcp)(\([a-z0-9_-]+\))?!?:\s.+'; then
+          if echo "${PR_TITLE}" | grep -qE '^(feat|fix|refactor|test|docs|ci|config|perf|style|chore|db|mcp)(\([a-z0-9_-]+\))?!?:\s.+'; then
             echo "title_valid=true" >> "$GITHUB_OUTPUT"
           else
             echo "title_valid=false" >> "$GITHUB_OUTPUT"

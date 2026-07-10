@@ -15,8 +15,7 @@ use super::context_types::{
 };
 use super::hot_recycler::HotRecycler;
 
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Motor de asistencia de prompting
 pub struct PromptingAssistant {
@@ -38,6 +37,7 @@ pub struct PromptingAssistant {
 
 /// Configuración del asistente
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct AssistantConfig {
     /// Cuántas sugerencias generar máximo
     max_suggestions: usize,
@@ -62,6 +62,7 @@ impl Default for AssistantConfig {
 
 /// Evaluador de contexto
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ContextEvaluator {
     /// Aspectos a evaluar
     aspects: Vec<EvaluationAspect>,
@@ -447,6 +448,7 @@ pub struct Suggestion {
 
 /// Monitor de tareas pendientes
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct TaskMonitor {
     /// Tareas pendientes
     pending_tasks: Vec<PendingTask>,
@@ -455,6 +457,7 @@ struct TaskMonitor {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PendingTask {
     pub id: String,
     pub description: String,
@@ -464,6 +467,7 @@ struct PendingTask {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct CompletedTask {
     pub id: String,
     pub description: String,
@@ -512,6 +516,7 @@ impl TaskMonitor {
     }
 
     /// Registra una nueva tarea sugerida
+    #[allow(dead_code)]
     fn add_pending_task(&mut self, description: String, context_id: Option<ContextId>) {
         self.pending_tasks.push(PendingTask {
             id: format!("task_{}", now_timestamp()),
@@ -525,7 +530,8 @@ impl TaskMonitor {
 
 /// Decisión del asistente
 #[derive(Debug, Clone)]
-struct AssistantDecision {
+#[allow(dead_code)]
+pub struct AssistantDecision {
     pub timestamp: Timestamp,
     pub decision_type: DecisionType,
     pub context_id: Option<ContextId>,
@@ -534,14 +540,16 @@ struct AssistantDecision {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum DecisionType {
+#[allow(dead_code)]
+pub enum DecisionType {
     Suggestion,
     AutoAction,
     UserOverride,
 }
 
 #[derive(Debug, Clone, Copy)]
-enum DecisionOutcome {
+#[allow(dead_code)]
+pub enum DecisionOutcome {
     Success,
     Partial,
     Failed,

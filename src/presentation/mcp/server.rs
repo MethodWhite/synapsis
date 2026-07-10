@@ -9,7 +9,6 @@ use crate::core::agent_registry_ext::AgentRegistryExt;
 use crate::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
 use crate::core::auth::challenge::ChallengeResponse;
 use crate::core::auth::classifier::AgentClassifier;
-use crate::core::auth::permissions::{Permission, PermissionSet};
 use crate::core::auth::tpm::TpmMfaProvider;
 use crate::core::auto_integrate::AutoIntegrate;
 use crate::core::chunk_query::ChunkQueryManager;

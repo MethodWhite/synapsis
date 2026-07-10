@@ -10,15 +10,14 @@
 //! 4. Reconstitución perezosa bajo demanda
 
 use super::context_types::now_ts as now_timestamp;
-use super::context_types::{
-    Context, ContextId, ContextState, ContextType, ContextValue, Priority, Timestamp,
-};
+use super::context_types::{ContextId, ContextState, ContextType, Priority, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 /// Almacenamiento frío de contextos
 /// Los datos se archivan, no se eliminan
+#[allow(dead_code)]
 pub struct ColdStorage {
     /// Directorio base de almacenamiento frío
     base_path: PathBuf,
@@ -53,7 +52,7 @@ struct ColdIndex {
 
 /// Metadata que se mantiene indexada incluso en frío
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ColdMetadata {
+pub struct ColdMetadata {
     pub name: String,
     pub context_type: ContextType,
     pub tags: Vec<String>,
@@ -65,7 +64,7 @@ struct ColdMetadata {
 
 /// Un fragmento de contexto archivado
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ColdFragment {
+pub struct ColdFragment {
     pub id: FragmentId,
     pub fragment_type: FragmentType,
     pub data: Vec<u8>,
@@ -74,7 +73,7 @@ struct ColdFragment {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-enum FragmentType {
+pub enum FragmentType {
     Variables,
     Connections,
     Metadata,
@@ -83,7 +82,7 @@ enum FragmentType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-struct FragmentId(pub u64);
+pub struct FragmentId(pub u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ColdConfig {
