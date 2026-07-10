@@ -2407,7 +2407,6 @@ dependencies = [
  "hmac 0.13.0",
  "hmac-sha1",
  "hostname",
- "lazy_static",
  "mdns-sd",
  "proptest",
  "quinn",
