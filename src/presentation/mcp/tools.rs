@@ -1,8 +1,8 @@
 use crate::core::antibrick::AntiBrickEngine;
 use crate::core::auth::permissions::{Permission, PermissionSet};
-use crate::core::orchestrator::Orchestrator;
 use crate::core::discovery_bridge::DiscoveryBridge;
-use crate::core::session_bridge::{self, SharedSession, SessionBridge};
+use crate::core::orchestrator::Orchestrator;
+use crate::core::session_bridge::{self, SessionBridge, SharedSession};
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
 use crate::infrastructure::agents::{Agent, AgentRegistry, AgentRole};
@@ -953,13 +953,17 @@ pub fn handle_shared_sessions_list(id: &Value) -> anyhow::Result<Value> {
             })
         })
         .collect();
-    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":serde_json::to_string_pretty(&list).unwrap_or_default()}]}}))
+    Ok(
+        json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":serde_json::to_string_pretty(&list).unwrap_or_default()}]}}),
+    )
 }
 
 pub fn handle_shared_sessions_by_project(id: &Value, args: &Value) -> anyhow::Result<Value> {
     let project = args["project"].as_str().unwrap_or("");
     if project.is_empty() {
-        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'project'"}}));
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'project'"}}),
+        );
     }
     let bridge = SessionBridge::global();
     let sessions = bridge.get_sessions_by_project(project);
@@ -980,21 +984,29 @@ pub fn handle_shared_sessions_by_project(id: &Value, args: &Value) -> anyhow::Re
             })
         })
         .collect();
-    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":serde_json::to_string_pretty(&list).unwrap_or_default()}]}}))
+    Ok(
+        json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":serde_json::to_string_pretty(&list).unwrap_or_default()}]}}),
+    )
 }
 
 pub fn handle_shared_sessions_broadcast(id: &Value, args: &Value) -> anyhow::Result<Value> {
     let session_id = args["session_id"].as_str().unwrap_or("");
     let observation = args["observation"].as_str().unwrap_or("");
     if session_id.is_empty() {
-        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'session_id'"}}));
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'session_id'"}}),
+        );
     }
     if observation.is_empty() {
-        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'observation'"}}));
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'observation'"}}),
+        );
     }
     let bridge = SessionBridge::global();
     let notifications = bridge.broadcast_observation(session_id, observation);
-    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Broadcast to {} peer(s):\n{}", notifications.len(), notifications.join("\n"))}]}}))
+    Ok(
+        json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Broadcast to {} peer(s):\n{}", notifications.len(), notifications.join("\n"))}]}}),
+    )
 }
 
 pub fn handle_mem_doctor(db: &Database, id: &Value) -> anyhow::Result<Value> {
@@ -1422,7 +1434,9 @@ pub fn handle_discovery_scan(id: &Value) -> anyhow::Result<Value> {
     let bridge = match DiscoveryBridge::new() {
         Ok(b) => b,
         Err(e) => {
-            return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":format!("DiscoveryBridge init failed: {}", e)}}));
+            return Ok(
+                json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":format!("DiscoveryBridge init failed: {}", e)}}),
+            );
         }
     };
     let report = bridge.full_discovery_flow();

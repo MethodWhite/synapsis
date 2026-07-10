@@ -42,8 +42,7 @@ impl HttpTransport {
                 Ok(stream) => {
                     if !self.circuit.is_closed() {
                         eprintln!("[HTTP] Circuit open - rejecting connection");
-                        let resp =
-                            "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n";
+                        let resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n";
                         let mut stream = stream;
                         let _ = stream.write_all(resp.as_bytes());
                         continue;
@@ -54,8 +53,7 @@ impl HttpTransport {
                         if let Some(tls_config) = tls_config {
                             match rustls::ServerConnection::new(tls_config) {
                                 Ok(conn) => {
-                                    let tls_stream =
-                                        rustls::StreamOwned::new(conn, stream);
+                                    let tls_stream = rustls::StreamOwned::new(conn, stream);
                                     handle_connection(tls_stream, &server);
                                 }
                                 Err(e) => {

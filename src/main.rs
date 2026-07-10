@@ -69,9 +69,7 @@ fn main() {
             }
         }
         (Some(_cert_path), None) => {
-            eprintln!(
-                "[Synapsis] SYNAPSIS_TLS_CERT set without key — generating self-signed cert"
-            );
+            eprintln!("[Synapsis] SYNAPSIS_TLS_CERT set without key — generating self-signed cert");
             match synapsis::presentation::http::generate_self_signed_cert() {
                 Ok((cert_der, key_der)) => {
                     match rustls::ServerConfig::builder()
@@ -80,8 +78,7 @@ fn main() {
                             vec![rustls::pki_types::CertificateDer::from(cert_der)],
                             rustls::pki_types::PrivateKeyDer::try_from(key_der)
                                 .expect("Invalid private key"),
-                        )
-                    {
+                        ) {
                         Ok(cfg) => {
                             eprintln!("[Synapsis] Self-signed TLS configured");
                             Some(cfg)
@@ -101,7 +98,11 @@ fn main() {
         _ => None,
     };
 
-    let proto = if tls_config.is_some() { "HTTPS" } else { "HTTP" };
+    let proto = if tls_config.is_some() {
+        "HTTPS"
+    } else {
+        "HTTP"
+    };
 
     eprintln!("╔══════════════════════════════════════════════════════════╗");
     eprintln!(

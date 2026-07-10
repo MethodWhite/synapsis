@@ -3,9 +3,9 @@
 
 use crate::core::discovery::EnvironmentDiscovery;
 use crate::core::discovery_net::{McpServerInfo, NetworkDiscovery};
-use crate::core::mcp_autoconfig::{detect_and_generate_configs, write_configs, AutoConfigReport};
+use crate::core::mcp_autoconfig::{AutoConfigReport, detect_and_generate_configs, write_configs};
 use crate::core::platform_catalog::detect_installed_platforms;
-use crate::core::session_bridge::{detect_hostname, detect_platform, SharedSession, SessionBridge};
+use crate::core::session_bridge::{SessionBridge, SharedSession, detect_hostname, detect_platform};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -70,11 +70,9 @@ impl DiscoveryBridge {
         // 1. Local PATH discovery
         let tools = self.env_discovery.discover_all();
         for tool in &tools {
-            report.local_tools.push(format!(
-                "{} ({})",
-                tool.name,
-                tool.tool_type.as_str()
-            ));
+            report
+                .local_tools
+                .push(format!("{} ({})", tool.name, tool.tool_type.as_str()));
         }
 
         // 2. Platform catalog detection
@@ -116,10 +114,14 @@ impl DiscoveryBridge {
         for tool_name in &report.local_tools {
             let name_clean = tool_name.split(" (").next().unwrap_or(tool_name);
             let session = SharedSession::new(
-                &format!("discovery-{}-{}", name_clean, std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs()),
+                &format!(
+                    "discovery-{}-{}",
+                    name_clean,
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()
+                ),
                 name_clean,
                 "ai_agent",
                 &hostname,
@@ -131,10 +133,14 @@ impl DiscoveryBridge {
 
         for server in &report.mcp_servers {
             let session = SharedSession::new(
-                &format!("mcp-{}-{}", server.name, std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs()),
+                &format!(
+                    "mcp-{}-{}",
+                    server.name,
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()
+                ),
                 &server.name,
                 "mcp_server",
                 &server.host,
@@ -169,7 +175,10 @@ impl DiscoveryBridge {
         summary.insert("mcp_servers".to_string(), report.mcp_servers.len());
         summary.insert("network_nodes".to_string(), report.network_nodes.len());
         summary.insert("auto_configured".to_string(), report.auto_configured.len());
-        summary.insert("platform_matches".to_string(), report.platform_matches.len());
+        summary.insert(
+            "platform_matches".to_string(),
+            report.platform_matches.len(),
+        );
         summary.insert("errors".to_string(), report.errors.len());
         summary
     }

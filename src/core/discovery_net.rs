@@ -128,7 +128,10 @@ impl NetworkDiscovery {
                     };
 
                     let mut servers = servers.lock_safe();
-                    println!("[MCP Mesh] Discovered MCP Server: {} @ {}:{}", name, server_info.host, port);
+                    println!(
+                        "[MCP Mesh] Discovered MCP Server: {} @ {}:{}",
+                        name, server_info.host, port
+                    );
                     servers.insert(name, server_info);
                 }
             }

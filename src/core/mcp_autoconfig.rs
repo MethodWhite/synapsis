@@ -89,11 +89,7 @@ pub fn get_config_target_path(platform_name: &str) -> Option<String> {
                 .to_string_lossy()
                 .to_string(),
         ),
-        "Cursor" => Some(
-            home.join(".cursor/mcp.json")
-                .to_string_lossy()
-                .to_string(),
-        ),
+        "Cursor" => Some(home.join(".cursor/mcp.json").to_string_lossy().to_string()),
         "Windsurf" => Some(
             home.join(".windsurf/mcp.json")
                 .to_string_lossy()
@@ -114,11 +110,7 @@ pub fn get_config_target_path(platform_name: &str) -> Option<String> {
                 .to_string_lossy()
                 .to_string(),
         ),
-        "VS Code + Copilot" => Some(
-            home.join(".vscode/mcp.json")
-                .to_string_lossy()
-                .to_string(),
-        ),
+        "VS Code + Copilot" => Some(home.join(".vscode/mcp.json").to_string_lossy().to_string()),
         name if name.starts_with("JetBrains") => None,
         "Synapsis TUI" => Some(
             home.join(".config/synapsis/mcp.json")
@@ -180,8 +172,8 @@ fn wrap_synapsis_entry(platform_name: &str) -> serde_json::Value {
     });
 
     match platform_name {
-        "OpenCode" | "Cursor" | "Windsurf" | "Gemini CLI" | "Cline"
-        | "VS Code + Copilot" | "Claude Code" | "Continue.dev" | "Synapsis TUI" => {
+        "OpenCode" | "Cursor" | "Windsurf" | "Gemini CLI" | "Cline" | "VS Code + Copilot"
+        | "Claude Code" | "Continue.dev" | "Synapsis TUI" => {
             serde_json::json!({
                 "mcpServers": {
                     "synapsis": synapsis_server

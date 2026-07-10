@@ -68,8 +68,11 @@ fn watch_loop(apply: bool) {
 
     loop {
         let report = synapsis::core::mcp_autoconfig::detect_and_generate_configs();
-        let current_names: Vec<String> =
-            report.generated.iter().map(|e| e.platform_name.clone()).collect();
+        let current_names: Vec<String> = report
+            .generated
+            .iter()
+            .map(|e| e.platform_name.clone())
+            .collect();
 
         let new_platforms: Vec<&String> = current_names
             .iter()
@@ -114,5 +117,4 @@ fn print_report(report: &synapsis::core::mcp_autoconfig::AutoConfigReport, apply
             println!("    • {s}");
         }
     }
-
 }

@@ -135,8 +135,7 @@ fn main() {
                                 vec![rustls::pki_types::CertificateDer::from(cert_der)],
                                 rustls::pki_types::PrivateKeyDer::try_from(key_der)
                                     .expect("Invalid private key"),
-                            )
-                        {
+                            ) {
                             Ok(cfg) => {
                                 eprintln!("[Synapsis] Self-signed TLS configured");
                                 Some(cfg)
