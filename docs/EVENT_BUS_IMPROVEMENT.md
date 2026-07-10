@@ -74,27 +74,37 @@ impl EventBus {
 }
 ```
 
-### Cliente JavaScript (Opencode)
+### Cliente Rust
 
-```javascript
-const ws = new WebSocket('ws://127.0.0.1:8080/events');
+```rust
+use tokio_tungstenite::connect_async;
+use futures_util::StreamExt;
+use serde_json::Value;
 
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    switch(data.event) {
-        case 'task.created':
-            console.log('Nueva tarea:', data.payload);
-            // Auto-claim si es de mi tipo
-            break;
-        case 'agent.joined':
-            console.log('Agente activo:', data.payload);
-            break;
-        case 'context.updated':
-            console.log('Contexto actualizado:', data.payload);
-            // Refrescar caché local
-            break;
-    }
-};
+pub async fn listen_events(url: &str) {
+    let (ws_stream, _) = connect_async(url).await.unwrap();
+    let (_write, read) = ws_stream.split();
+
+    read.for_each(|message| async {
+        let msg = message.unwrap().to_text().unwrap().to_string();
+        let data: Value = serde_json::from_str(&msg).unwrap();
+
+        match data["event"].as_str() {
+            Some("task.created") => {
+                eprintln!("Nueva tarea: {:?}", data["payload"]);
+                // Auto-claim si es de mi tipo
+            }
+            Some("agent.joined") => {
+                eprintln!("Agente activo: {:?}", data["payload"]);
+            }
+            Some("context.updated") => {
+                eprintln!("Contexto actualizado: {:?}", data["payload"]);
+                // Refrescar caché local
+            }
+            _ => {}
+        }
+    }).await;
+}
 ```
 
 ### Beneficios
@@ -112,13 +122,10 @@ ws.onmessage = (event) => {
 
 ### Configuración
 
-```json
-{
-  "event_bus": {
-    "enabled": true,
-    "websocket_port": 8080,
-    "reconnect_interval": 5000,
-    "events": ["task.*", "agent.*", "context.*", "lock.*"]
-  }
-}
+```toml
+[event_bus]
+enabled = true
+websocket_port = 8080
+reconnect_interval = 5000
+events = ["task.*", "agent.*", "context.*", "lock.*"]
 ```

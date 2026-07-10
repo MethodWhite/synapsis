@@ -11,12 +11,14 @@
 </p>
 
 <p align="center">
-  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.75+-818CF8.svg" alt="Rust"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.95+-818CF8.svg" alt="Rust"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL_1.1-6366F1.svg" alt="License"></a>
-  <a href="https://github.com/MethodWhite/synapsis"><img src="https://img.shields.io/badge/github-synapsis-A78BFA.svg" alt="GitHub"></a>
+  <a href="https://github.com/MethodWhite/synapsis/releases"><img src="https://img.shields.io/github/v/release/MethodWhite/synapsis?color=A78BFA" alt="Release"></a>
 </p>
 
-Synapsis is a persistent memory engine for AI agents. It implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) to give LLM agents durable, searchable memory across sessions. Written in pure Rust with SQLite + FTS5 storage and optional post-quantum cryptography.
+Synapsis es un motor de memoria persistente multi-agente para asistentes IA, escrito en **Rust puro** con SQLite + FTS5 y criptografía post-cuántica opcional. Implementa el [Model Context Protocol (MCP)](https://modelcontextprotocol.io) para dar a los agentes LLM memoria duradera y buscable a través de sesiones.
+
+> **Zero runtime dependencies.** Synapsis está escrito completamente en Rust — no requiere Python, Node.js, JVM, ni ningún intérprete. Docker y Kubernetes son opciones de despliegue opcionales; el binario nativo corre standalone en cualquier plataforma.
 
 ---
 
@@ -27,178 +29,243 @@ git clone https://github.com/methodwhite/synapsis.git
 cd synapsis
 cargo build --release
 
-# MCP server (stdio) - for local AI agents
+# MCP server (stdio) — para agentes IA locales
 ./target/release/synapsis-mcp
 
-# Multi-agent MCP server (HTTP/SSE)
-./target/release/synapsis
+# Auto-configurar MCP para herramientas detectadas
+./target/release/synapsis-autoconfig --apply
 ```
 
-**Prerequisites:** Rust 1.75+ ([install](https://rustup.rs))
+**Prerrequisitos:** Rust 1.95+ ([install](https://rustup.rs))
 
 ---
 
-## Installation
+## Binarios
 
-### Linux / macOS
-
-```bash
-# Linux (x86_64 / ARM64)
-curl -fsSL https://raw.githubusercontent.com/methodwhite/synapsis/main/scripts/install-linux.sh | bash
-
-# macOS (Intel / Apple Silicon)
-curl -fsSL https://raw.githubusercontent.com/methodwhite/synapsis/main/scripts/install-macos.sh | bash
-```
-
-### Windows (PowerShell)
-
-```powershell
-# Run as Administrator
-iwr -Uri https://raw.githubusercontent.com/methodwhite/synapsis/main/scripts/install.ps1 -OutFile install.ps1
-.\install.ps1
-```
-
-### Build from Source (all platforms)
-
-```bash
-git clone https://github.com/methodwhite/synapsis.git
-cd synapsis
-cargo build --release
-```
-
-The build produces three binaries:
-| Binary | Purpose |
-|--------|---------|
-| `synapsis` | Multi-agent MCP server (HTTP/SSE) |
-| `synapsis-mcp` | Single-agent MCP server (stdio) |
-| `synapsis-server` | HTTP API server |
+| Binario | Propósito |
+|---------|-----------|
+| `synapsis` | Servidor HTTP/SSE MCP multi-agente |
+| `synapsis-mcp` | Servidor MCP stdio (single-agent) |
+| `synapsis-server` | Servidor HTTP + QUIC |
+| `synapsis-autoconfig` | Auto-detección y configuración MCP multiplataforma |
+| `synapsis-ollama` | Integración con Ollama |
 
 ---
 
-## Features
+## Características
 
-- **Persistent Memory** — Save, search, and retrieve observations with full-text search (FTS5 + BM25 ranking)
-- **MCP-native** — Drop-in compatible with any MCP client (Claude Code, Cursor, Windsurf, OpenCode, Qwen)
-- **Multi-agent** — Shared database, distributed locking, task queues for concurrent agent workflows
-- **Context Management** — Tiered context with compression, isolation, and automatic budget tracking
-- **Security** — Optional SQLCipher encryption at rest, integrity hashing, TPM-backed MFA, PQC encryption
-- **Watchdog** — Filesystem integrity monitoring with event auditing and anomaly detection
-- **Anti-Brick** — Protection against destructive system commands
-- **Recycle Bin** — TTL-based categorization with search and undelete
-- **Cross-platform** — Linux, macOS, Windows (WSL2 or native MSVC)
-
----
-
-## Architecture
-
-<p align="center">
-  <img src="assets/architecture.png" alt="Synapsis Architecture" width="800">
-</p>
-
-The system follows a hexagonal (ports & adapters) architecture with three layers:
-
-- **Presentation** — MCP stdio/HTTP, CLI, TUI interfaces
-- **Core** — Business logic (orchestrator, workers, task queue, auth, watchdog, recycle)
-- **Infrastructure** — SQLite + FTS5 storage, agent registry, context management, PQC vault
+- **Memoria Persistente** — Guarda, busca y recupera observaciones con FTS5 + BM25 ranking
+- **Multi-agente** — Base de datos compartida con locks distribuidos, colas de tareas, y orquestación
+- **MCP-native** — Compatible con cualquier cliente MCP (OpenCode, Claude Code, Cursor, Gemini CLI, etc.)
+- **Auto-Config MCP** — Detecta herramientas instaladas y genera configs MCP automáticamente
+- **Puente de Sesiones** — Comparte sesiones y observaciones entre todas las plataformas conectadas
+- **Catálogo de Plataformas** — 30+ plataformas registradas (occidentales + chinas)
+- **Descubrimiento de Red** — mDNS para encontrar nodos y servidores MCP en la red local
+- **Seguridad** — Cifrado AES-256-GCM, Kyber-768 (PQC), HMAC, TPM 2.0, TOTP
+- **Watchdog** — Monitoreo de integridad del sistema de archivos
+- **Anti-Brick** — Protección contra comandos destructivos
+- **Recicle Bin** — Categorización con TTL, búsqueda y undelete
+- **Multiplataforma** — Linux, macOS, Windows
 
 ---
 
 ## MCP Tools
 
-| Tool | Description |
+### Memoria
+| Tool | Descripción |
 |------|-------------|
-| `mem_save` | Save an observation to persistent memory |
-| `mem_search` | Search persistent memory across all sessions |
-| `mem_context` | Get recent context from current or previous sessions |
-| `mem_timeline` | Get chronological timeline of observations |
-| `mem_stats` | Get memory statistics |
-| `mem_delete` | Delete an observation by ID (soft-delete) |
-| `memory_search` | [alias] Search Synapsis persistent memory |
-| `memory_add` | [alias] Add observation to Synapsis |
-| `memory_timeline` | [alias] Get memory timeline |
-| `memory_stats` | [alias] Get memory statistics |
-| `agent_register` | Register a new agent |
-| `agent_list` | List all registered agents |
-| `task_create` | Create a new task |
-| `task_list` | List all tasks |
-| `skill_register` | Register a new skill |
-| `skill_list` | List all registered skills |
-| `ghost_audit` | Trigger proactive audit of a file or path |
-| `pqc_encrypt` | Encrypt sensitive data using Post-Quantum Cryptography |
-| `wasm_run` | Run a sandboxed WASM skill |
-| `antibrick_scan` | Scan a command for potential brick threats |
-| `antibrick_enable` | Enable or disable anti-brick protection |
-| `antibrick_stats` | Get anti-brick protection stats |
-| `watchdog_stats` | Get filesystem watchdog stats |
-| `watchdog_verify` | Verify integrity of monitored files |
-| `watchdog_snapshot` | Create integrity snapshot of a path |
-| `watchdog_events` | Get recent watchdog events |
-| `watchdog_check_path` | Check if a path is protected by watchdog |
-| `browser_navigate` | Fetch a web page as an HTTP client |
-| `browser_snapshot` | Get a structured snapshot of a web page |
-| `mcp_call` | Call a tool on another MCP server via HTTP |
-| `db_backup` | Create a backup of the Synapsis database |
-| `db_integrity` | Run PRAGMA integrity_check on the database |
-| `db_prune` | Soft-delete observations older than N days |
-| `db_vacuum` | Reclaim unused space in the database |
+| `mem_save` | Guardar observación en memoria persistente |
+| `mem_search` | Buscar en memoria a través de sesiones |
+| `mem_context` | Contexto reciente de sesiones |
+| `mem_timeline` | Línea de tiempo cronológica |
+| `mem_stats` | Estadísticas de memoria |
+| `mem_get_observation` | Obtener observación por ID |
+| `mem_update` | Actualizar observación existente |
+| `mem_delete` | Eliminar observación (soft-delete) |
+
+### Sesiones
+| Tool | Descripción |
+|------|-------------|
+| `mem_session_start` | Iniciar sesión de trabajo |
+| `mem_session_end` | Finalizar sesión con resumen |
+| `mem_session_summary` | Resumen de una sesión |
+| `shared_sessions_list` | Listar sesiones activas entre plataformas |
+| `shared_sessions_by_project` | Sesiones activas por proyecto |
+| `shared_sessions_broadcast` | Compartir observación entre sesiones |
+
+### Agentes y Tareas
+| Tool | Descripción |
+|------|-------------|
+| `agent_register` | Registrar un nuevo agente |
+| `agent_list` | Listar agentes registrados |
+| `agent_list_by_project` | Agentes por proyecto |
+| `agent_unregister` | Eliminar un agente |
+| `task_create` | Crear tarea |
+| `task_list` | Listar tareas |
+| `skill_register` | Registrar habilidad |
+| `skill_list` | Listar habilidades |
+
+### Seguridad
+| Tool | Descripción |
+|------|-------------|
+| `pqc_encrypt` | Cifrar datos con criptografía post-cuántica |
+| `antibrick_scan` | Escanear comando por amenazas destructivas |
+| `antibrick_enable` | Activar/desactivar protección anti-brick |
+| `antibrick_stats` | Estadísticas de protección |
+| `auth_tpm_status` | Estado de TPM |
+| `auth_check_permission` | Verificar permisos |
+| `auth_classify_agent` | Clasificar tipo de agente |
+
+### Watchdog
+| Tool | Descripción |
+|------|-------------|
+| `watchdog_stats` | Estadísticas del watchdog |
+| `watchdog_verify` | Verificar integridad de archivos |
+| `watchdog_snapshot` | Crear snapshot de integridad |
+| `watchdog_check_path` | Verificar si un path está protegido |
+| `watchdog_events` | Eventos recientes del watchdog |
+
+### Descubrimiento
+| Tool | Descripción |
+|------|-------------|
+| `discovery_scan` | Escanear el sistema en busca de herramientas y servidores MCP |
+| `ghost_audit` | Auditoría proactiva de archivos |
+
+### Base de Datos
+| Tool | Descripción |
+|------|-------------|
+| `db_backup` | Backup de la base de datos |
+| `db_integrity` | Verificar integridad de la DB |
+| `db_prune` | Eliminar observaciones antiguas |
+| `db_vacuum` | Recuperar espacio en la DB |
+| `db_health` | Estado de salud de la DB |
+
+### Red
+| Tool | Descripción |
+|------|-------------|
+| `mcp_call` | Llamar a otro servidor MCP vía HTTP |
+| `browser_navigate` | Navegar a URL como cliente HTTP |
+| `browser_snapshot` | Obtener snapshot estructurado de una página |
+
+### Juicio y Relaciones
+| Tool | Descripción |
+|------|-------------|
+| `mem_judge` | Registrar juicio de conflicto entre memorias |
+| `mem_compare` | Comparación semántica entre observaciones |
+| `mem_merge_projects` | Fusionar observaciones entre proyectos |
 
 ---
 
-## Storage
+## Plataformas Soportadas
 
-Synapsis uses **SQLite** with **FTS5** full-text search for all persistent storage:
+### Auto-detección y Configuración Automática
 
-- **Observations** — Title, content, project, type, scope, integrity hash
-- **Sessions** — Agent session lifecycle tracking with activity timelines
-- **Task Queue** — Multi-agent task coordination with priority and retry
-- **Agent Registry** — Agent skills, capacity, and discovery
-- **Context Registry** — Tiered context with hot/warm/cold states and compression
-- **Locks** — Distributed mutex for concurrent agent access
+Synapsis detecta automáticamente qué herramientas están instaladas y genera los archivos MCP correspondientes:
+
+**CLIs:** OpenCode, Claude Code, Gemini CLI, Cline, aider, fabric, shell_gpt, Codex CLI, AutoGPT, gpt-engineer, sweep
+
+**IDEs:** VS Code + Copilot, Cursor, Windsurf, JetBrains (IntelliJ, PyCharm, GoLand, WebStorm), Android Studio, Continue.dev, Cody, Tabnine, Amazon Q Developer, Cline (extensión), Roo Code
+
+**Plataformas Chinas:** DeepSeek, 月之暗面 Kimi, 智谱 GLM/ChatGLM, 阿里 Qwen/通义, 百度 ERNIE/文心, 字节跳动 豆包, 阶跃星辰 Step, MiniMax, 讯飞 星火, 百川 Baichuan
+
+```bash
+# Detectar y configurar
+synapsis-autoconfig --apply
+
+# Ver qué se detectaría (dry-run)
+synapsis-autoconfig
+
+# Monitoreo continuo
+synapsis-autoconfig --apply --watch
+```
 
 ---
 
-## IDE Integration
+## Compartir Sesiones Entre Plataformas
 
-| Platform | Setup |
-|----------|-------|
-| **VS Code / Cursor / Windsurf** | Config from `plugins/vscode/` |
-| **Claude Code** | Plugin from `plugins/claude-code/` |
-| **JetBrains** | Plugin from `plugins/jetbrains/` |
-| **Gemini CLI** | Script from `plugins/gemini-cli/` |
+El Session Bridge permite que observaciones guardadas desde una herramienta sean visibles desde todas las demás:
+
+```bash
+# Listar sesiones activas
+scripts/session-share.sh list
+
+# Compartir observación entre sesiones del mismo proyecto
+scripts/session-share.sh broadcast "hallazgo importante sobre la API"
+
+# Daemon de auto-enlace
+scripts/session-autolink.sh --daemon
+```
 
 ---
 
-## Environment Variables
+## Arquitectura
 
-| Variable | Description |
+```
+┌─────────────────────────────────────────────┐
+│              PRESENTATION LAYER              │
+│  MCP stdio  HTTP/SSE  CLI  TUI (ratatui)    │
+├─────────────────────────────────────────────┤
+│               DOMAIN LAYER                   │
+│  Memory Engine  Session Manager  Security    │
+│  Auth  Orchestrator  Workers  Task Queue    │
+│  Watchdog  Anti-Brick  Recycle Bin  Vault    │
+├─────────────────────────────────────────────┤
+│            INFRASTRUCTURE LAYER               │
+│  SQLite+FTS5  File Store  Agent Registry    │
+│  Context Mgmt  Discovery  Session Bridge    │
+│  Platform Catalog  MCP Auto-Config           │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## Almacenamiento
+
+Synapsis usa **SQLite** con **FTS5** para búsqueda de texto completo:
+
+- **Observations** — Título, contenido, proyecto, tipo, ámbito, hash de integridad
+- **Sessions** — Ciclo de vida de sesiones multi-agente
+- **Task Queue** — Coordinación de tareas con prioridad y reintentos
+- **Agent Registry** — Habilidades, capacidad y descubrimiento
+- **Context Registry** — Estados hot/warm/cold con compresión
+- **Locks** — Mutex distribuido para acceso concurrente
+
+---
+
+## Variables de Entorno
+
+| Variable | Descripción |
 |----------|-------------|
-| `SYNAPSIS_DB_KEY` | Hex-encoded encryption key (SQLCipher) |
-| `SYNAPSIS_DB_KEY_BASE64` | Base64-encoded encryption key |
-| `SYNAPSIS_DATA_DIR` | Custom data directory (default: `~/.local/share/synapsis`) |
-| `SYNAPSIS_QUIET` | Suppress informational output |
-| `SYNAPSIS_LOG` | Set log level (debug, info, warn, error) |
-| `SYNAPSIS_API_KEYS` | Comma-separated API keys for auth |
-| `SYNAPSIS_PORT` | HTTP server port (default: 7438) |
+| `SYNAPSIS_DB_KEY` | Clave de cifrado hex-encoded (SQLCipher) |
+| `SYNAPSIS_DB_KEY_BASE64` | Clave de cifrado Base64 |
+| `SYNAPSIS_DATA_DIR` | Directorio de datos personalizado |
+| `SYNAPSIS_QUIET` | Suprimir output informativo |
+| `SYNAPSIS_LOG` | Nivel de log (debug, info, warn, error) |
+| `SYNAPSIS_API_KEYS` | API keys separadas por coma para auth |
+| `SYNAPSIS_PORT` | Puerto HTTP (default: 7438) |
+| `SYNAPSIS_URL` | URL del servidor MCP (para scripts) |
+| `SYNAPSIS_AUTH` | Habilitar clasificador de agentes |
 
 ---
 
-## Documentation
+## Documentación
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](assets/architecture.drawio) | System architecture diagram (draw.io) |
-| [Multi-Agent](docs/MULTI-AGENT.md) | Multi-agent coordination and orchestration |
-| [Deployment](docs/DEPLOYMENT_GUIDE.md) | Production deployment guide |
-| [YOLO Mode](docs/YOLO_MODE.md) | Autonomous operation mode |
-| [Roadmap](docs/ROADMAP.md) | Development roadmap |
+| Documento | Descripción |
+|-----------|-------------|
+| [PROJECT.md](PROJECT.md) | Identidad y stack tecnológico |
+| [SPEC.md](SPEC.md) | Especificación técnica detallada |
+| [Arquitectura](assets/architecture.drawio) | Diagrama de arquitectura (draw.io) |
+| [Multi-Agente](docs/MULTI-AGENT.md) | Orquestación multi-agente |
+| [Despliegue](docs/DEPLOYMENT_GUIDE.md) | Guía de despliegue en producción |
+| [Roadmap](docs/ROADMAP.md) | Hoja de ruta de desarrollo |
 
 ---
 
-## License
+## Licencia
 
-Business Source License 1.1 — see [LICENSE](LICENSE) for details.
+Business Source License 1.1 — ver [LICENSE](LICENSE) para detalles.
 
-Commercial use requires a separate license for entities with 3+ employees or over $100k annual revenue. Non-commercial, educational, and personal use is free. Changes to Apache 2.0 on March 23, 2030.
+Uso comercial requiere licencia separada para entidades con 3+ empleados o más de $100k en ingresos anuales. Uso no comercial, educativo y personal es gratuito. Cambio a Apache 2.0 el 23 de marzo de 2030.
 
 ---
 

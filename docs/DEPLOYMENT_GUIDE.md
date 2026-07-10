@@ -4,6 +4,8 @@
 
 **Last Updated:** 2026-03-27
 
+> **Note:** Synapsis is a native Rust binary — no Docker, Node.js, or Python required. Docker and Kubernetes deployment is optional for production hosting and is not needed to run Synapsis locally or in development.
+
 ---
 
 ## 📋 Table of Contents

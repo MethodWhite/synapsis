@@ -306,34 +306,38 @@ result = send_request('session_register', {
 print(result)
 ```
 
-### Node.js
+### Rust
 
-```javascript
-const net = require('net');
+```rust
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpStream;
+use serde_json::Value;
 
-function sendRequest(method, args = {}) {
-    return new Promise((resolve, reject) => {
-        const client = net.createConnection({ port: 7438, host: '127.0.0.1' }, () => {
-            const request = {
-                jsonrpc: '2.0',
-                method: method,
-                params: { arguments: args },
-                id: 1
-            };
-            client.write(JSON.stringify(request) + '\n');
-        });
-        
-        client.on('data', (data) => {
-            resolve(JSON.parse(data.toString()));
-            client.end();
-        });
-        
-        client.on('error', reject);
+fn send_request(method: &str, args: serde_json::Map<String, Value>) -> Value {
+    let mut stream = TcpStream::connect("127.0.0.1:7438").unwrap();
+
+    let request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": { "arguments": args },
+        "id": 1
     });
+
+    writeln!(stream, "{}", request).unwrap();
+
+    let mut reader = BufReader::new(stream);
+    let mut response = String::new();
+    reader.read_line(&mut response).unwrap();
+
+    serde_json::from_str(&response).unwrap()
 }
 
 // Ejemplo
-sendRequest('agents_active').then(console.log);
+let result = send_request("session_register", serde_json::json!({
+    "agent_type": "rust-agent",
+    "project": "my-project"
+}).as_object().unwrap().clone());
+println!("{:?}", result);
 ```
 
 ## Códigos de Error
