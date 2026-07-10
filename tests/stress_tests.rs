@@ -160,11 +160,7 @@ mod tests {
 
         let result = retry.execute(|| {
             let curr = attempts.fetch_add(1, Ordering::Relaxed) + 1;
-            if curr < 3 {
-                Err(())
-            } else {
-                Ok(42)
-            }
+            if curr < 3 { Err(()) } else { Ok(42) }
         });
 
         assert!(result.is_ok());

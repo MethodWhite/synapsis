@@ -221,9 +221,11 @@ fn test_registry_search_by_name() {
 
     let results = registry.search("rust");
     assert_eq!(results.len(), 2);
-    assert!(results
-        .iter()
-        .all(|r| r.name.to_lowercase().contains("rust")));
+    assert!(
+        results
+            .iter()
+            .all(|r| r.name.to_lowercase().contains("rust"))
+    );
 }
 
 #[test]

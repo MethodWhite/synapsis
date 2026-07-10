@@ -1,7 +1,7 @@
 [package]
 name = "synapsis"
-version = "0.10.0"
-edition = "2021"
+version = "0.11.0"
+edition = "2024"
 authors = ["methodwhite"]
 description = "Persistent memory engine for AI agents with PQC security"
 license = "MIT"
@@ -48,8 +48,7 @@ uuid = { version = "1.0", features = ["v4", "fast-rng"] }
 # Session ID
 hostname = "0.4"
 getrandom = "0.2"
-hmac-sha1 = "0.2"  # TODO: migrate to hmac crate (SHA-1 deprecated)
-lazy_static = "1.4"
+sha1 = "0.10"
 hex = "0.4"
 
 # CLI
@@ -60,21 +59,21 @@ url = "2"
 tokio = { version = "1", features = ["full"] }
 
 # Crypto
-aes-gcm = "0.10"
-hmac = "0.12"
-sha2 = "0.10"
-mdns-sd = "0.11"
+aes-gcm = "0.11"
+hmac = "0.13"
+sha2 = "0.11"
+mdns-sd = "0.20"
 
 # System monitoring
-sysinfo = "0.38"
+sysinfo = "0.39"
 
 # QUIC transport
 quinn = "0.11"
 rustls = "0.23"
-rcgen = "0.13"
+rcgen = "0.14"
 
 # TUI (optional)
-crossterm = { version = "0.28", optional = true }
+crossterm = { version = "0.29", optional = true }
 ratatui = { version = "0.29", optional = true, default-features = false, features = ["crossterm"] }
 
 [dev-dependencies]

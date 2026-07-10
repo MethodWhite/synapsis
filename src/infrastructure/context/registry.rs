@@ -9,8 +9,8 @@
 
 use super::cold_storage::{ColdStats, ColdStorage};
 use super::context_types::{
-    now_ts as now_timestamp, AccessLevel, Context, ContextId, ContextRef, ContextRelation,
-    ContextState, ContextType, ContextValue, Priority, Timestamp,
+    AccessLevel, Context, ContextId, ContextRef, ContextRelation, ContextState, ContextType,
+    ContextValue, Priority, Timestamp, now_ts as now_timestamp,
 };
 use super::global_context::{GlobalContext, VarType};
 use super::relevance::{ContextRelevanceData, RelevanceEngine};

@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -535,11 +535,13 @@ impl AntiBrickEngine {
     }
 
     fn compute_event_hash(&self, id: u64, timestamp: u64, cmd: &str, args: &[String]) -> String {
-        use hmac_sha1::hmac_sha1;
+        use hmac::{Hmac, KeyInit, Mac};
+        use sha2::Sha256;
         let data = format!("{}:{}:{}:{:?}", id, timestamp, cmd, args);
-        // Derive HMAC key from SYNAPSIS_DB_KEY or fallback to a fixed key
         let key = derive_antibrick_key();
-        let hash = hmac_sha1(&key, data.as_bytes());
+        let mut mac = Hmac::<Sha256>::new_from_slice(&key).expect("HMAC key");
+        mac.update(data.as_bytes());
+        let hash = mac.finalize().into_bytes();
         hex::encode(&hash[..8])
     }
 

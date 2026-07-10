@@ -17,9 +17,9 @@ macro_rules! db_warn {
 use crate::core::uuid::Uuid;
 use crate::domain::ports::{SessionPort, StoragePort};
 use crate::domain::*;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use hex;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 

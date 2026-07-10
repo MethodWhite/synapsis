@@ -1,6 +1,6 @@
 //! Retry Utilities
 
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 use std::thread;
 use std::time::Duration;
 
