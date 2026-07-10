@@ -1,6 +1,8 @@
 //! Synapsis - Persistent Memory Engine for AI Agents
 
-#![recursion_limit = "512"]
+#![recursion_limit = "640"]
+
+extern crate synapsis_core;
 
 pub mod config;
 pub mod core;

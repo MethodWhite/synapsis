@@ -34,7 +34,7 @@ impl SessionManager {
     /// mem_session_start - Start a new session
     pub fn start_session(&self, project: &str, directory: &str) -> Result<String> {
         let secure_id = SecureSessionId::new("synapsis");
-        let session_id = format!("{}-{}", project, secure_id.signature);
+        let session_id = format!("{}-{}", project, secure_id.instance_uuid);
 
         let conn = self.db.get_conn();
 

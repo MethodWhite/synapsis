@@ -76,7 +76,11 @@ impl ShellWorker {
                 (parts[0].as_str(), parts[1..].to_vec())
             };
 
-            if !engine.intercept_command(cmd_name, &args, pid) {
+            let os_args: Vec<std::ffi::OsString> =
+                std::iter::once(std::ffi::OsString::from(cmd_name))
+                    .chain(args.into_iter().map(std::ffi::OsString::from))
+                    .collect();
+            if engine.check(&os_args).is_err() {
                 return Err(format!("BLOCKED by Anti-Brick Protection: {}", command));
             }
         }

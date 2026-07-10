@@ -1,7 +1,7 @@
 //! Synapsis Core Module
 
 pub mod agent;
-pub mod antibrick;
+pub use synapsis_core::core::antibrick;
 pub mod auth;
 pub mod auto_integrate;
 pub mod discovery;
@@ -9,11 +9,11 @@ pub mod discovery_bridge;
 pub mod discovery_net;
 pub mod lock_utils;
 pub mod mcp_autoconfig;
-pub mod orchestrator;
+pub use synapsis_core::core::orchestrator;
 pub mod platform_catalog;
 pub use platform_catalog::*;
-pub mod pqc;
-pub mod rate_limiter;
+pub use synapsis_core::core::pqc;
+pub use synapsis_core::core::rate_limiter;
 pub mod recycle;
 pub mod resource_manager;
 pub mod retry;
@@ -23,7 +23,7 @@ pub mod task_queue;
 pub mod tool_registry;
 pub mod uuid;
 pub mod vault;
-pub mod watchdog;
+pub use synapsis_core::core::watchdog;
 pub mod worker;
 pub mod x402;
 pub mod x402_discovery;
@@ -32,10 +32,7 @@ pub use agent::*;
 pub use auth::*;
 pub use auto_integrate::*;
 pub use discovery::*;
-pub use orchestrator::{
-    Agent, AgentStatus, LegacyFile, MessageType, Orchestrator, OrchestratorMessage, ReviewStatus,
-    Task as OrchestratorTask, TaskStatus as OrchestratorTaskStatus,
-};
+pub use orchestrator::Orchestrator;
 pub use pqc::*;
 pub use rate_limiter::*;
 pub use recycle::*;
@@ -51,12 +48,12 @@ pub use worker::{
     Task as WorkerTask, TaskStatus as WorkerTaskStatus, WorkerAgent, WorkerRegistry,
 };
 pub mod agent_registry_ext;
-pub mod audit_log;
+pub use synapsis_core::core::audit_log;
 pub mod chunk_query;
 pub mod license;
 pub mod providers;
 pub mod session_bridge;
-pub mod session_id;
+pub use synapsis_core::core::session_id;
 pub mod session_manager;
 pub mod task_cleanup;
 pub mod timeline_manager;
