@@ -689,6 +689,7 @@ pub fn handle_mcp_call(id: &Value, args: &Value) -> anyhow::Result<Value> {
     let mut builder =
         reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(60));
     if std::env::var("SYNAPSIS_INSECURE_TLS").is_ok() {
+        eprintln!("[WARN] TLS certificate verification disabled via SYNAPSIS_INSECURE_TLS");
         builder = builder.danger_accept_invalid_certs(true);
     }
     let client = builder.build().map_err(|e| e.to_string());
@@ -1742,6 +1743,7 @@ pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value
         .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .redirect(reqwest::redirect::Policy::limited(5));
     if std::env::var("SYNAPSIS_INSECURE_TLS").is_ok() {
+        eprintln!("[WARN] TLS certificate verification disabled via SYNAPSIS_INSECURE_TLS");
         builder = builder.danger_accept_invalid_certs(true);
     }
     let client = builder.build().map_err(|e| e.to_string());
