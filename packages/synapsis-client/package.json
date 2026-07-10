@@ -1,0 +1,19 @@
+{
+  "name": "synapsis-client",
+  "version": "0.11.0",
+  "description": "TypeScript/JavaScript SDK for Synapsis MCP Server — persistent memory for AI agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["synapsis", "mcp", "memory", "ai", "agents", "llm"],
+  "license": "MIT",
+  "files": ["dist/"],
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

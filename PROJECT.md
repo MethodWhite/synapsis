@@ -30,6 +30,12 @@
 | `synapsis-autoconfig` | Auto-configuración MCP multiplataforma |
 | `synapsis-ollama` | Integración con Ollama |
 
+## SDK para Consumidores
+
+| Lenguaje | Paquete | Propósito |
+|----------|---------|-----------|
+| TypeScript/JavaScript | `packages/synapsis-client/` | SDK oficial para consumir la API MCP desde JS/TS |
+
 ## Scripts
 
 Todos los scripts en `scripts/` son **Bash** — cero dependencias de Python, Node.js o Ruby.
