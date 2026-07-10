@@ -54,6 +54,7 @@ struct ColdRef {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct RegistryConfig {
     pub max_hot_contexts: usize,
     pub max_warm_contexts: usize,
@@ -92,7 +93,7 @@ impl ContextRegistry {
 
     /// Crea un nuevo contexto
     pub fn create(&mut self, name: String, context_type: ContextType) -> ContextId {
-        let mut context = Context::new(name, context_type);
+        let context = Context::new(name, context_type);
         let id = context.id.clone();
 
         self.hot_contexts.insert(id.clone(), context);

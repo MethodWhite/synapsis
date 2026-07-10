@@ -9,7 +9,6 @@ use crate::core::agent_registry_ext::AgentRegistryExt;
 use crate::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
 use crate::core::auth::challenge::ChallengeResponse;
 use crate::core::auth::classifier::AgentClassifier;
-use crate::core::auth::permissions::{Permission, PermissionSet};
 use crate::core::auth::tpm::TpmMfaProvider;
 use crate::core::auto_integrate::AutoIntegrate;
 use crate::core::chunk_query::ChunkQueryManager;
@@ -206,7 +205,6 @@ impl McpServer {
                 let is_write_tool = matches!(
                     tool_name.as_str(),
                     "mem_save"
-                        | "memory_add"
                         | "mem_delete"
                         | "db_backup"
                         | "db_prune"
@@ -397,41 +395,6 @@ impl McpServer {
                         },
                         "required": ["id"]
                     }
-                },
-                {
-                    "name": "memory_search",
-                    "description": "[alias] Search Synapsis persistent memory",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "query": { "type": "string" },
-                            "limit": { "type": "integer", "default": 20 }
-                        },
-                        "required": ["query"]
-                    }
-                },
-                {
-                    "name": "memory_add",
-                    "description": "[alias] Add observation to Synapsis",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "title": { "type": "string" },
-                            "content": { "type": "string" },
-                            "project": { "type": "string" }
-                        },
-                        "required": ["title","content"]
-                    }
-                },
-                {
-                    "name": "memory_timeline",
-                    "description": "[alias] Get memory timeline",
-                    "inputSchema": { "type": "object", "properties": { "limit": { "type": "integer", "default": 10 } } }
-                },
-                {
-                    "name": "memory_stats",
-                    "description": "[alias] Get memory statistics",
-                    "inputSchema": { "type": "object", "properties": {} }
                 },
                 {
                     "name": "ghost_audit",
@@ -760,16 +723,6 @@ impl McpServer {
                     }
                 },
                 {
-                    "name": "mem_current_project",
-                    "description": "Get observation count and context for a project.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "project": { "type": "string" }
-                        }
-                    }
-                },
-                {
                     "name": "mem_audit_log",
                     "description": "View the audit trail of observation changes (updates, deletes).",
                     "inputSchema": {
@@ -1091,13 +1044,11 @@ impl McpServer {
         let args = &params["arguments"];
 
         match name {
-            "mem_save" | "memory_add" => tools::handle_mem_save(&self.db, id, args),
-            "mem_search" | "memory_search" => tools::handle_mem_search(&self.db, id, args),
+            "mem_save" => tools::handle_mem_save(&self.db, id, args),
+            "mem_search" => tools::handle_mem_search(&self.db, id, args),
             "mem_context" => tools::handle_mem_context(&self.db, id, args),
-            "mem_timeline" | "memory_timeline" => {
-                tools::handle_mem_timeline(&self.timelines, id, args)
-            }
-            "mem_stats" | "memory_stats" => tools::handle_mem_stats(&self.db, id),
+            "mem_timeline" => tools::handle_mem_timeline(&self.timelines, id, args),
+            "mem_stats" => tools::handle_mem_stats(&self.db, id),
             "mem_delete" => tools::handle_mem_delete(&self.db, id, args),
             "mem_update" => tools::handle_mem_update(&self.db, id, args),
             "mem_get_observation" => tools::handle_mem_get_observation(&self.db, id, args),
@@ -1108,7 +1059,6 @@ impl McpServer {
             "mem_session_summary" => tools::handle_mem_session_summary(&self.session_mgr, id, args),
             "mem_doctor" => tools::handle_mem_doctor(&self.db, id),
             "mem_merge_projects" => tools::handle_mem_merge_projects(&self.db, id, args),
-            "mem_current_project" => tools::handle_mem_current_project(&self.db, id, args),
             "mem_audit_log" => tools::handle_mem_audit_log(&self.db, id, args),
             "mem_recycle_save" => tools::handle_mem_recycle_save(&self.recycle, id, args),
             "mem_recycle_search" => tools::handle_mem_recycle_search(&self.recycle, id, args),

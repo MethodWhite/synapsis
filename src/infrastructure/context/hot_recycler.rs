@@ -8,7 +8,7 @@
 //! - Recicla partes no usadas frecuentemente
 
 use super::context_types::now_ts as now_timestamp;
-use super::context_types::{Context, ContextId, ContextValue, Timestamp};
+use super::context_types::{Context, ContextId, Timestamp};
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -161,6 +161,7 @@ impl ChunkIndex {
 
 /// Configuración del recycler
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct RecyclerConfig {
     /// Tamaño máximo de chunk (bytes)
     max_chunk_size: usize,
