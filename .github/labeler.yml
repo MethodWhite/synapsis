@@ -2,47 +2,36 @@
 # Format: actions/labeler v5
 
 core:
-  - any:
-    - src/core/**/*
+  - src/core/**/*
 
 domain:
-  - any:
-    - src/domain/**/*
+  - src/domain/**/*
 
 infra:
-  - any:
-    - src/infrastructure/**/*
+  - src/infrastructure/**/*
 
 mcp:
-  - any:
-    - src/presentation/mcp/**/*
-    - src/bin/mcp.rs
+  - src/presentation/mcp/**/*
+  - src/bin/mcp.rs
 
 tools:
-  - any:
-    - src/tools/**/*
+  - src/tools/**/*
 
 db:
-  - any:
-    - src/infrastructure/database/**/*
+  - src/infrastructure/database/**/*
 
 context:
-  - any:
-    - src/infrastructure/context/**/*
+  - src/infrastructure/context/**/*
 
 auth:
-  - any:
-    - src/core/auth/**/*
+  - src/core/auth/**/*
 
 ci:
-  - any:
-    - .github/**/*
+  - .github/**/*
 
 docs:
-  - any:
-    - '**/*.md'
-    - docs/**/*
+  - '**/*.md'
+  - docs/**/*
 
 test:
-  - any:
-    - tests/**/*
+  - tests/**/*
