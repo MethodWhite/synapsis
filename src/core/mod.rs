@@ -8,6 +8,8 @@ pub mod discovery;
 pub mod discovery_net;
 pub mod lock_utils;
 pub mod orchestrator;
+pub mod platform_catalog;
+pub use platform_catalog::*;
 pub mod pqc;
 pub mod rate_limiter;
 pub mod recycle;
