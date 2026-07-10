@@ -1,4 +1,4 @@
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -67,6 +67,21 @@ pub fn load_license() -> Option<SignedLicense> {
         }
     }
     None
+}
+
+pub fn sign_license(data: LicenseData, privkey_hex: &str) -> Result<SignedLicense, String> {
+    let privkey_bytes =
+        hex::decode(privkey_hex).map_err(|e| format!("Invalid private key hex: {}", e))?;
+    let signing_key = SigningKey::from_bytes(
+        &privkey_bytes.try_into().map_err(|_| "Invalid private key length (expected 32 bytes)")?,
+    );
+    let data_json =
+        serde_json::to_string(&data).map_err(|e| format!("Serialization: {}", e))?;
+    let signature = signing_key.sign(data_json.as_bytes());
+    Ok(SignedLicense {
+        data,
+        signature: hex::encode(signature.to_bytes()),
+    })
 }
 
 pub fn current_license_status() -> String {

@@ -16,7 +16,7 @@ fn main() {
             "--help" | "-h" => {
                 eprintln!("synapsis v{}", env!("CARGO_PKG_VERSION"));
                 eprintln!("Usage: synapsis [--version | --help]");
-                eprintln!("       synapsis license <status|verify>");
+                eprintln!("       synapsis license <status|verify|sign>");
                 eprintln!("       synapsis [--tls-cert <path> --tls-key <path>]");
                 eprintln!("Without arguments, starts the HTTP/SSE MCP server on port 7438.");
                 eprintln!("Use --tls-cert and --tls-key to enable HTTPS.");
@@ -49,8 +49,32 @@ fn main() {
                             }
                         }
                     }
+                    "sign" => {
+                        let license_path = args.get(3).expect("Usage: synapsis license sign <license.json>");
+                        let data_str = std::fs::read_to_string(license_path)
+                            .expect("Failed to read license file");
+                        let data: synapsis::core::license::LicenseData = serde_json::from_str(&data_str)
+                            .expect("Invalid license JSON");
+                        eprint!("Enter private key: ");
+                        let mut privkey = String::new();
+                        std::io::stdin().read_line(&mut privkey).ok();
+                        let privkey = privkey.trim();
+                        match synapsis::core::license::sign_license(data, privkey) {
+                            Ok(signed) => {
+                                let out = serde_json::to_string_pretty(&signed).expect("JSON");
+                                let out_path = format!("{}.signed", license_path);
+                                std::fs::write(&out_path, &out).expect("Write");
+                                println!("Signed license written to: {}", out_path);
+                                std::process::exit(0);
+                            }
+                            Err(e) => {
+                                eprintln!("Signing failed: {}", e);
+                                std::process::exit(1);
+                            }
+                        }
+                    }
                     _ => {
-                        eprintln!("Usage: synapsis license <status|verify>");
+                        eprintln!("Usage: synapsis license <status|verify|sign>");
                         std::process::exit(1);
                     }
                 }
