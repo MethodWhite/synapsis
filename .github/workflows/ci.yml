@@ -5,6 +5,14 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  checks: write
+
+permissions:
+  contents: read
+  checks: write
+
 env:
   CARGO_TERM_COLOR: always
 
