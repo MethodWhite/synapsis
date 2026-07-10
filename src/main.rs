@@ -22,6 +22,8 @@ fn main() {
                 eprintln!("Use --tls-cert and --tls-key to enable HTTPS.");
                 eprintln!("Env: SYNAPSIS_PORT, SYNAPSIS_TLS_CERT, SYNAPSIS_TLS_KEY");
                 eprintln!("     SYNAPSIS_LICENSE (path to license file)");
+                eprintln!("     SYNAPSIS_X402_WALLET (Base wallet for x402 payments)");
+                eprintln!("     SYNAPSIS_BASE_RPC (Base RPC endpoint, default: mainnet.base.org)");
                 std::process::exit(0);
             }
             "license" => {
@@ -216,9 +218,18 @@ fn main() {
     ));
     server.init();
 
-    let transport = match tls_config {
-        Some(cfg) => synapsis::presentation::http::HttpTransport::with_tls(server, cfg),
-        None => synapsis::presentation::http::HttpTransport::new(server),
+    let x402 = std::env::var("SYNAPSIS_X402_WALLET").ok().map(|wallet| {
+        let rpc = std::env::var("SYNAPSIS_BASE_RPC")
+            .unwrap_or_else(|_| "https://mainnet.base.org".into());
+        eprintln!("[Synapsis] x402 enabled (wallet: {}, rpc: {})", wallet, rpc);
+        Arc::new(synapsis::core::x402::X402Engine::new(&wallet, &rpc))
+    });
+
+    let transport = match (tls_config, x402) {
+        (Some(cfg), Some(x)) => synapsis::presentation::http::HttpTransport::with_tls_x402(server, cfg, x),
+        (Some(cfg), None) => synapsis::presentation::http::HttpTransport::with_tls(server, cfg),
+        (None, Some(x)) => synapsis::presentation::http::HttpTransport::with_x402(server, x),
+        (None, None) => synapsis::presentation::http::HttpTransport::new(server),
     };
     transport.start(port);
 }
