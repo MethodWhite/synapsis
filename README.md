@@ -198,6 +198,26 @@ scripts/session-autolink.sh --daemon
 
 ---
 
+## Casos de Uso
+
+Ocho flujos de trabajo reales que muestran Synapsis en acción:
+
+| # | Caso de Uso | Descripción |
+|---|-------------|-------------|
+| 1 | [Cross-Platform Memory](docs/USE_CASES.md#use-case-1-cross-platform-memory) | Guardar desde OpenCode, recuperar desde Cursor |
+| 2 | [Session Continuity](docs/USE_CASES.md#use-case-2-session-continuity) | Empezar en Gemini CLI, continuar en VS Code |
+| 3 | [Auto-Discovery + Auto-Config](docs/USE_CASES.md#use-case-3-auto-discovery--auto-config) | Plug and play: nueva herramienta detectada automáticamente |
+| 4 | [Secure Production Deployment](docs/USE_CASES.md#use-case-4-secure-production-deployment) | HTTPS + API keys para uso en equipo |
+| 5 | [MCP Discovery Network](docs/USE_CASES.md#use-case-5-mcp-discovery-network) | Encontrar y conectar nodos Synapsis remotos |
+| 6 | [Chinese Platform Integration](docs/USE_CASES.md#use-case-6-chinese-platform-integration) | Usar Synapsis con DeepSeek, Qwen, Kimi |
+| 7 | [CI/CD Pipeline Memory](docs/USE_CASES.md#use-case-7-cicd-pipeline-memory) | Synapsis en GitHub Actions |
+| 8 | [Backup and Disaster Recovery](docs/USE_CASES.md#use-case-8-backup-and-disaster-recovery) | Backup cifrado con verificación de integridad |
+
+Cada caso incluye comandos paso a paso, arquitectura técnica y output esperado.
+Ver [docs/USE_CASES.md](docs/USE_CASES.md) para la guía completa.
+
+---
+
 ## Arquitectura
 
 ```
