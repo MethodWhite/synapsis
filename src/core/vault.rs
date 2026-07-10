@@ -11,10 +11,10 @@
 
 use crate::core::lock_utils::*;
 use aes_gcm::{
-    aead::{Aead, Nonce},
     Aes256Gcm, Key, KeyInit,
+    aead::{Aead, Nonce},
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use getrandom::getrandom;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -497,7 +497,7 @@ fn compute_hash(data: &[u8]) -> Vec<u8> {
 #[allow(dead_code)]
 fn compute_hmac(key: &[u8], data: &[u8]) -> Vec<u8> {
     use hmac::Mac;
-    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::Mac>::new_from_slice(key)
+    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::KeyInit>::new_from_slice(key)
         .expect("HMAC accepts any key length");
     mac.update(data);
     mac.finalize().into_bytes().to_vec()
@@ -505,7 +505,7 @@ fn compute_hmac(key: &[u8], data: &[u8]) -> Vec<u8> {
 
 fn derive_mac_key(encryption_key: &[u8]) -> Vec<u8> {
     use hmac::Mac;
-    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::Mac>::new_from_slice(encryption_key)
+    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::KeyInit>::new_from_slice(encryption_key)
         .expect("HMAC accepts any key length");
     mac.update(b"synapsis-mac-key-derivation");
     mac.finalize().into_bytes().to_vec()

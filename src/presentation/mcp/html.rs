@@ -218,8 +218,10 @@ pub fn derive_encryption_key() -> [u8; 32] {
     let key_path = crate::config::data_dir().join(".browser_encryption_key");
     if let Ok(data) = std::fs::read(&key_path) {
         if data.len() == 32 {
+            let mut key_vec = data.clone();
+            key_vec.truncate(32);
             let mut key = [0u8; 32];
-            key.copy_from_slice(&data);
+            key.copy_from_slice(&key_vec);
             return key;
         }
     }

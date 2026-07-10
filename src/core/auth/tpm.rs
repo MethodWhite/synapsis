@@ -12,7 +12,7 @@
 //! Supports TOTP-based MFA as backup when TPM is not available.
 
 use crate::core::lock_utils::*;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use getrandom::getrandom;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -271,7 +271,7 @@ impl TpmMfaProvider {
 
         let counter_bytes = counter.to_be_bytes();
 
-        let hmac_data = hmac_sha1::hmac_sha1(secret, &counter_bytes);
+        let hmac_data = simple_hmac_sha1(secret, &counter_bytes);
 
         let offset = (hmac_data[19] & 0x0f) as usize;
         let code = ((hmac_data[offset] as u32 & 0x7f) << 24)
@@ -361,118 +361,23 @@ fn current_timestamp() -> i64 {
         .unwrap_or(0)
 }
 
-mod hmac_sha1 {
-    pub fn hmac_sha1(key: &[u8], data: &[u8]) -> Vec<u8> {
-        let block_size = 64;
-        let mut key_block = vec![0u8; block_size];
-
-        if key.len() > block_size {
-            key_block[..block_size].copy_from_slice(&key[..block_size]);
-        } else {
-            key_block[..key.len()].copy_from_slice(key);
-        }
-
-        let mut inner_pad = vec![0x36u8; block_size];
-        let mut outer_pad = vec![0x5cu8; block_size];
-
-        for i in 0..block_size {
-            inner_pad[i] ^= key_block[i];
-            outer_pad[i] ^= key_block[i];
-        }
-
-        let inner_data: Vec<u8> = inner_pad.iter().chain(data.iter()).cloned().collect();
-        let inner_hash = sha1_simple(&inner_data);
-
-        let outer_data: Vec<u8> = outer_pad.iter().chain(inner_hash.iter()).cloned().collect();
-        sha1_simple(&outer_data)
+fn simple_hmac_sha1(key: &[u8], data: &[u8]) -> Vec<u8> {
+    use sha1::Digest;
+    let block_size = 64;
+    let mut key_block = vec![0u8; block_size];
+    if key.len() > block_size {
+        key_block.copy_from_slice(&sha1::Sha1::digest(key));
+    } else {
+        key_block[..key.len()].copy_from_slice(key);
     }
-
-    fn sha1_simple(data: &[u8]) -> Vec<u8> {
-        let mut h = [
-            0x67452301u32,
-            0xEFCDAB89u32,
-            0x98BADCFEu32,
-            0x10325476u32,
-            0xC3D2E1F0u32,
-        ];
-
-        let len = data.len();
-        let bit_len = (len as u64) * 8;
-
-        let mut padded = data.to_vec();
-        padded.push(0x80);
-
-        while (padded.len() % 64) != 56 {
-            padded.push(0);
-        }
-
-        for i in (0..8).rev() {
-            padded.push(((bit_len >> (i * 8)) & 0xff) as u8);
-        }
-
-        for chunk in padded.chunks(64) {
-            let mut w = [0u32; 80];
-
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..16 {
-                let offset = i * 4;
-                w[i] = u32::from_be_bytes([
-                    chunk[offset],
-                    chunk[offset + 1],
-                    chunk[offset + 2],
-                    chunk[offset + 3],
-                ]);
-            }
-
-            for i in 16..80 {
-                let val = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
-                w[i] = val.rotate_left(1);
-            }
-
-            let mut a = h[0];
-            let mut b = h[1];
-            let mut c = h[2];
-            let mut d = h[3];
-            let mut e = h[4];
-
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..80 {
-                let (f, k) = if i < 20 {
-                    ((b & c) | ((!b) & d), 0x5a827999u32)
-                } else if i < 40 {
-                    (b ^ c ^ d, 0x6ed9eba1u32)
-                } else if i < 60 {
-                    ((b & c) | (b & d) | (c & d), 0x8f1bbcdcu32)
-                } else {
-                    (b ^ c ^ d, 0xca62c1d6u32)
-                };
-
-                let temp = a
-                    .rotate_left(5)
-                    .wrapping_add(f)
-                    .wrapping_add(e)
-                    .wrapping_add(k)
-                    .wrapping_add(w[i]);
-                e = d;
-                d = c;
-                c = b.rotate_left(30);
-                b = a;
-                a = temp;
-            }
-
-            h[0] = h[0].wrapping_add(a);
-            h[1] = h[1].wrapping_add(b);
-            h[2] = h[2].wrapping_add(c);
-            h[3] = h[3].wrapping_add(d);
-            h[4] = h[4].wrapping_add(e);
-        }
-
-        let mut result = Vec::with_capacity(20);
-        for val in h.iter() {
-            result.extend_from_slice(&val.to_be_bytes());
-        }
-        result
+    for i in 0..block_size {
+        key_block[i] ^= 0x36;
     }
+    let inner = sha1::Sha1::digest(&[&key_block, data].concat());
+    for i in 0..block_size {
+        key_block[i] ^= 0x36 ^ 0x5c;
+    }
+    sha1::Sha1::digest(&[&key_block, inner.as_slice()].concat()).to_vec()
 }
 
 #[cfg(test)]

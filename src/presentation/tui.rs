@@ -1,10 +1,10 @@
 //! Synapsis TUI - Minimal terminal UI
 
+use crate::SynapsisError;
 use crate::domain::{
     entities::{Observation, SearchParams, SessionSummary},
     ports::{SessionPort, StoragePort},
 };
-use crate::SynapsisError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -116,14 +116,14 @@ mod tui_impl {
     use crossterm::{
         event::{self, DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEventKind},
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     };
     use ratatui::{
+        Frame, Terminal,
         backend::CrosstermBackend,
         layout::{Constraint, Direction, Layout, Rect},
         style::{Color, Modifier, Style},
         widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Row, Table},
-        Frame, Terminal,
     };
     use std::io;
 
