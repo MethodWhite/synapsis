@@ -615,6 +615,11 @@ impl McpServer {
                     "inputSchema": { "type": "object", "properties": {} }
                 },
                 {
+                    "name": "db_migration_status",
+                    "description": "Get database migration status (current version and applied migrations).",
+                    "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
                     "name": "mem_update",
                     "description": "Update an existing observation's title and content.",
                     "inputSchema": {
@@ -1120,6 +1125,7 @@ impl McpServer {
             "db_integrity" => tools::handle_db_integrity(&self.db, id),
             "db_prune" => tools::handle_db_prune(&self.db, id, args),
             "db_vacuum" => tools::handle_db_vacuum(&self.db, id),
+            "db_migration_status" => tools::handle_db_migration_status(&self.db, id),
             "skill_register" => tools::handle_skill_register(&self.skills, id, args),
             "skill_list" => tools::handle_skill_list(&self.skills, id),
             "agent_register" => tools::handle_agent_register(&self.agents, id, args),

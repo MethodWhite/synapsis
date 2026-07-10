@@ -70,6 +70,7 @@ impl CLI {
             "delete" | "rm" => self.cmd_delete(&cmd_args[1..]),
             "export" => self.cmd_export(&cmd_args[1..]),
             "import" => self.cmd_import(&cmd_args[1..]),
+            "db" => self.cmd_db(&cmd_args[1..]),
             "init" => self.cmd_init(),
             "serve" | "server" => self.cmd_serve(),
             "help" => {
@@ -347,6 +348,52 @@ impl CLI {
         }
 
         Ok(())
+    }
+
+    fn cmd_db(&self, args: &[&str]) -> Result<(), i32> {
+        match args.first().copied().unwrap_or("") {
+            "migrate" => {
+                let conn = self.db.get_conn();
+                match crate::infrastructure::database::migration::run_migrations(&conn) {
+                    Ok((current, applied)) => {
+                        println!(
+                            "Database migration: current_version={}, applied={}",
+                            current, applied
+                        );
+                        if applied > 0 {
+                            println!("Applied {} new migration(s).", applied);
+                        } else {
+                            println!("Database is up-to-date.");
+                        }
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("Migration error: {}", e);
+                        Err(1)
+                    }
+                }
+            }
+            "status" => {
+                let conn = self.db.get_conn();
+                match crate::infrastructure::database::migration::get_migration_status(&conn) {
+                    Ok(status) => {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&status).unwrap_or_default()
+                        );
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        Err(1)
+                    }
+                }
+            }
+            _ => {
+                eprintln!("Usage: synapsis db <migrate|status>");
+                Err(1)
+            }
+        }
     }
 
     fn cmd_stats(&self) -> Result<(), i32> {

@@ -23,6 +23,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+pub mod migration;
 pub mod multi_agent;
 
 #[allow(dead_code)]
@@ -179,166 +180,19 @@ impl Database {
     }
 
     fn create_tables(&self, conn: &Connection) -> Result<()> {
-        conn.execute_batch("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
-            .ok();
-        let version: i32 = conn
-            .query_row(
-                "SELECT COALESCE(MAX(version), 0) FROM schema_version",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
-
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS observations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sync_id TEXT NOT NULL UNIQUE,
-                session_id TEXT NOT NULL,
-                project TEXT,
-                observation_type INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                content TEXT NOT NULL,
-                tool_name TEXT,
-                scope INTEGER NOT NULL,
-                topic_key TEXT,
-                content_hash BLOB NOT NULL,
-                revision_count INTEGER NOT NULL DEFAULT 1,
-                duplicate_count INTEGER NOT NULL DEFAULT 0,
-                last_seen_at INTEGER,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
-                deleted_at INTEGER,
-                integrity_hash TEXT,
-                classification INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
-                title, content
-            );
-            CREATE TABLE IF NOT EXISTS sessions (
-                id TEXT PRIMARY KEY,
-                project_key TEXT NOT NULL,
-                directory TEXT NOT NULL,
-                started_at INTEGER NOT NULL,
-                ended_at INTEGER,
-                summary TEXT,
-                observation_count INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS chunks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                chunk_id TEXT NOT NULL UNIQUE,
-                project_key TEXT NOT NULL,
-                title TEXT NOT NULL,
-                content TEXT NOT NULL,
-                level INTEGER NOT NULL DEFAULT 0,
-                is_active INTEGER NOT NULL DEFAULT 1,
-                embedding BLOB,
-                is_indexed INTEGER NOT NULL DEFAULT 0,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS agent_sessions (
-                id TEXT PRIMARY KEY,
-                agent_type TEXT NOT NULL,
-                agent_instance TEXT NOT NULL,
-                project_key TEXT NOT NULL,
-                pid INTEGER,
-                started_at INTEGER NOT NULL,
-                last_heartbeat INTEGER NOT NULL,
-                is_active INTEGER NOT NULL DEFAULT 1,
-                current_task TEXT
-            );
-            CREATE TABLE IF NOT EXISTS active_locks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                lock_key TEXT NOT NULL UNIQUE,
-                agent_session_id TEXT NOT NULL,
-                acquired_at INTEGER NOT NULL,
-                expires_at INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS task_queue (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id TEXT NOT NULL UNIQUE,
-                agent_session_id TEXT,
-                project_key TEXT NOT NULL,
-                task_type TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                priority INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'pending',
-                created_at INTEGER NOT NULL,
-                started_at INTEGER,
-                completed_at INTEGER,
-                result TEXT,
-                error TEXT
-            );
-            CREATE TABLE IF NOT EXISTS global_context (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_key TEXT NOT NULL,
-                context_data TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS context_cache (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                cache_key TEXT NOT NULL UNIQUE,
-                project_key TEXT,
-                data TEXT NOT NULL,
-                hits INTEGER NOT NULL DEFAULT 0,
-                created_at INTEGER NOT NULL,
-                last_accessed INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS memories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                memory_id TEXT NOT NULL UNIQUE,
-                agent_id TEXT NOT NULL,
-                session_id TEXT,
-                role TEXT NOT NULL,
-                content TEXT NOT NULL,
-                token_count INTEGER NOT NULL DEFAULT 0,
-                created_at INTEGER NOT NULL,
-                checksum TEXT
-            );
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                action TEXT NOT NULL,
-                observation_id INTEGER,
-                agent_id TEXT,
-                session_id TEXT,
-                old_value TEXT,
-                new_value TEXT,
-                reason TEXT,
-                created_at INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS memory_relations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sync_id TEXT NOT NULL UNIQUE,
-                source_id INTEGER NOT NULL,
-                target_id INTEGER NOT NULL,
-                relation TEXT NOT NULL,
-                judgment_status TEXT NOT NULL DEFAULT 'pending',
-                reason TEXT,
-                evidence TEXT,
-                confidence REAL NOT NULL DEFAULT 1.0,
-                marked_by_actor TEXT,
-                marked_by_kind TEXT,
-                marked_by_model TEXT,
-                session_id TEXT,
-                project TEXT,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
-                FOREIGN KEY (source_id) REFERENCES observations(id),
-                FOREIGN KEY (target_id) REFERENCES observations(id)
-            );
-            ",
-        )?;
-
-        if (1..2).contains(&version) {
-            let _ = conn.execute_batch(
-                "INSERT INTO observations_fts(rowid, title, content) SELECT id, title, content FROM observations;
-                 INSERT INTO schema_version (version) VALUES (2);"
-            );
-        }
-
+        migration::run_migrations(conn).map_err(|e| {
+            let msg = format!("{:#}", e);
+            SynapsisError::internal_bug(msg)
+        })?;
         Ok(())
+    }
+
+    pub fn migration_status(&self) -> Result<serde_json::Value> {
+        let conn = self.get_conn();
+        migration::get_migration_status(&conn).map_err(|e| {
+            let msg = format!("{:#}", e);
+            SynapsisError::internal_bug(msg)
+        })
     }
 
     pub fn register_agent_session(

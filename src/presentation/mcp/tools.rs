@@ -491,6 +491,22 @@ pub fn handle_db_prune(db: &Database, id: &Value, args: &Value) -> anyhow::Resul
     }
 }
 
+pub fn handle_db_migration_status(db: &Database, id: &Value) -> anyhow::Result<Value> {
+    match db.migration_status() {
+        Ok(status) => {
+            let text = serde_json::to_string_pretty(&status).unwrap_or_default();
+            Ok(json!({
+                "jsonrpc": "2.0", "id": id,
+                "result": { "content": [{ "type": "text", "text": text }] }
+            }))
+        }
+        Err(e) => Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32603, "message": format!("Migration status failed: {}", e) }
+        })),
+    }
+}
+
 pub fn handle_db_vacuum(db: &Database, id: &Value) -> anyhow::Result<Value> {
     match db.vacuum() {
         Ok(_) => Ok(json!({
