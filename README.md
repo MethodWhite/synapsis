@@ -285,7 +285,8 @@ Synapsis usa **SQLite** con **FTS5** para búsqueda de texto completo:
 
 Business Source License 1.1 — ver [LICENSE](LICENSE) para detalles.
 
-Uso comercial requiere licencia separada para entidades con 3+ empleados o más de $100k en ingresos anuales. Uso no comercial, educativo y personal es gratuito. Cambio a Apache 2.0 el 23 de marzo de 2030.
+Gratuito para uso personal, educativo y PyMEs (<20 empleados o <$500k ingresos).
+Uso enterprise requiere licencia comercial. Sin cambios de licencia futuros.
 
 ---
 
