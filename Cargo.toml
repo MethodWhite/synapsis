@@ -40,6 +40,10 @@ name = "synapsis-keygen"
 path = "src/bin/keygen.rs"
 
 [[bin]]
+name = "synapsis-license-gen"
+path = "src/bin/license_gen.rs"
+
+[[bin]]
 name = "synapsis-x402"
 path = "src/bin/x402_server.rs"
 

@@ -864,7 +864,7 @@ pub fn handle_mem_session_start(
     let agent_id = args["agent_id"].as_str().unwrap_or("default-agent");
 
     // Reject directory traversal attempts
-    let sanitized_dir = directory.replace('\', "/");
+    let sanitized_dir = directory.replace("\\", "/");
     if sanitized_dir.contains("..") || sanitized_dir.contains('~') {
         return Ok(json!({
             "jsonrpc": "2.0", "id": id,
