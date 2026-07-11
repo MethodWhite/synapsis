@@ -10,7 +10,7 @@ license = "MIT"
 default = []
 db-encryption = ["rusqlite/sqlcipher"]
 tui = ["dep:crossterm", "dep:ratatui"]
-# arca = ["dep:arca"]
+arca = ["dep:arca"]
 
 [lib]
 name = "synapsis"
@@ -52,8 +52,8 @@ path = "src/bin/x402_server.rs"
 # Core library
 synapsis-core = { git = "https://github.com/MethodWhite/synapsis-core" }
 
-# Arca wallet management (enable with --features arca when network available)
-# arca = { git = "https://github.com/MethodWhite/Arca", optional = true }
+# Arca wallet integration (--features arca for x402 payments)
+arca = { git = "https://github.com/MethodWhite/Arca", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rusqlite = { version = "0.31", features = ["bundled", "blob", "serde_json"] }
