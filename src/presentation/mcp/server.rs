@@ -1080,6 +1080,11 @@ impl McpServer {
                         },
                         "required": ["session_id", "observation"]
                     }
+                },
+                {
+                    "name": "premium_status",
+                    "description": "Check premium feature availability, license status, and x402 payment info.",
+                    "inputSchema": { "type": "object", "properties": {} }
                 }
             ]}
         }))
@@ -1173,6 +1178,7 @@ impl McpServer {
             "mcp_call" => tools::handle_mcp_call(id, args),
             "browser_navigate" => tools::handle_browser_navigate(id, args),
             "browser_snapshot" => tools::handle_browser_snapshot(id, args),
+            "premium_status" => tools::handle_premium_status(id),
             _ => Ok(json!({
                 "jsonrpc": "2.0",
                 "id": id,

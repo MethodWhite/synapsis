@@ -17,6 +17,7 @@ fn main() {
                 eprintln!("synapsis v{}", env!("CARGO_PKG_VERSION"));
                 eprintln!("Usage: synapsis [--version | --help]");
                 eprintln!("       synapsis license <status|verify|sign>");
+                eprintln!("       synapsis premium <status>");
                 eprintln!("       synapsis [--tls-cert <path> --tls-key <path>]");
                 eprintln!("Without arguments, starts the HTTP/SSE MCP server on port 7438.");
                 eprintln!("Use --tls-cert and --tls-key to enable HTTPS.");
@@ -107,6 +108,37 @@ fn main() {
                     }
                     _ => {
                         eprintln!("Usage: synapsis x402 <discover|features>");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "premium" => {
+                let sub = args.get(2).map(|s| s.as_str()).unwrap_or("");
+                match sub {
+                    "status" => {
+                        let status = synapsis::core::premium::premium_status();
+                        let lic = &status["license"];
+                        if lic["status"] == "active" {
+                            println!("License: ACTIVE");
+                            println!("Customer: {}", lic["customer"].as_str().unwrap_or(""));
+                            println!("Type: {}", lic["license_type"].as_str().unwrap_or(""));
+                            println!("Expires: {}", lic["expires_at"].as_str().unwrap_or(""));
+                        } else {
+                            println!("License: {}", lic["message"].as_str().unwrap_or("NOT FOUND"));
+                        }
+                        println!();
+                        println!("{:<20} {:<10}", "Feature", "Status");
+                        println!("{}", "-".repeat(32));
+                        for f in status["premium_features"].as_array().unwrap_or(&vec![]) {
+                            let name = f["name"].as_str().unwrap_or("");
+                            let available = f["available"].as_bool().unwrap_or(false);
+                            let status_str = if available { "AVAILABLE" } else { "PAYMENT REQUIRED" };
+                            println!("{:<20} {}", name, status_str);
+                        }
+                        std::process::exit(0);
+                    }
+                    _ => {
+                        eprintln!("Usage: synapsis premium <status>");
                         std::process::exit(1);
                     }
                 }

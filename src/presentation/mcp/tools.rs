@@ -244,6 +244,9 @@ pub fn handle_ghost_audit(
 }
 
 pub fn handle_pqc_encrypt(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    if let Err(payment) = crate::core::premium::check_premium_access("pqc-encrypt") {
+        return Ok(crate::core::premium::payment_error(id, &payment));
+    }
     let plaintext = args["plaintext"].as_str().unwrap_or("");
     let key = derive_encryption_key();
     match crate::core::pqc::encrypt(plaintext.as_bytes(), &key) {
@@ -1812,6 +1815,9 @@ pub fn handle_orchestrator_idle(
 }
 
 pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    if let Err(payment) = crate::core::premium::check_premium_access("web-search") {
+        return Ok(crate::core::premium::payment_error(id, &payment));
+    }
     let url = args["url"].as_str().unwrap_or("");
     let method = args["method"].as_str().unwrap_or("GET");
     let extract = args["extract"].as_str().unwrap_or("full");
@@ -1944,6 +1950,9 @@ pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value
 }
 
 pub fn handle_browser_snapshot(id: &Value, args: &Value) -> anyhow::Result<Value> {
+    if let Err(payment) = crate::core::premium::check_premium_access("web-search") {
+        return Ok(crate::core::premium::payment_error(id, &payment));
+    }
     let url = args["url"].as_str().unwrap_or("");
     let max_text = args["max_text"].as_u64().unwrap_or(2000) as usize;
 
@@ -2017,4 +2026,48 @@ pub fn handle_browser_snapshot(id: &Value, args: &Value) -> anyhow::Result<Value
             "error": { "code": -32603, "message": format!("Request failed: {}", e) }
         })),
     }
+}
+
+pub fn handle_premium_status(id: &Value) -> anyhow::Result<Value> {
+    let status = crate::core::premium::premium_status();
+    let text = {
+        let lic = &status["license"];
+        let lic_line = if lic["status"] == "active" {
+            format!(
+                "License: ACTIVE | Customer: {} | Type: {} | Expires: {}",
+                lic["customer"].as_str().unwrap_or(""),
+                lic["license_type"].as_str().unwrap_or(""),
+                lic["expires_at"].as_str().unwrap_or(""),
+            )
+        } else {
+            format!(
+                "License: {}",
+                lic["message"].as_str().unwrap_or("NOT FOUND")
+            )
+        };
+        let mut lines = vec![lic_line, String::new(), "Premium Features:".into()];
+        for f in status["premium_features"].as_array().unwrap_or(&vec![]) {
+            let name = f["name"].as_str().unwrap_or("");
+            let desc = f["description"].as_str().unwrap_or("");
+            let price = f["price_usdc"].as_f64().unwrap_or(0.0);
+            let available = f["available"].as_bool().unwrap_or(false);
+            let status_str = if available { "AVAILABLE" } else { "PAYMENT REQUIRED" };
+            lines.push(format!(
+                "  {:<20} {:<50} {:>8.3} USDC  [{}]",
+                name, desc, price, status_str
+            ));
+            if !available {
+                lines.push(format!(
+                    "    Payment URL: {}",
+                    f["payment_url"].as_str().unwrap_or("")
+                ));
+            }
+        }
+        lines.join("\n")
+    };
+    Ok(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "content": [{ "type": "text", "text": text }] }
+    }))
 }

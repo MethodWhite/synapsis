@@ -51,6 +51,7 @@ pub mod agent_registry_ext;
 pub use synapsis_core::core::audit_log;
 pub mod chunk_query;
 pub mod license;
+pub mod premium;
 pub mod providers;
 pub mod session_bridge;
 pub use synapsis_core::core::session_id;
