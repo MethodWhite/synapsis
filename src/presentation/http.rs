@@ -213,6 +213,7 @@ fn handle_mcp_request(stream: &mut (impl Read + Write), req: &HttpRequest, serve
         ("GET", "/sse") => {
             let resp = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nAccess-Control-Allow-Origin: *\r\n\r\n";
             let _ = stream.write_all(resp.as_bytes());
+            let _ = stream.write_all(b"event: endpoint\ndata: /message\n\n");
             let _ = stream.flush();
             loop {
                 let _ = stream.write_all(b"data: {\"type\":\"keepalive\"}\n\n");

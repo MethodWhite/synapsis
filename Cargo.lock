@@ -887,7 +887,6 @@ checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 [[package]]
 name = "arca"
 version = "0.1.0"
-source = "git+https://github.com/MethodWhite/Arca#5ca190c32214b4536644961d98b7a186cbd79059"
 dependencies = [
  "aes-gcm 0.10.3",
  "alloy",
@@ -6015,7 +6014,6 @@ dependencies = [
 [[package]]
 name = "synapsis-core"
 version = "0.5.1"
-source = "git+https://github.com/MethodWhite/synapsis-core#6108c601c539061ddc4934cde5b7672436ded615"
 dependencies = [
  "aes-gcm 0.11.0",
  "anyhow",
