@@ -124,7 +124,10 @@ fn main() {
                             println!("Type: {}", lic["license_type"].as_str().unwrap_or(""));
                             println!("Expires: {}", lic["expires_at"].as_str().unwrap_or(""));
                         } else {
-                            println!("License: {}", lic["message"].as_str().unwrap_or("NOT FOUND"));
+                            println!(
+                                "License: {}",
+                                lic["message"].as_str().unwrap_or("NOT FOUND")
+                            );
                         }
                         println!();
                         println!("{:<20} {:<10}", "Feature", "Status");
@@ -132,7 +135,11 @@ fn main() {
                         for f in status["premium_features"].as_array().unwrap_or(&vec![]) {
                             let name = f["name"].as_str().unwrap_or("");
                             let available = f["available"].as_bool().unwrap_or(false);
-                            let status_str = if available { "AVAILABLE" } else { "PAYMENT REQUIRED" };
+                            let status_str = if available {
+                                "AVAILABLE"
+                            } else {
+                                "PAYMENT REQUIRED"
+                            };
                             println!("{:<20} {}", name, status_str);
                         }
                         std::process::exit(0);

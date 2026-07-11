@@ -16,7 +16,8 @@ pub struct Migration {
 type MigrationFn = fn(&Connection) -> Result<()>;
 
 fn migration_v1_initial_schema(conn: &Connection) -> Result<()> {
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS observations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sync_id TEXT NOT NULL UNIQUE,
@@ -48,7 +49,8 @@ fn migration_v1_initial_schema(conn: &Connection) -> Result<()> {
             observation_count INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
-    ")?;
+    ",
+    )?;
     Ok(())
 }
 
@@ -63,7 +65,8 @@ fn migration_v2_fts_index(conn: &Connection) -> Result<()> {
 }
 
 fn migration_v3_add_agent_sessions(conn: &Connection) -> Result<()> {
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS agent_sessions (
             id TEXT PRIMARY KEY,
             agent_type TEXT NOT NULL,
@@ -97,12 +100,14 @@ fn migration_v3_add_agent_sessions(conn: &Connection) -> Result<()> {
             result TEXT,
             error TEXT
         );
-    ")?;
+    ",
+    )?;
     Ok(())
 }
 
 fn migration_v4_add_audit_log(conn: &Connection) -> Result<()> {
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             action TEXT NOT NULL,
@@ -125,12 +130,14 @@ fn migration_v4_add_audit_log(conn: &Connection) -> Result<()> {
             created_at INTEGER NOT NULL,
             checksum TEXT
         );
-    ")?;
+    ",
+    )?;
     Ok(())
 }
 
 fn migration_v5_add_memory_relations(conn: &Connection) -> Result<()> {
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS memory_relations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sync_id TEXT NOT NULL UNIQUE,
@@ -180,12 +187,14 @@ fn migration_v5_add_memory_relations(conn: &Connection) -> Result<()> {
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
-    ")?;
+    ",
+    )?;
     Ok(())
 }
 
 fn migration_v6_add_x402_payments(conn: &Connection) -> Result<()> {
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS x402_payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tx_hash TEXT NOT NULL UNIQUE,
@@ -205,7 +214,8 @@ fn migration_v6_add_x402_payments(conn: &Connection) -> Result<()> {
             signature TEXT NOT NULL,
             UNIQUE(customer, license_type)
         );
-    ")?;
+    ",
+    )?;
     Ok(())
 }
 
@@ -232,10 +242,8 @@ const MIGRATION_NAMES: &[&str] = &[
 
 /// Run all pending migrations. Returns (current_version, migrations_applied).
 pub fn run_migrations(conn: &Connection) -> Result<(u32, u32)> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
-    )
-    .ok();
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+        .ok();
 
     let current: u32 = conn
         .query_row(
@@ -252,8 +260,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(u32, u32)> {
         let version = (i + 1) as u32;
         if version > current {
             let name = MIGRATION_NAMES.get(i).unwrap_or(&"unknown");
-            migration(conn)
-                .with_context(|| format!("Migration {} ({}) failed", version, name))?;
+            migration(conn).with_context(|| format!("Migration {} ({}) failed", version, name))?;
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?1)",
                 rusqlite::params![version],
@@ -300,8 +307,7 @@ pub fn get_migration_status(conn: &Connection) -> Result<serde_json::Value> {
         )
         .unwrap_or(0);
 
-    let mut stmt = conn
-        .prepare("SELECT version FROM schema_version ORDER BY version ASC")?;
+    let mut stmt = conn.prepare("SELECT version FROM schema_version ORDER BY version ASC")?;
     let versions: Vec<u32> = stmt
         .query_map([], |r| r.get::<_, u32>(0))?
         .filter_map(|r| r.ok())
@@ -312,9 +318,7 @@ pub fn get_migration_status(conn: &Connection) -> Result<serde_json::Value> {
     let applied: Vec<serde_json::Value> = versions
         .iter()
         .map(|v| {
-            let name = MIGRATION_NAMES
-                .get((*v - 1) as usize)
-                .unwrap_or(&"unknown");
+            let name = MIGRATION_NAMES.get((*v - 1) as usize).unwrap_or(&"unknown");
             serde_json::json!({
                 "version": v,
                 "name": name,

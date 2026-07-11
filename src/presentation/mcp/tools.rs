@@ -290,7 +290,7 @@ pub fn handle_wasm_run(id: &Value, args: &Value) -> anyhow::Result<Value> {
 }
 
 pub fn handle_antibrick_scan(
-    engine: &AntiBrickEngine,
+    _engine: &AntiBrickEngine,
     id: &Value,
     _args: &Value,
 ) -> anyhow::Result<Value> {
@@ -360,7 +360,11 @@ pub fn handle_watchdog_snapshot(
     }))
 }
 
-pub fn handle_watchdog_events(_watchdog: &FilesystemWatchdog, id: &Value, _args: &Value) -> anyhow::Result<Value> {
+pub fn handle_watchdog_events(
+    _watchdog: &FilesystemWatchdog,
+    id: &Value,
+    _args: &Value,
+) -> anyhow::Result<Value> {
     Ok(json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -368,8 +372,12 @@ pub fn handle_watchdog_events(_watchdog: &FilesystemWatchdog, id: &Value, _args:
     }))
 }
 
-pub fn handle_watchdog_check_path(_watchdog: &FilesystemWatchdog, id: &Value, args: &Value) -> anyhow::Result<Value> {
-    let path = args["path"].as_str().unwrap_or(".").to_string();
+pub fn handle_watchdog_check_path(
+    _watchdog: &FilesystemWatchdog,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let _path = args["path"].as_str().unwrap_or(".").to_string();
     // TODO: call _watchdog.is_path_protected() once exposed
     Ok(json!({
         "jsonrpc": "2.0",
@@ -1804,14 +1812,18 @@ pub fn handle_orchestrator_tree(
             json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'agent_id'"}}),
         );
     }
-    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("No sub-agents for '{}' (stub).", agent_id)}]}}))
+    Ok(
+        json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("No sub-agents for '{}' (stub).", agent_id)}]}}),
+    )
 }
 
 pub fn handle_orchestrator_idle(
     _orchestrator: &crate::core::orchestrator::Orchestrator,
     id: &Value,
 ) -> anyhow::Result<Value> {
-    Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"No idle agents (stub)."}]}}))
+    Ok(
+        json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"No idle agents (stub)."}]}}),
+    )
 }
 
 pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value> {
@@ -2051,7 +2063,11 @@ pub fn handle_premium_status(id: &Value) -> anyhow::Result<Value> {
             let desc = f["description"].as_str().unwrap_or("");
             let price = f["price_usdc"].as_f64().unwrap_or(0.0);
             let available = f["available"].as_bool().unwrap_or(false);
-            let status_str = if available { "AVAILABLE" } else { "PAYMENT REQUIRED" };
+            let status_str = if available {
+                "AVAILABLE"
+            } else {
+                "PAYMENT REQUIRED"
+            };
             lines.push(format!(
                 "  {:<20} {:<50} {:>8.3} USDC  [{}]",
                 name, desc, price, status_str

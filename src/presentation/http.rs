@@ -1,9 +1,6 @@
 use crate::core::retry::CircuitBreaker;
 use crate::core::x402::X402Engine;
 use crate::presentation::mcp::McpServer;
-use rustls::ServerConfig;
-use rustls::pki_types::pem::PemObject;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::sync::Arc;

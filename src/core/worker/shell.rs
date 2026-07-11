@@ -68,7 +68,7 @@ impl ShellWorker {
         }
 
         if let Some(ref engine) = self.antibrick {
-            let pid = std::process::id();
+            let _pid = std::process::id();
             let parts: Vec<String> = command.split_whitespace().map(String::from).collect();
             let (cmd_name, args) = if parts.is_empty() {
                 ("", vec![])

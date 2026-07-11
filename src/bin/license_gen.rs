@@ -9,9 +9,12 @@ fn main() {
     let customer = prompt("Customer name: ");
     let license_type = prompt("License type (individual/sme/commercial/enterprise): ");
     let features = prompt("Features (comma-separated, e.g.: pqc,web-search,ai-analysis): ");
-    let days_valid = prompt("Days valid (e.g.: 365): ").parse::<i64>().unwrap_or(365);
+    let days_valid = prompt("Days valid (e.g.: 365): ")
+        .parse::<i64>()
+        .unwrap_or(365);
 
-    let features: Vec<String> = features.split(',')
+    let features: Vec<String> = features
+        .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
@@ -33,7 +36,10 @@ fn main() {
     println!("License data written to: {}", data_path);
     println!();
     println!("Now sign it with:");
-    println!("  echo '<your-private-key>' | synapsis license sign {}", data_path);
+    println!(
+        "  echo '<your-private-key>' | synapsis license sign {}",
+        data_path
+    );
     println!();
     println!("Then send the .signed file to the customer.");
 }

@@ -1,0 +1,9 @@
+[[IgnoredVulnerabilities]]
+id = "RUSTSEC-2026-0187"
+reason = "Transitive via arca/printpdf/lopdf - not directly exploitable in CLI context"
+expiry = "2027-07-11"
+
+[[IgnoredVulnerabilities]]
+id = "RUSTSEC-2025-0009"
+reason = "Transitive via arca/hdwallet/ring - only triggers with overflow_checks enabled"
+expiry = "2027-07-11"
