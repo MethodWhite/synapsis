@@ -664,8 +664,9 @@ mod mcp_autoconfig_tests {
         // Config content should have mcpServers with synapsis entry
         let servers = entry
             .config_content
-            .get("mcpServers")
-            .expect("Config should have mcpServers");
+            .get("mcp")
+            .or_else(|| entry.config_content.get("mcpServers"))
+            .expect("Config should have mcp or mcpServers");
         let synapsis_entry = servers
             .get("synapsis")
             .expect("Should have synapsis server entry");
