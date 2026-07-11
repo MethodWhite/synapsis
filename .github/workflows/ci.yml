@@ -26,17 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Check out sibling repos so [patch] overrides resolve correctly
-      - name: Checkout synapsis-core
-        uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: ../synapsis-core
-      - name: Checkout arca
-        uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/Arca
-          path: ../arca
+      # Clone sibling repos so [patch] overrides (../synapsis-core, ../arca) resolve in CI
+      - name: Checkout sibling repos
+        run: |
+          git clone --depth 1 https://github.com/MethodWhite/synapsis-core.git ../synapsis-core
+          git clone --depth 1 https://github.com/MethodWhite/Arca.git ../arca
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -56,16 +50,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout synapsis-core
-        uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: ../synapsis-core
-      - name: Checkout arca
-        uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/Arca
-          path: ../arca
+      - name: Checkout sibling repos
+        run: |
+          git clone --depth 1 https://github.com/MethodWhite/synapsis-core.git ../synapsis-core
+          git clone --depth 1 https://github.com/MethodWhite/Arca.git ../arca
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -77,16 +65,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout synapsis-core
-        uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: ../synapsis-core
-      - name: Checkout arca
-        uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/Arca
-          path: ../arca
+      - name: Checkout sibling repos
+        run: |
+          git clone --depth 1 https://github.com/MethodWhite/synapsis-core.git ../synapsis-core
+          git clone --depth 1 https://github.com/MethodWhite/Arca.git ../arca
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -98,16 +80,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout synapsis-core
-        uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: ../synapsis-core
-      - name: Checkout arca
-        uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/Arca
-          path: ../arca
+      - name: Checkout sibling repos
+        run: |
+          git clone --depth 1 https://github.com/MethodWhite/synapsis-core.git ../synapsis-core
+          git clone --depth 1 https://github.com/MethodWhite/Arca.git ../arca
       - uses: dtolnay/rust-toolchain@1.95.0
       - run: cargo check
 
