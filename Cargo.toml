@@ -100,3 +100,9 @@ ratatui = { version = "0.29", optional = true, default-features = false, feature
 
 [dev-dependencies]
 proptest = "1.4"
+
+[patch."https://github.com/MethodWhite/synapsis-core"]
+synapsis-core = { path = "../synapsis-core" }
+
+[patch."https://github.com/MethodWhite/Arca"]
+arca = { path = "../arca" }

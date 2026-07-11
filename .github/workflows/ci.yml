@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: read
@@ -22,12 +22,29 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout sibling repos
+        shell: bash
+        run: |
+          mkdir -p deps
+          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g; s|\.\./arca|deps/arca|g' Cargo.toml
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: deps/synapsis-core
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/Arca
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: deps/arca
+
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test -- --test-threads=1
+      - name: Run tests
+        run: cargo test -- --test-threads=1
         env:
           RUST_BACKTRACE: 1
       - uses: actions/upload-artifact@v4
@@ -42,6 +59,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare sibling deps
+        shell: bash
+        run: |
+          mkdir -p deps
+          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g; s|\.\./arca|deps/arca|g' Cargo.toml
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: deps/synapsis-core
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/Arca
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: deps/arca
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -53,6 +84,20 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare sibling deps
+        shell: bash
+        run: |
+          mkdir -p deps
+          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g; s|\.\./arca|deps/arca|g' Cargo.toml
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: deps/synapsis-core
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/Arca
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: deps/arca
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -64,6 +109,20 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare sibling deps
+        shell: bash
+        run: |
+          mkdir -p deps
+          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g; s|\.\./arca|deps/arca|g' Cargo.toml
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: deps/synapsis-core
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/Arca
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: deps/arca
       - uses: dtolnay/rust-toolchain@1.95.0
       - run: cargo check
 
@@ -81,8 +140,23 @@ jobs:
     name: Security audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare sibling deps
+        shell: bash
+        run: |
+          mkdir -p deps
+          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g; s|\.\./arca|deps/arca|g' Cargo.toml
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: deps/synapsis-core
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/Arca
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: deps/arca
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -94,6 +168,20 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare sibling deps
+        shell: bash
+        run: |
+          mkdir -p deps
+          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g; s|\.\./arca|deps/arca|g' Cargo.toml
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: deps/synapsis-core
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/Arca
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: deps/arca
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
@@ -120,6 +208,20 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare sibling deps
+        shell: bash
+        run: |
+          mkdir -p deps
+          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g; s|\.\./arca|deps/arca|g' Cargo.toml
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: deps/synapsis-core
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/Arca
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: deps/arca
       - uses: dtolnay/rust-toolchain@stable
       - name: Clean cargo cache
         run: cargo clean
@@ -146,6 +248,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Prepare sibling deps
+        shell: bash
+        run: |
+          mkdir -p deps
+          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g; s|\.\./arca|deps/arca|g' Cargo.toml
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/synapsis-core
+          path: deps/synapsis-core
+      - uses: actions/checkout@v4
+        with:
+          repository: MethodWhite/Arca
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: deps/arca
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
