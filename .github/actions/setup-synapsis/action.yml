@@ -1,0 +1,16 @@
+name: Setup Synapsis
+description: Checkout synapsis-core sibling dep and patch Cargo.toml for CI
+
+runs:
+  using: composite
+  steps:
+    - name: Patch sibling deps for CI
+      shell: bash
+      run: |
+        mkdir -p deps
+        sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g' Cargo.toml
+        sed -i.bak '/^\[patch.*Arca\]/,/^$/d' Cargo.toml
+    - uses: actions/checkout@v4
+      with:
+        repository: MethodWhite/synapsis-core
+        path: deps/synapsis-core

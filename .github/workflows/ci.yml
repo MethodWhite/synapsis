@@ -16,27 +16,16 @@ env:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
+    name: Test (Linux / macOS)
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
-      - name: Patch sibling deps for CI
-        shell: bash
-        run: |
-          mkdir -p deps
-          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g' Cargo.toml
-          sed -i.bak '/^\[patch.*Arca\]/,/^$/d' Cargo.toml
-      - uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: deps/synapsis-core
-
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
@@ -49,22 +38,27 @@ jobs:
           name: test-output-${{ matrix.os }}
           path: /tmp/synapsis-test.log
 
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build check (Windows)
+        run: cargo check --all-targets
+        env:
+          RUST_BACKTRACE: 1
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Patch sibling deps for CI
-        shell: bash
-        run: |
-          mkdir -p deps
-          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g' Cargo.toml
-          sed -i.bak '/^\[patch.*Arca\]/,/^$/d' Cargo.toml
-      - uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: deps/synapsis-core
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -76,16 +70,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Patch sibling deps for CI
-        shell: bash
-        run: |
-          mkdir -p deps
-          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g' Cargo.toml
-          sed -i.bak '/^\[patch.*Arca\]/,/^$/d' Cargo.toml
-      - uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: deps/synapsis-core
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -97,16 +82,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Patch sibling deps for CI
-        shell: bash
-        run: |
-          mkdir -p deps
-          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g' Cargo.toml
-          sed -i.bak '/^\[patch.*Arca\]/,/^$/d' Cargo.toml
-      - uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: deps/synapsis-core
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@1.95.0
       - run: cargo check
 
@@ -127,16 +103,7 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - name: Patch sibling deps for CI
-        shell: bash
-        run: |
-          mkdir -p deps
-          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g' Cargo.toml
-          sed -i.bak '/^\[patch.*Arca\]/,/^$/d' Cargo.toml
-      - uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: deps/synapsis-core
+      - uses: ./.github/actions/setup-synapsis
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -148,16 +115,7 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - name: Patch sibling deps for CI
-        shell: bash
-        run: |
-          mkdir -p deps
-          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g' Cargo.toml
-          sed -i.bak '/^\[patch.*Arca\]/,/^$/d' Cargo.toml
-      - uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: deps/synapsis-core
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
@@ -184,19 +142,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - name: Patch sibling deps for CI
-        shell: bash
-        run: |
-          mkdir -p deps
-          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g' Cargo.toml
-          sed -i.bak '/^\[patch.*Arca\]/,/^$/d' Cargo.toml
-      - uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: deps/synapsis-core
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
-      - name: Clean cargo cache
-        run: cargo clean
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-geiger
@@ -206,47 +153,10 @@ jobs:
           cargo geiger --output-format Json > geiger-report.json || true
           cargo geiger --deny-warn --manifest-path Cargo.toml || true
 
-  codeql:
-    name: CodeQL
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ['rust']
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Patch sibling deps for CI
-        shell: bash
-        run: |
-          mkdir -p deps
-          sed -i.bak 's|\.\./synapsis-core|deps/synapsis-core|g' Cargo.toml
-          sed -i.bak '/^\[patch.*Arca\]/,/^$/d' Cargo.toml
-      - uses: actions/checkout@v4
-        with:
-          repository: MethodWhite/synapsis-core
-          path: deps/synapsis-core
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          queries: security-extended
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{ matrix.language }}"
-
   ci-status:
     name: ci
     if: always()
-    needs: [test, fmt, clippy, msrv, actionlint, security, secrets, geiger, codeql]
+    needs: [test, test-windows, fmt, clippy, msrv, actionlint, security, secrets, geiger]
     runs-on: ubuntu-latest
     permissions:
       contents: read

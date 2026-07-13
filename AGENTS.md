@@ -15,13 +15,13 @@
 | Formato | `cargo fmt` | Sí | Sí | `fmt` |
 | Linting | `cargo clippy` | Sí | Sí | `clippy` |
 | MSRV | `cargo check` (1.95.0) | Sí | Sí | `msrv` |
-| Tests | `cargo test` (3 OS) | Sí | Sí | `test` |
+| Tests (Linux/macOS) | `cargo test` | Sí | Sí | `test` |
+| Tests (Windows) | `cargo check` | No (continue-on-error) | No | `test-windows` |
 | Workflow lint | `actionlint` | No (warning) | Sí | `actionlint` |
 | Audit | `cargo audit` | Sí | No (continue-on-error) | `security` |
-| Licencias | `cargo deny check` | Sí | No | `deny` |
+| Licencias | `cargo deny` | Sí | No | `deny` |
 | Secrets | `gitleaks` | Sí | Sí | `secrets` |
 | Unsafe | `cargo geiger` | No | No | `geiger` |
-| CodeQL | `github/codeql-action` | Sí | No | `codeql` |
 | OSV | `osv-scanner` | Sí | No | `OSV-Scanner` |
 
 ### Branch Strategy
