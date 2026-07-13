@@ -12,6 +12,8 @@
 //! 4. Server verifies response
 //! ```
 
+#[cfg(feature = "pqc")]
+use crate::core::pqc;
 use crate::core::lock_utils::*;
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use hmac::KeyInit;
@@ -258,6 +260,34 @@ impl ResponseVerifier for SimpleVerifier {
     }
 }
 
+#[cfg(feature = "pqc")]
+pub struct DilithiumVerifier {
+    public_key: Vec<u8>,
+}
+
+#[cfg(feature = "pqc")]
+impl DilithiumVerifier {
+    pub fn new(public_key: &[u8]) -> Self {
+        Self {
+            public_key: public_key.to_vec(),
+        }
+    }
+}
+
+#[cfg(feature = "pqc")]
+impl ResponseVerifier for DilithiumVerifier {
+    fn verify(&self, nonce: &str, response: &str) -> Result<bool, ChallengeError> {
+        let nonce_bytes = BASE64
+            .decode(nonce)
+            .map_err(|e| ChallengeError::CryptoError(format!("Invalid nonce encoding: {}", e)))?;
+        let sig_bytes = BASE64
+            .decode(response)
+            .map_err(|e| ChallengeError::CryptoError(format!("Invalid signature encoding: {}", e)))?;
+
+        Ok(pqc::pqc_verify(&nonce_bytes, &sig_bytes, &self.public_key))
+    }
+}
+
 pub struct ChallengeResponseBuilder {
     challenge_response: ChallengeResponse,
     verifiers: Vec<Box<dyn ResponseVerifier>>,
@@ -283,6 +313,13 @@ impl ChallengeResponseBuilder {
 
     pub fn with_simple_verifier(mut self, password: &str) -> Self {
         self.verifiers.push(Box::new(SimpleVerifier::new(password)));
+        self
+    }
+
+    #[cfg(feature = "pqc")]
+    pub fn with_dilithium_verifier(mut self, public_key: &[u8]) -> Self {
+        self.verifiers
+            .push(Box::new(DilithiumVerifier::new(public_key)));
         self
     }
 
@@ -413,6 +450,36 @@ mod tests {
         let result = cr.verify_response(&challenge.id, TEST_PASSWORD, &verifier);
 
         assert!(matches!(result, Err(ChallengeError::ChallengeExpired)));
+    }
+
+    #[cfg(feature = "pqc")]
+    #[test]
+    fn test_dilithium_verifier() {
+        let (sk, pk) = crate::core::pqc::pqc_generate_signing_keypair();
+        let verifier = DilithiumVerifier::new(&pk);
+
+        let nonce = b"test-challenge-nonce";
+        let sig = crate::core::pqc::pqc_sign(nonce, &sk).unwrap();
+        let nonce_b64 = BASE64.encode(nonce);
+        let sig_b64 = BASE64.encode(&sig);
+
+        let result = verifier.verify(&nonce_b64, &sig_b64);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[cfg(feature = "pqc")]
+    #[test]
+    fn test_dilithium_verifier_tampered_fails() {
+        let (_sk, pk) = crate::core::pqc::pqc_generate_signing_keypair();
+        let verifier = DilithiumVerifier::new(&pk);
+
+        let nonce_b64 = BASE64.encode(b"challenge");
+        let sig_b64 = BASE64.encode(b"garbage-signature");
+
+        let result = verifier.verify(&nonce_b64, &sig_b64);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
     }
 
     #[test]

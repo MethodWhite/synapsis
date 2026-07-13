@@ -24,6 +24,10 @@
 //! Apply security rules -> AgentClass
 //! ```
 
+#[cfg(feature = "pqc")]
+use crate::core::pqc;
+#[cfg(feature = "pqc")]
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use crate::core::lock_utils::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -31,7 +35,6 @@ use std::fmt;
 use std::net::IpAddr;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-// use std::time::{Duration, SystemTime};
 
 use super::permissions::{PermissionSet, TrustLevel};
 
@@ -142,6 +145,8 @@ pub struct DeviceRecord {
     pub ip_addresses: Vec<String>,
     pub tpm_public_key: Option<String>,
     pub tpm_verified: bool,
+    pub dilithium_public_key: Option<String>,
+    pub dilithium_verified: bool,
     pub registered_at: i64,
     pub last_seen: i64,
     pub trust_level: TrustLevel,
@@ -282,6 +287,73 @@ impl AgentClassifier {
         reg.remove(device_id).is_some()
     }
 
+    pub fn register_dilithium_key(&self, device_id: &str, public_key_b64: &str) -> bool {
+        let mut reg = self.device_registry.write_safe();
+        if let Some(record) = reg.get_mut(device_id) {
+            record.dilithium_public_key = Some(public_key_b64.to_string());
+            record.dilithium_verified = false;
+            true
+        } else {
+            false
+        }
+    }
+
+    #[cfg(feature = "pqc")]
+    pub fn verify_dilithium(
+        &self,
+        device_id: &str,
+        challenge_b64: &str,
+        signature_b64: &str,
+    ) -> Result<bool, String> {
+        let pk_b64 = {
+            let reg = self.device_registry.read_safe();
+            reg.get(device_id)
+                .and_then(|r| r.dilithium_public_key.clone())
+                .ok_or_else(|| format!("No Dilithium key registered for device '{}'", device_id))?
+        };
+
+        let pk = BASE64
+            .decode(&pk_b64)
+            .map_err(|e| format!("Invalid public key encoding: {}", e))?;
+        let challenge = BASE64
+            .decode(challenge_b64)
+            .map_err(|e| format!("Invalid challenge encoding: {}", e))?;
+        let sig = BASE64
+            .decode(signature_b64)
+            .map_err(|e| format!("Invalid signature encoding: {}", e))?;
+
+        let verified = pqc::pqc_verify(&challenge, &sig, &pk);
+
+        if verified {
+            let mut reg = self.device_registry.write_safe();
+            if let Some(record) = reg.get_mut(device_id) {
+                record.dilithium_verified = true;
+            }
+        }
+
+        Ok(verified)
+    }
+
+    #[cfg(not(feature = "pqc"))]
+    pub fn verify_dilithium(
+        &self,
+        _device_id: &str,
+        _challenge_b64: &str,
+        _signature_b64: &str,
+    ) -> Result<bool, String> {
+        Err("PQC feature not enabled. Rebuild with `--features pqc`".to_string())
+    }
+
+    pub fn get_dilithium_status(&self, device_id: &str) -> Option<(bool, bool)> {
+        let reg = self.device_registry.read_safe();
+        reg.get(device_id).map(|r| {
+            (
+                r.dilithium_public_key.is_some(),
+                r.dilithium_verified,
+            )
+        })
+    }
+
     pub fn set_config(&mut self, config: SecurityConfig) {
         self.config = config;
     }
@@ -304,7 +376,12 @@ impl AgentClassifier {
             device_id.is_some_and(|id| self.device_registry.read_safe().contains_key(id));
 
         let is_local = connection_type.is_local();
-        let has_dilithium = metadata.has_dilithium_key && metadata.is_dilithium_verified;
+        let dilithium_confirmed = device_id.is_some_and(|id| {
+            let reg = self.device_registry.read_safe();
+            reg.get(id).is_some_and(|r| r.dilithium_verified)
+        });
+        let has_dilithium = dilithium_confirmed
+            || (metadata.has_dilithium_key && metadata.is_dilithium_verified);
         let is_special_cli = matches!(metadata.client_type, ClientType::SpecialCLI);
 
         let agent_class = if is_local && is_known_device && tpm_verified {
@@ -338,6 +415,13 @@ impl AgentClassifier {
         if is_local && !is_known_device && !has_dilithium {
             warnings
                 .push("Local agent without Dilithium key - using basic permissions".to_string());
+        }
+
+        if metadata.has_dilithium_key && !dilithium_confirmed && device_id.is_some() {
+            warnings.push(
+                "Agent claims Dilithium support but not yet verified via challenge-response"
+                    .to_string(),
+            );
         }
 
         if !is_local && is_known_device && !tpm_verified {
@@ -521,6 +605,83 @@ mod tests {
                 .permission_set
                 .has_permission(super::super::permissions::Permission::PqcEncrypt)
         );
+    }
+
+    #[cfg(feature = "pqc")]
+    #[test]
+    fn test_dilithium_register_and_verify() {
+        let classifier = AgentClassifier::new();
+
+        let device = DeviceRecord {
+            device_id: "dilithium-device".to_string(),
+            hostname: None,
+            ip_addresses: vec![],
+            tpm_public_key: None,
+            tpm_verified: false,
+            dilithium_public_key: None,
+            dilithium_verified: false,
+            registered_at: 0,
+            last_seen: 0,
+            trust_level: TrustLevel::Basic,
+            owner: "test".to_string(),
+            device_type: DeviceType::Unknown,
+        };
+        classifier.register_device(device);
+
+        let (sk, pk) = crate::core::pqc::pqc_generate_signing_keypair();
+        let pk_b64 = BASE64.encode(&pk);
+
+        assert!(classifier.register_dilithium_key("dilithium-device", &pk_b64));
+        let (has_key, verified) = classifier.get_dilithium_status("dilithium-device").unwrap();
+        assert!(has_key);
+        assert!(!verified);
+
+        let challenge = b"random-challenge-123";
+        let sig = crate::core::pqc::pqc_sign(challenge, &sk).unwrap();
+        let challenge_b64 = BASE64.encode(challenge);
+        let sig_b64 = BASE64.encode(&sig);
+
+        let result = classifier.verify_dilithium("dilithium-device", &challenge_b64, &sig_b64);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        let (_, verified) = classifier.get_dilithium_status("dilithium-device").unwrap();
+        assert!(verified);
+    }
+
+    #[cfg(feature = "pqc")]
+    #[test]
+    fn test_dilithium_verify_tampered_fails() {
+        let classifier = AgentClassifier::new();
+
+        let device = DeviceRecord {
+            device_id: "dilithium-device-2".to_string(),
+            hostname: None,
+            ip_addresses: vec![],
+            tpm_public_key: None,
+            tpm_verified: false,
+            dilithium_public_key: None,
+            dilithium_verified: false,
+            registered_at: 0,
+            last_seen: 0,
+            trust_level: TrustLevel::Basic,
+            owner: "test".to_string(),
+            device_type: DeviceType::Unknown,
+        };
+        classifier.register_device(device);
+
+        let (_sk, pk) = crate::core::pqc::pqc_generate_signing_keypair();
+        let pk_b64 = BASE64.encode(&pk);
+        classifier.register_dilithium_key("dilithium-device-2", &pk_b64);
+
+        let challenge = b"random-challenge-123";
+        let sig = b"tampered-signature";
+        let challenge_b64 = BASE64.encode(challenge);
+        let sig_b64 = BASE64.encode(sig);
+
+        let result = classifier.verify_dilithium("dilithium-device-2", &challenge_b64, &sig_b64);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
     }
 
     #[test]
