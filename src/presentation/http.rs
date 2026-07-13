@@ -103,7 +103,7 @@ impl HttpTransport {
 }
 
 fn handle_connection(mut stream: impl Read + Write, server: &McpServer) {
-    let mut request = parse_http_request(&mut stream);
+    let request = parse_http_request(&mut stream);
     if request.path == "/.well-known/x402" {
         let disc = serde_json::json!({"error": "x402 not configured", "documentation": "Set SYNAPSIS_X402_WALLET"});
         respond(
@@ -113,11 +113,11 @@ fn handle_connection(mut stream: impl Read + Write, server: &McpServer) {
         );
         return;
     }
-    handle_mcp_request(&mut stream, &mut request, server);
+    handle_mcp_request(&mut stream, &request, server);
 }
 
 fn handle_connection_x402(mut stream: impl Read + Write, server: &McpServer, x402: &X402Engine) {
-    let mut request = parse_http_request(&mut stream);
+    let request = parse_http_request(&mut stream);
     match (request.method.as_str(), request.path.as_str()) {
         ("GET", "/.well-known/x402") => {
             let disc = x402.get_x402_discovery();
@@ -151,7 +151,7 @@ fn handle_connection_x402(mut stream: impl Read + Write, server: &McpServer, x40
                 ),
             }
         }
-        _ => handle_mcp_request(&mut stream, &mut request, server),
+        _ => handle_mcp_request(&mut stream, &request, server),
     }
 }
 

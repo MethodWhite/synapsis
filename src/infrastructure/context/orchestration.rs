@@ -268,13 +268,12 @@ impl Orchestrator {
         task.result = Some(result.clone());
         task.state = state;
 
-        if let Some(aid) = &agent_id {
-            if let Some(agent) = self.agents.get_mut(aid) {
+        if let Some(aid) = &agent_id
+            && let Some(agent) = self.agents.get_mut(aid) {
                 agent.state = AgentState::Idle;
                 agent.current_task = None;
                 agent.completed_tasks += 1;
             }
-        }
 
         if result.success {
             self.metrics.completed += 1;

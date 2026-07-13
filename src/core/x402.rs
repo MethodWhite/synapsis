@@ -162,8 +162,8 @@ impl X402Engine {
 
         // Check if transaction was to our wallet with USDC transfer
         // For now, accept any confirmed tx (full verification later)
-        if let Some(result) = resp.get("result") {
-            if !result.is_null() {
+        if let Some(result) = resp.get("result")
+            && !result.is_null() {
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
@@ -179,7 +179,6 @@ impl X402Engine {
                 self.verified_payments.lock().unwrap().push(record);
                 return Ok(true);
             }
-        }
         Ok(false)
     }
 

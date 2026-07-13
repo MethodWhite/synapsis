@@ -157,11 +157,10 @@ impl TpmMfaProvider {
 
         if let Some(expected) = expected_pcrs {
             for (bank, expected_value) in expected {
-                if let Some(actual_value) = attestation.pcr_values.get(bank) {
-                    if actual_value != expected_value {
+                if let Some(actual_value) = attestation.pcr_values.get(bank)
+                    && actual_value != expected_value {
                         return Err(TpmError::PcrMismatch);
                     }
-                }
             }
         }
 
@@ -240,12 +239,11 @@ impl TpmMfaProvider {
     pub fn verify_backup_code(&self, device_id: &str, code: &str) -> Result<bool, TpmError> {
         let mut codes = self.mfa_backup_codes.write_safe();
 
-        if let Some(codes_vec) = codes.get_mut(device_id) {
-            if let Some(pos) = codes_vec.iter().position(|c| c == code) {
+        if let Some(codes_vec) = codes.get_mut(device_id)
+            && let Some(pos) = codes_vec.iter().position(|c| c == code) {
                 codes_vec.remove(pos);
                 return Ok(true);
             }
-        }
 
         Ok(false)
     }
@@ -373,11 +371,11 @@ fn simple_hmac_sha1(key: &[u8], data: &[u8]) -> Vec<u8> {
     for i in 0..block_size {
         key_block[i] ^= 0x36;
     }
-    let inner = sha1::Sha1::digest(&[&key_block, data].concat());
+    let inner = sha1::Sha1::digest([&key_block, data].concat());
     for i in 0..block_size {
         key_block[i] ^= 0x36 ^ 0x5c;
     }
-    sha1::Sha1::digest(&[&key_block, inner.as_slice()].concat()).to_vec()
+    sha1::Sha1::digest([&key_block, inner.as_slice()].concat()).to_vec()
 }
 
 #[cfg(test)]

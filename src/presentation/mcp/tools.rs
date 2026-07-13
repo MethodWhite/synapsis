@@ -397,15 +397,15 @@ fn is_private_url(url_str: &str) -> bool {
     {
         return true;
     }
-    if let Ok(parsed) = url::Url::parse(url_str) {
-        if let Some(host) = parsed.host_str() {
+    if let Ok(parsed) = url::Url::parse(url_str)
+        && let Some(host) = parsed.host_str() {
             if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0" {
                 return true;
             }
             if host.ends_with(".local") || host.ends_with(".internal") {
                 return true;
             }
-            if let Some(addr) = host.parse::<std::net::IpAddr>().ok() {
+            if let Ok(addr) = host.parse::<std::net::IpAddr>() {
                 match addr {
                     std::net::IpAddr::V4(a) => {
                         return a.is_loopback() || a.is_private() || a.is_link_local();
@@ -416,7 +416,6 @@ fn is_private_url(url_str: &str) -> bool {
                 }
             }
         }
-    }
     false
 }
 

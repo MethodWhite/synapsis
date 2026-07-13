@@ -147,7 +147,7 @@ impl ContextEvaluator {
             score += 0.1;
         }
 
-        if context.connections.len() >= 1 {
+        if !context.connections.is_empty() {
             score += 0.1;
         }
 
@@ -158,7 +158,7 @@ impl ContextEvaluator {
         let mut score: f64 = 0.7;
 
         // Verificar que nombre y tipo son consistentes
-        if context.name.len() > 0 && !context.name.is_empty() {
+        if !context.name.is_empty() && !context.name.is_empty() {
             score += 0.1;
         }
 
@@ -210,7 +210,7 @@ impl ContextEvaluator {
         let mut score: f64 = 0.4;
 
         // Tiene metadata accionable
-        if context.metadata.len() > 0 {
+        if !context.metadata.is_empty() {
             score += 0.2;
         }
 
@@ -287,23 +287,20 @@ impl ContextEvaluator {
     fn generate_recommendations(&self, scores: &HashMap<String, f64>) -> Vec<String> {
         let mut recs = Vec::new();
 
-        if let Some(&s) = scores.get("completeness") {
-            if s < 0.7 {
+        if let Some(&s) = scores.get("completeness")
+            && s < 0.7 {
                 recs.push("💡 Considere agregar un resumen o tags al contexto".to_string());
             }
-        }
 
-        if let Some(&s) = scores.get("freshness") {
-            if s < 0.5 {
+        if let Some(&s) = scores.get("freshness")
+            && s < 0.5 {
                 recs.push("⏰ Este contexto no ha sido actualizado recientemente".to_string());
             }
-        }
 
-        if let Some(&s) = scores.get("actionability") {
-            if s < 0.5 {
+        if let Some(&s) = scores.get("actionability")
+            && s < 0.5 {
                 recs.push("🎯 Para actuar, defina variables concretas con valores".to_string());
             }
-        }
 
         recs
     }

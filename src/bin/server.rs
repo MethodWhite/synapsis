@@ -59,12 +59,12 @@ fn main() {
                 println!(
                     "  synapsis-server --quic --quic-port PORT Custom QUIC port (default: 7439)"
                 );
-                println!("");
+                println!();
                 println!("TLS options (with --http):");
                 println!("  --tls-cert <path>                    TLS certificate file");
                 println!("  --tls-key <path>                     TLS private key file");
                 println!("  If --tls-cert is set without --tls-key, a self-signed cert is used.");
-                println!("");
+                println!();
                 println!("Env vars:");
                 println!("  SYNAPSIS_PORT");
                 println!("  SYNAPSIS_TLS_CERT");
@@ -102,14 +102,12 @@ fn main() {
     // Run task cleanup on startup
     if let Ok(report) =
         synapsis::core::task_cleanup::TaskCleanupManager::new(state.db.clone()).run_cleanup()
-    {
-        if report.total_removed() > 0 {
+        && report.total_removed() > 0 {
             eprintln!(
                 "[Synapsis] Startup cleanup: removed {} stale tasks",
                 report.total_removed()
             );
         }
-    }
 
     if http_mode {
         let tls_config = match (tls_cert, tls_key) {
@@ -178,12 +176,11 @@ fn main() {
         eprintln!("╚══════════════════════════════════════════════════════════╝");
 
         // Start mDNS discovery for local network peers
-        if std::env::var("SYNAPSIS_NO_DISCOVERY").is_err() {
-            if let Ok(discovery) = synapsis::core::discovery_net::NetworkDiscovery::new() {
+        if std::env::var("SYNAPSIS_NO_DISCOVERY").is_err()
+            && let Ok(discovery) = synapsis::core::discovery_net::NetworkDiscovery::new() {
                 let _ = discovery.start_scan();
                 eprintln!("[Synapsis] mDNS discovery started");
             }
-        }
 
         let transport = synapsis::presentation::quic::QuicTransport::new(server);
         transport.start(quic_port);

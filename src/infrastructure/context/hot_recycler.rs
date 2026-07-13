@@ -107,7 +107,7 @@ impl ChunkIndex {
         for keyword in &chunk.keywords {
             self.keyword_index
                 .entry(keyword.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(chunk.id.clone());
         }
 
@@ -286,12 +286,11 @@ impl HotRecycler {
         let mut current = String::new();
 
         for line in text.lines() {
-            if current.len() + line.len() + 1 > max_size {
-                if !current.is_empty() {
+            if current.len() + line.len() + 1 > max_size
+                && !current.is_empty() {
                     chunks.push(current.clone());
                     current.clear();
                 }
-            }
             if !current.is_empty() {
                 current.push('\n');
             }

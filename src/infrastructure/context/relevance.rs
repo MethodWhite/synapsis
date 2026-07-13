@@ -98,16 +98,14 @@ impl TransitionGraph {
         if let Some(prev) = self
             .access_sequence
             .get(self.access_sequence.len().saturating_sub(2))
-        {
-            if prev != context_id {
+            && prev != context_id {
                 self.edges
                     .entry(prev.clone())
-                    .or_insert_with(HashMap::new)
+                    .or_default()
                     .entry(context_id.clone())
                     .and_modify(|c: &mut u64| *c += 1)
                     .or_insert(1);
             }
-        }
     }
 
     fn predict_next(&self, current: &ContextId) -> Vec<(ContextId, f64)> {
@@ -129,6 +127,12 @@ struct AccessPattern {
     pub contexts_requested: Vec<ContextId>,
     pub success_count: u64,
     pub failure_count: u64,
+}
+
+impl Default for RelevanceEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RelevanceEngine {
@@ -224,9 +228,9 @@ impl RelevanceEngine {
         let predicted = self.predict_next(current);
 
         // Basado en patrones aprendidos
-        let suggestions = predicted;
+        
 
-        suggestions
+        predicted
     }
 
     /// Actualiza pesos basado en feedback

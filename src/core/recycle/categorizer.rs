@@ -250,8 +250,8 @@ impl SmartCategorizer {
             self.rules.iter().chain(custom_rules.iter()).collect();
 
         for rule in all_rules {
-            if let Some(captures) = rule.pattern.captures(content) {
-                if rule.priority > best_priority {
+            if let Some(captures) = rule.pattern.captures(content)
+                && rule.priority > best_priority {
                     best_priority = rule.priority;
                     matched_rule = Some(rule.description.clone());
                     matched_category = Some(rule.category);
@@ -268,7 +268,6 @@ impl SmartCategorizer {
 
                     reasons.push(format!("Matched: {}", rule.description));
                 }
-            }
         }
 
         if let Some(meta) = metadata {

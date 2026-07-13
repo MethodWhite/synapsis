@@ -106,13 +106,12 @@ impl GlobalContext {
     /// Solo carga la variable específica solicitada
     pub fn get(&mut self, name: &str) -> Option<ContextValue> {
         let name_key = name.to_string();
-        if let Some(var) = self.variables.get_mut(&name_key) {
-            if var.cached {
+        if let Some(var) = self.variables.get_mut(&name_key)
+            && var.cached {
                 var.access_count = var.access_count.saturating_add(1);
                 var.last_access = now_timestamp();
                 return var.value().ok().cloned();
             }
-        }
         self.load_var(name)
     }
 
@@ -214,12 +213,12 @@ impl GlobalContext {
         self.index
             .affinity_groups
             .entry(var1.to_string())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(var2.to_string());
         self.index
             .affinity_groups
             .entry(var2.to_string())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(var1.to_string());
     }
 

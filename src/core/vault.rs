@@ -392,7 +392,7 @@ impl SecureVault {
         #[allow(deprecated)]
         let nonce = Nonce::<Aes256Gcm>::from_slice(&ciphertext[..12]);
         let plaintext = cipher
-            .decrypt(&nonce, &ciphertext[12..])
+            .decrypt(nonce, &ciphertext[12..])
             .map_err(|_| VaultError::DecryptionFailed)?;
         Ok(plaintext)
     }
