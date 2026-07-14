@@ -11,6 +11,7 @@ CARGO_CONFIG="$CARGO_CONFIG_DIR/config.toml"
 # MethodWhite repos that are commonly checked out as siblings
 SIBLING_REPOS=(
   "synapsis-core"
+  "rag-core"
   "prusia-vault"
   "ztf"
   "arca"
