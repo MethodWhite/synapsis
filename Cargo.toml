@@ -8,7 +8,7 @@ license = "MIT"
 
 [features]
 default = []
-pqc = ["synapsis-core/pqc"]
+pqc = ["synapsis-core/pqc", "ztf/pqc"]
 db-encryption = ["rusqlite/sqlcipher"]
 tui = ["dep:crossterm", "dep:ratatui"]
 arca = ["dep:arca"]
@@ -70,6 +70,7 @@ uuid = { version = "1.0", features = ["v4", "fast-rng"] }
 # Session ID
 hostname = "0.4"
 getrandom = "0.2"
+ztf = { git = "https://github.com/MethodWhite/ztf", branch = "main", features = ["pqc"] }
 sha1 = "0.10"
 hex = "0.4"
 

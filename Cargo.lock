@@ -6075,6 +6075,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+ "ztf",
 ]
 
 [[package]]
@@ -7305,6 +7306,23 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+
+[[package]]
+name = "ztf"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm 0.11.0",
+ "base64",
+ "getrandom 0.2.17",
+ "hex",
+ "hmac 0.13.0",
+ "prusia-vault",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2 0.11.0",
+]
 
 [[package]]
 name = "zune-core"
