@@ -4816,6 +4816,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
+name = "rag-agentic"
+version = "0.1.0"
+dependencies = [
+ "rag-core",
+]
+
+[[package]]
 name = "rag-core"
 version = "0.1.0"
 dependencies = [
@@ -6074,6 +6081,7 @@ dependencies = [
  "mdns-sd",
  "proptest",
  "quinn",
+ "rag-agentic",
  "rag-core",
  "rand 0.8.6",
  "ratatui",

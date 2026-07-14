@@ -1085,6 +1085,18 @@ impl McpServer {
                     }
                 },
                 {
+                    "name": "agentic_search",
+                    "description": "Intelligent search using Agentic RAG — plans strategy, expands queries, iterates.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string" },
+                            "max_iterations": { "type": "integer", "default": 3 }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
                     "name": "graph_search",
                     "description": "Search entities in the knowledge graph.",
                     "inputSchema": {
@@ -1229,6 +1241,7 @@ impl McpServer {
             "graph_search" => graph_tools::handle_graph_search(&*self.db, id, args),
             "entity_expand" => graph_tools::handle_entity_expand(&*self.db, id, args),
             "graph_context" => graph_tools::handle_graph_context(&*self.db, id, args),
+            "agentic_search" => graph_tools::handle_agentic_search(&*self.db, id, args),
             "premium_status" => tools::handle_premium_status(id),
             _ => Ok(json!({
                 "jsonrpc": "2.0",
@@ -1325,7 +1338,7 @@ impl McpServer {
             | "db_migration_status" | "watchdog_verify" | "watchdog_snapshot"
             | "watchdog_check_path" | "watchdog_events" => Some(Permission::Admin),
 
-            "graph_search" | "graph_context" => Some(Permission::ReadContext),
+            "graph_search" | "graph_context" | "agentic_search" => Some(Permission::ReadContext),
             "entity_expand" => Some(Permission::ReadContext),
 
             "antibrick_scan" | "antibrick_enable" | "antibrick_stats"

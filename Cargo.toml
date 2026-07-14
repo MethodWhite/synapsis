@@ -72,6 +72,7 @@ hostname = "0.4"
 getrandom = "0.2"
 ztf = { git = "https://github.com/MethodWhite/ztf", branch = "main", features = ["pqc"] }
 rag-core = { git = "https://github.com/MethodWhite/rag-core", branch = "main" }
+rag-agentic = { git = "https://github.com/MethodWhite/rag-agentic", branch = "main" }
 sha1 = "0.10"
 hex = "0.4"
 

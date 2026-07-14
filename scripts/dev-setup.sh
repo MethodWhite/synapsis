@@ -13,6 +13,7 @@ SIBLING_REPOS=(
   "synapsis-core"
   "rag-core"
   "rag-graph"
+  "rag-agentic"
   "prusia-vault"
   "ztf"
   "arca"

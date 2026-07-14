@@ -93,6 +93,74 @@ pub fn handle_entity_expand(db: &Database, id: &Value, args: &Value) -> anyhow::
     }))
 }
 
+pub fn handle_agentic_search(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let query = args["query"].as_str().unwrap_or("");
+    let max_iterations = args["max_iterations"].as_u64().unwrap_or(3) as usize;
+    if query.is_empty() {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": "Missing 'query'" }
+        }));
+    }
+
+    let conn = db.get_conn();
+    let result = rag_agentic::AgenticRag::execute(query, |q, limit| {
+        let mut results = Vec::new();
+        let sanitized = q.replace('%', r"\%").replace('_', r"\_");
+        let search = format!("%{}%", sanitized);
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT content FROM observations WHERE content LIKE ?1 AND deleted_at IS NULL LIMIT ?2"
+        ) {
+            if let Ok(rows) = stmt.query_map(rusqlite::params![search, limit as i32], |row| {
+                row.get::<_, String>(0)
+            }) {
+                for (i, content) in rows.filter_map(|r| r.ok()).enumerate() {
+                    let score = 1.0 - (i as f64 * 0.1);
+                    results.push((content, score));
+                }
+            }
+        }
+        if results.is_empty() {
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT content FROM observations ORDER BY created_at DESC LIMIT ?1"
+            ) {
+                if let Ok(rows) = stmt.query_map(rusqlite::params![limit as i32], |row| {
+                    row.get::<_, String>(0)
+                }) {
+                    for content in rows.filter_map(|r| r.ok()) {
+                        results.push((content, 0.1));
+                    }
+                }
+            }
+        }
+        results
+    }, max_iterations);
+
+    let mut text = format!(
+        "## Agentic Search\nQuery: {}\nStrategy: {:?}\nIterations: {}\nEntities: {}\n\n",
+        query, result.plan.strategy, result.iterations,
+        result.entities.iter().map(|(n, t)| format!("{} ({:?})", n, t)).collect::<Vec<_>>().join(", ")
+    );
+
+    if !result.graph_context.is_empty() {
+        text.push_str(&format!("{}\n\n", result.graph_context));
+    }
+
+    for chunk in &result.chunks {
+        let truncated = if chunk.content.len() > 200 {
+            format!("{}...", &chunk.content[..200])
+        } else {
+            chunk.content.clone()
+        };
+        text.push_str(&format!("[score={:.2}] {}\n", chunk.score, truncated));
+    }
+
+    Ok(json!({
+        "jsonrpc": "2.0", "id": id,
+        "result": { "content": [{ "type": "text", "text": text }] }
+    }))
+}
+
 pub fn handle_graph_context(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
     let query = args["query"].as_str().unwrap_or("");
     let depth = args["depth"].as_u64().unwrap_or(2) as usize;
