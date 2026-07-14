@@ -4818,8 +4818,15 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 [[package]]
 name = "rag-core"
 version = "0.1.0"
-source = "git+https://github.com/MethodWhite/rag-core?branch=main#cc316a3871f43f31f31713e3f95997f49578ac00"
 dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "rag-graph"
+version = "0.1.0"
+dependencies = [
+ "rag-core",
  "serde",
 ]
 
@@ -6067,6 +6074,7 @@ dependencies = [
  "mdns-sd",
  "proptest",
  "quinn",
+ "rag-core",
  "rand 0.8.6",
  "ratatui",
  "rcgen",
@@ -6099,6 +6107,7 @@ dependencies = [
  "hex",
  "prusia-vault",
  "rag-core",
+ "rag-graph",
  "rand 0.8.6",
  "rusqlite",
  "serde",

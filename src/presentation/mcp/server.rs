@@ -33,6 +33,7 @@ use crate::infrastructure::skills::SkillRegistry;
 
 use super::html::format_args_snapshot;
 use super::tools;
+use super::graph_tools;
 
 macro_rules! info_log {
     ($($arg:tt)*) => {{
@@ -1084,6 +1085,43 @@ impl McpServer {
                     }
                 },
                 {
+                    "name": "graph_search",
+                    "description": "Search entities in the knowledge graph.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string", "description": "Search query" },
+                            "limit": { "type": "integer", "default": 10 }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "entity_expand",
+                    "description": "Expand an entity to see its relations and connected entities.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "entity_id": { "type": "integer", "description": "Entity ID to expand" },
+                            "depth": { "type": "integer", "default": 1 }
+                        },
+                        "required": ["entity_id"]
+                    }
+                },
+                {
+                    "name": "graph_context",
+                    "description": "Get enriched context from the knowledge graph for a query.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string" },
+                            "depth": { "type": "integer", "default": 2 },
+                            "max_entities": { "type": "integer", "default": 10 }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
                     "name": "premium_status",
                     "description": "Check premium feature availability, license status, and x402 payment info.",
                     "inputSchema": { "type": "object", "properties": {} }
@@ -1188,6 +1226,9 @@ impl McpServer {
             "mcp_call" => tools::handle_mcp_call(id, args),
             "browser_navigate" => tools::handle_browser_navigate(id, args),
             "browser_snapshot" => tools::handle_browser_snapshot(id, args),
+            "graph_search" => graph_tools::handle_graph_search(&*self.db, id, args),
+            "entity_expand" => graph_tools::handle_entity_expand(&*self.db, id, args),
+            "graph_context" => graph_tools::handle_graph_context(&*self.db, id, args),
             "premium_status" => tools::handle_premium_status(id),
             _ => Ok(json!({
                 "jsonrpc": "2.0",
@@ -1283,6 +1324,9 @@ impl McpServer {
             | "db_backup" | "db_prune" | "db_vacuum" | "db_integrity"
             | "db_migration_status" | "watchdog_verify" | "watchdog_snapshot"
             | "watchdog_check_path" | "watchdog_events" => Some(Permission::Admin),
+
+            "graph_search" | "graph_context" => Some(Permission::ReadContext),
+            "entity_expand" => Some(Permission::ReadContext),
 
             "antibrick_scan" | "antibrick_enable" | "antibrick_stats"
             | "auto_discover" | "discovery_scan" | "sync_status" | "sync_memory" => Some(Permission::ConfigureSecurity),
