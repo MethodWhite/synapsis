@@ -12,6 +12,7 @@ CARGO_CONFIG="$CARGO_CONFIG_DIR/config.toml"
 SIBLING_REPOS=(
   "synapsis-core"
   "prusia-vault"
+  "ztf"
   "arca"
 )
 

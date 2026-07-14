@@ -8,7 +8,8 @@ use std::sync::Arc;
 use crate::core::agent_registry_ext::AgentRegistryExt;
 use crate::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
 use crate::core::auth::challenge::ChallengeResponse;
-use crate::core::auth::classifier::AgentClassifier;
+use crate::core::auth::classifier::{AgentClassifier, AgentMetadata, ClassificationResult, ClientType, ConnectionType};
+use crate::core::auth::permissions::Permission;
 use crate::core::auth::tpm::TpmMfaProvider;
 use crate::core::auto_integrate::AutoIntegrate;
 use crate::core::chunk_query::ChunkQueryManager;
@@ -68,8 +69,8 @@ pub struct McpServer {
     tpm: TpmMfaProvider,
     resources: ResourceManager,
     classifier: Option<AgentClassifier>,
-    #[allow(dead_code)]
     challenge: Option<ChallengeResponse>,
+    session_classifications: std::sync::RwLock<HashMap<String, ClassificationResult>>,
     sessions: std::sync::RwLock<HashMap<String, SessionInfo>>,
     messages: std::sync::Mutex<Vec<AgentMessage>>,
     next_msg_id: std::sync::atomic::AtomicI64,
@@ -130,6 +131,7 @@ impl McpServer {
             orchestrator,
             antibrick: Arc::new(AntiBrickEngine::new(AntiBrickConfig::default())),
             watchdog: Arc::new(FilesystemWatchdog::new(Default::default())),
+            session_classifications: std::sync::RwLock::new(HashMap::new()),
             sessions: std::sync::RwLock::new(HashMap::new()),
             messages: std::sync::Mutex::new(Vec::new()),
             next_msg_id: std::sync::atomic::AtomicI64::new(1),
@@ -1093,6 +1095,14 @@ impl McpServer {
     fn call_tool(&self, id: &Value, params: &Value) -> Result<Value> {
         let name = params["name"].as_str().unwrap_or("");
         let args = &params["arguments"];
+        let session_id = args["session_id"].as_str();
+
+        if !self.check_tool_permission(name, session_id) {
+            return Ok(json!({
+                "jsonrpc": "2.0", "id": id,
+                "error": { "code": -32001, "message": format!("Permission denied for tool: {}", name) }
+            }));
+        }
 
         match name {
             "mem_save" => tools::handle_mem_save(&self.db, id, args),
@@ -1201,6 +1211,84 @@ impl McpServer {
                 last_seen: now,
             },
         );
+        self.classify_session(agent_type, session_id);
+    }
+
+    fn classify_session(&self, agent_type: &str, session_id: &str) {
+        if let Some(ref classifier) = self.classifier {
+            let ip: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+            let metadata = AgentMetadata {
+                agent_type: agent_type.to_string(),
+                client_name: None,
+                client_version: None,
+                client_type: ClientType::from_agent_type(agent_type),
+                capabilities: vec![],
+                has_api_key: false,
+                has_dilithium_key: false,
+                is_dilithium_verified: false,
+                connection_ip: None,
+                hostname: None,
+                environment: std::collections::HashMap::new(),
+            };
+            let result = classifier.classify(&metadata, ConnectionType::from_ip(&ip), None, false);
+            let mut classes = self.session_classifications.write_safe();
+            classes.insert(session_id.to_string(), result);
+        }
+    }
+
+    fn check_tool_permission(&self, tool_name: &str, session_id: Option<&str>) -> bool {
+        let Some(ref classifier) = self.classifier else {
+            return true;
+        };
+        let Some(required_perm) = Self::tool_permission(tool_name) else {
+            return true;
+        };
+        let class = session_id.and_then(|sid| {
+            let classes = self.session_classifications.read_safe();
+            classes.get(sid).cloned()
+        });
+        let class = match class {
+            Some(c) => c,
+            None => return false,
+        };
+        classifier.check_permission(&class, required_perm)
+    }
+
+    fn tool_permission(tool_name: &str) -> Option<Permission> {
+        match tool_name {
+            "mem_save" | "mem_update" | "mem_delete" | "mem_judge"
+            | "mem_compare" | "mem_merge_projects" | "ghost_audit" => Some(Permission::WriteContext),
+
+            "mem_search" | "mem_context" | "mem_timeline" | "mem_stats"
+            | "mem_get_observation" | "mem_doctor" | "mem_audit_log" => Some(Permission::ReadContext),
+
+            "mem_session_start" | "mem_session_end" | "mem_session_summary"
+            | "mem_current_project" => Some(Permission::ManageSessions),
+
+            "mem_recycle_save" => Some(Permission::WriteRecycleBin),
+            "mem_recycle_search" | "mem_recycle_stats" => Some(Permission::ReadRecycleBin),
+            "mem_recycle_delete" => Some(Permission::PurgeRecycleBin),
+
+            "skill_register" | "skill_list" => Some(Permission::ManageAgents),
+            "agent_register" | "agent_unregister" | "agent_list"
+            | "agent_list_by_project" => Some(Permission::ManageAgents),
+
+            "task_create" | "task_list" => Some(Permission::ExecuteTask),
+            "worker_execute" | "worker_status" => Some(Permission::ExecuteTask),
+
+            "pqc_encrypt" | "vault_store" | "vault_session_key" | "vault_list_sessions" => Some(Permission::PqcEncrypt),
+            "pqc_decrypt" | "vault_retrieve" => Some(Permission::PqcDecrypt),
+
+            "secure_write_file" | "secure_read_file" | "secure_list_dir" | "secure_random"
+            | "db_backup" | "db_prune" | "db_vacuum" | "db_integrity"
+            | "db_migration_status" | "watchdog_verify" | "watchdog_snapshot"
+            | "watchdog_check_path" | "watchdog_events" => Some(Permission::Admin),
+
+            "antibrick_scan" | "antibrick_enable" | "antibrick_stats"
+            | "auto_discover" | "discovery_scan" | "sync_status" | "sync_memory" => Some(Permission::ConfigureSecurity),
+
+            _ => None,
+        }
     }
 
     pub fn send_message(&self, from: &str, to: &str, content: &str) -> i64 {
