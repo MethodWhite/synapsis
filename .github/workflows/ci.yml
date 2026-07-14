@@ -123,6 +123,26 @@ jobs:
       - name: Check licenses and advisories
         run: cargo deny check
 
+  sbom:
+    name: SBOM (Supply Chain)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-synapsis
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate CycloneDX SBOM
+        run: |
+          cargo install cargo-cyclonedx 2>/dev/null || true
+          cargo cyclonedx 2>/dev/null || echo "SBOM generation skipped"
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: "*.cdx.*"
+        continue-on-error: true
+
   secrets:
     name: Gitleaks (Secret Scanning)
     runs-on: ubuntu-latest
