@@ -161,6 +161,19 @@ pub fn handle_agentic_search(db: &Database, id: &Value, args: &Value) -> anyhow:
     }))
 }
 
+pub fn handle_audit_verify(db: &Database, id: &Value) -> anyhow::Result<Value> {
+    let result = db.verify_audit_chain().unwrap_or_else(|e| vec![format!("Error: {}", e)]);
+    let text = if result.len() == 1 && result[0] == "OK" {
+        "✅ Audit chain integrity verified".to_string()
+    } else {
+        format!("❌ Audit chain integrity FAILED:\n{}", result.join("\n"))
+    };
+    Ok(json!({
+        "jsonrpc": "2.0", "id": id,
+        "result": { "content": [{ "type": "text", "text": text }] }
+    }))
+}
+
 pub fn handle_graph_context(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
     let query = args["query"].as_str().unwrap_or("");
     let depth = args["depth"].as_u64().unwrap_or(2) as usize;

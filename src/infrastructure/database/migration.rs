@@ -219,6 +219,15 @@ fn migration_v6_add_x402_payments(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn migration_v7_add_audit_chain(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE audit_log ADD COLUMN prev_hash TEXT DEFAULT '0000000000000000000000000000000000000000000000000000000000000000';
+         ALTER TABLE audit_log ADD COLUMN data_hash TEXT DEFAULT '';
+         ALTER TABLE audit_log ADD COLUMN chain_hash TEXT DEFAULT '';"
+    )?;
+    Ok(())
+}
+
 /// Registry of all migrations. Add new migrations at the END.
 pub fn all_migrations() -> Vec<MigrationFn> {
     vec![
@@ -228,6 +237,7 @@ pub fn all_migrations() -> Vec<MigrationFn> {
         migration_v4_add_audit_log,
         migration_v5_add_memory_relations,
         migration_v6_add_x402_payments,
+        migration_v7_add_audit_chain,
     ]
 }
 
@@ -238,6 +248,7 @@ const MIGRATION_NAMES: &[&str] = &[
     "v4_audit_log",
     "v5_memory_relations",
     "v6_x402",
+    "v7_audit_chain",
 ];
 
 /// Run all pending migrations. Returns (current_version, migrations_applied).
@@ -282,9 +293,9 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         let (current, applied) = run_migrations(&conn).unwrap();
         assert_eq!(current, 0);
-        assert_eq!(applied, 6);
+        assert_eq!(applied, 7);
         let status = get_migration_status(&conn).unwrap();
-        assert_eq!(status["current_version"], 6);
+        assert_eq!(status["current_version"], 7);
     }
 
     #[test]

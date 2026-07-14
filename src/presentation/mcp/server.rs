@@ -1085,6 +1085,14 @@ impl McpServer {
                     }
                 },
                 {
+                    "name": "audit_verify",
+                    "description": "Verify the integrity of the audit log hash chain.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
                     "name": "agentic_search",
                     "description": "Intelligent search using Agentic RAG — plans strategy, expands queries, iterates.",
                     "inputSchema": {
@@ -1242,6 +1250,7 @@ impl McpServer {
             "entity_expand" => graph_tools::handle_entity_expand(&*self.db, id, args),
             "graph_context" => graph_tools::handle_graph_context(&*self.db, id, args),
             "agentic_search" => graph_tools::handle_agentic_search(&*self.db, id, args),
+            "audit_verify" => graph_tools::handle_audit_verify(&*self.db, id),
             "premium_status" => tools::handle_premium_status(id),
             _ => Ok(json!({
                 "jsonrpc": "2.0",
@@ -1338,6 +1347,7 @@ impl McpServer {
             | "db_migration_status" | "watchdog_verify" | "watchdog_snapshot"
             | "watchdog_check_path" | "watchdog_events" => Some(Permission::Admin),
 
+            "audit_verify" => Some(Permission::ViewAuditLog),
             "graph_search" | "graph_context" | "agentic_search" => Some(Permission::ReadContext),
             "entity_expand" => Some(Permission::ReadContext),
 

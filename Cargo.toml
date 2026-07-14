@@ -71,6 +71,7 @@ uuid = { version = "1.0", features = ["v4", "fast-rng"] }
 hostname = "0.4"
 getrandom = "0.2"
 ztf = { git = "https://github.com/MethodWhite/ztf", branch = "main", features = ["pqc"] }
+audit-chain = { git = "https://github.com/MethodWhite/audit-chain", branch = "main", features = ["pqc"] }
 rag-core = { git = "https://github.com/MethodWhite/rag-core", branch = "main" }
 rag-agentic = { git = "https://github.com/MethodWhite/rag-agentic", branch = "main" }
 sha1 = "0.10"

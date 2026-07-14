@@ -17,7 +17,9 @@ macro_rules! db_warn {
 use crate::core::uuid::Uuid;
 use crate::domain::ports::{SessionPort, StoragePort};
 use crate::domain::*;
+use audit_chain::AuditChain;
 use base64::{Engine as _, engine::general_purpose};
+use sha2::{Digest, Sha256};
 use hex;
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::PathBuf;
@@ -142,8 +144,7 @@ impl Database {
                         .unwrap_or(0) as u8;
                     let scope: u8 =
                         obs_val.get("scope").and_then(|s| s.as_u64()).unwrap_or(0) as u8;
-                    use sha2::Digest;
-                    let hash = sha2::Sha256::digest(content.as_bytes());
+                    let hash = Sha256::digest(content.as_bytes());
                     let _ = conn.execute(
                         "INSERT OR IGNORE INTO observations (sync_id, session_id, project, observation_type, title, content, scope, content_hash, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -868,11 +869,58 @@ impl Database {
     ) -> Result<()> {
         let conn = self.get_conn();
         let now = Timestamp::now().0;
+        let prev_hash: Option<String> = conn
+            .query_row("SELECT chain_hash FROM audit_log ORDER BY id DESC LIMIT 1", [], |r| r.get(0))
+            .ok();
+
+        let details = format!("action={} oid={:?} agent={:?} session={:?} old={:?} new={:?} reason={:?}",
+            action, observation_id, agent_id, session_id, old_value, new_value, reason);
+        let data_hash = hex::encode(Sha256::digest(details.as_bytes()));
+        let prev = prev_hash.unwrap_or_else(|| "0000000000000000000000000000000000000000000000000000000000000000".to_string());
+        let chain_hash = hex::encode(Sha256::digest(
+            format!("{}:{}:{}", prev, data_hash, now).as_bytes()
+        ));
+
         conn.execute(
-            "INSERT INTO audit_log (action, observation_id, agent_id, session_id, old_value, new_value, reason, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![action, observation_id, agent_id, session_id, old_value, new_value, reason, now],
+            "INSERT INTO audit_log (action, observation_id, agent_id, session_id, old_value, new_value, reason, created_at, prev_hash, data_hash, chain_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![action, observation_id, agent_id, session_id, old_value, new_value, reason, now, prev, data_hash, chain_hash],
         )?;
         Ok(())
+    }
+
+    pub fn verify_audit_chain(&self) -> Result<Vec<String>> {
+        let conn = self.get_conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, action, agent_id, old_value, new_value, reason, created_at, prev_hash, data_hash, chain_hash
+             FROM audit_log ORDER BY id ASC"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let action: String = row.get(1)?;
+            let agent: Option<String> = row.get(2)?;
+            let old_v: Option<String> = row.get(3)?;
+            let new_v: Option<String> = row.get(4)?;
+            let reason: Option<String> = row.get(5)?;
+            let details = format!("action={} oid= agent={:?} old={:?} new={:?} reason={:?}",
+                action, agent, old_v, new_v, reason);
+            Ok(audit_chain::AuditEntry {
+                id: row.get::<_, i64>(0)? as u64,
+                action,
+                agent_id: agent.unwrap_or_default(),
+                details,
+                timestamp: row.get::<_, i64>(6)?,
+                prev_hash: row.get::<_, String>(7).unwrap_or_default(),
+                data_hash: row.get::<_, String>(8).unwrap_or_default(),
+                chain_hash: row.get::<_, String>(9).unwrap_or_default(),
+                signature: None,
+            })
+        })?;
+        let entries: Vec<audit_chain::AuditEntry> = rows.filter_map(|r| r.ok()).collect();
+        let chain = AuditChain::from_entries(entries);
+        match chain.verify_chain() {
+            Ok(()) => Ok(vec!["OK".to_string()]),
+            Err(errors) => Ok(errors),
+        }
     }
 
     pub fn get_audit_trail(&self, limit: i32) -> Result<Vec<serde_json::Value>> {
