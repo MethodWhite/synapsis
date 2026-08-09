@@ -102,12 +102,13 @@ fn main() {
     // Run task cleanup on startup
     if let Ok(report) =
         synapsis::core::task_cleanup::TaskCleanupManager::new(state.db.clone()).run_cleanup()
-        && report.total_removed() > 0 {
-            eprintln!(
-                "[Synapsis] Startup cleanup: removed {} stale tasks",
-                report.total_removed()
-            );
-        }
+        && report.total_removed() > 0
+    {
+        eprintln!(
+            "[Synapsis] Startup cleanup: removed {} stale tasks",
+            report.total_removed()
+        );
+    }
 
     if http_mode {
         let tls_config = match (tls_cert, tls_key) {
@@ -177,10 +178,11 @@ fn main() {
 
         // Start mDNS discovery for local network peers
         if std::env::var("SYNAPSIS_NO_DISCOVERY").is_err()
-            && let Ok(discovery) = synapsis::core::discovery_net::NetworkDiscovery::new() {
-                let _ = discovery.start_scan();
-                eprintln!("[Synapsis] mDNS discovery started");
-            }
+            && let Ok(discovery) = synapsis::core::discovery_net::NetworkDiscovery::new()
+        {
+            let _ = discovery.start_scan();
+            eprintln!("[Synapsis] mDNS discovery started");
+        }
 
         let transport = synapsis::presentation::quic::QuicTransport::new(server);
         transport.start(quic_port);

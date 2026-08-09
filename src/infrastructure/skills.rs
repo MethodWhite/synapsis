@@ -195,16 +195,18 @@ impl SkillRegistry {
         let skills_file = self.data_dir.join("skills.json");
         if skills_file.exists()
             && let Ok(data) = std::fs::read_to_string(&skills_file)
-                && let Ok(skills) = serde_json::from_str::<HashMap<SkillId, Skill>>(&data) {
-                    *self.skills.write_safe() = skills;
-                }
+            && let Ok(skills) = serde_json::from_str::<HashMap<SkillId, Skill>>(&data)
+        {
+            *self.skills.write_safe() = skills;
+        }
 
         let activations_file = self.data_dir.join("activations.json");
         if activations_file.exists()
             && let Ok(data) = std::fs::read_to_string(&activations_file)
-                && let Ok(acts) = serde_json::from_str::<Vec<SkillActivation>>(&data) {
-                    *self.activations.write_safe() = acts;
-                }
+            && let Ok(acts) = serde_json::from_str::<Vec<SkillActivation>>(&data)
+        {
+            *self.activations.write_safe() = acts;
+        }
 
         Ok(())
     }

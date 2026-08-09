@@ -288,19 +288,22 @@ impl ContextEvaluator {
         let mut recs = Vec::new();
 
         if let Some(&s) = scores.get("completeness")
-            && s < 0.7 {
-                recs.push("💡 Considere agregar un resumen o tags al contexto".to_string());
-            }
+            && s < 0.7
+        {
+            recs.push("💡 Considere agregar un resumen o tags al contexto".to_string());
+        }
 
         if let Some(&s) = scores.get("freshness")
-            && s < 0.5 {
-                recs.push("⏰ Este contexto no ha sido actualizado recientemente".to_string());
-            }
+            && s < 0.5
+        {
+            recs.push("⏰ Este contexto no ha sido actualizado recientemente".to_string());
+        }
 
         if let Some(&s) = scores.get("actionability")
-            && s < 0.5 {
-                recs.push("🎯 Para actuar, defina variables concretas con valores".to_string());
-            }
+            && s < 0.5
+        {
+            recs.push("🎯 Para actuar, defina variables concretas con valores".to_string());
+        }
 
         recs
     }

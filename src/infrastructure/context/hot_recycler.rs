@@ -286,11 +286,10 @@ impl HotRecycler {
         let mut current = String::new();
 
         for line in text.lines() {
-            if current.len() + line.len() + 1 > max_size
-                && !current.is_empty() {
-                    chunks.push(current.clone());
-                    current.clear();
-                }
+            if current.len() + line.len() + 1 > max_size && !current.is_empty() {
+                chunks.push(current.clone());
+                current.clear();
+            }
             if !current.is_empty() {
                 current.push('\n');
             }

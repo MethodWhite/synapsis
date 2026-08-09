@@ -19,9 +19,9 @@ use crate::domain::ports::{SessionPort, StoragePort};
 use crate::domain::*;
 use audit_chain::AuditChain;
 use base64::{Engine as _, engine::general_purpose};
-use sha2::{Digest, Sha256};
 use hex;
 use rusqlite::{Connection, OptionalExtension, params};
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -870,15 +870,23 @@ impl Database {
         let conn = self.get_conn();
         let now = Timestamp::now().0;
         let prev_hash: Option<String> = conn
-            .query_row("SELECT chain_hash FROM audit_log ORDER BY id DESC LIMIT 1", [], |r| r.get(0))
+            .query_row(
+                "SELECT chain_hash FROM audit_log ORDER BY id DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
             .ok();
 
-        let details = format!("action={} oid={:?} agent={:?} session={:?} old={:?} new={:?} reason={:?}",
-            action, observation_id, agent_id, session_id, old_value, new_value, reason);
+        let details = format!(
+            "action={} oid={:?} agent={:?} session={:?} old={:?} new={:?} reason={:?}",
+            action, observation_id, agent_id, session_id, old_value, new_value, reason
+        );
         let data_hash = hex::encode(Sha256::digest(details.as_bytes()));
-        let prev = prev_hash.unwrap_or_else(|| "0000000000000000000000000000000000000000000000000000000000000000".to_string());
+        let prev = prev_hash.unwrap_or_else(|| {
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string()
+        });
         let chain_hash = hex::encode(Sha256::digest(
-            format!("{}:{}:{}", prev, data_hash, now).as_bytes()
+            format!("{}:{}:{}", prev, data_hash, now).as_bytes(),
         ));
 
         conn.execute(
@@ -901,8 +909,10 @@ impl Database {
             let old_v: Option<String> = row.get(3)?;
             let new_v: Option<String> = row.get(4)?;
             let reason: Option<String> = row.get(5)?;
-            let details = format!("action={} oid= agent={:?} old={:?} new={:?} reason={:?}",
-                action, agent, old_v, new_v, reason);
+            let details = format!(
+                "action={} oid= agent={:?} old={:?} new={:?} reason={:?}",
+                action, agent, old_v, new_v, reason
+            );
             Ok(audit_chain::AuditEntry {
                 id: row.get::<_, i64>(0)? as u64,
                 action,

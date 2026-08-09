@@ -251,23 +251,24 @@ impl SmartCategorizer {
 
         for rule in all_rules {
             if let Some(captures) = rule.pattern.captures(content)
-                && rule.priority > best_priority {
-                    best_priority = rule.priority;
-                    matched_rule = Some(rule.description.clone());
-                    matched_category = Some(rule.category);
+                && rule.priority > best_priority
+            {
+                best_priority = rule.priority;
+                matched_rule = Some(rule.description.clone());
+                matched_category = Some(rule.category);
 
-                    for name in rule.pattern.capture_names() {
-                        if let Some(m) = name.and_then(|n| captures.name(n)) {
-                            keywords.push(m.as_str().to_lowercase());
-                        }
+                for name in rule.pattern.capture_names() {
+                    if let Some(m) = name.and_then(|n| captures.name(n)) {
+                        keywords.push(m.as_str().to_lowercase());
                     }
-
-                    if keywords.is_empty() {
-                        keywords.push(rule.description.to_lowercase());
-                    }
-
-                    reasons.push(format!("Matched: {}", rule.description));
                 }
+
+                if keywords.is_empty() {
+                    keywords.push(rule.description.to_lowercase());
+                }
+
+                reasons.push(format!("Matched: {}", rule.description));
+            }
         }
 
         if let Some(meta) = metadata {

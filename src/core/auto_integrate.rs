@@ -115,9 +115,10 @@ impl AutoIntegrate {
                 let result = Self::scan_and_integrate(&discovery, &registry, &config);
 
                 if let Some(event) = result.new_tools.first()
-                    && config.emit_events {
-                        println!("[AutoIntegrate] New tool discovered: {}", event.name);
-                    }
+                    && config.emit_events
+                {
+                    println!("[AutoIntegrate] New tool discovered: {}", event.name);
+                }
 
                 thread::sleep(Duration::from_secs(config.scan_interval_secs));
             }

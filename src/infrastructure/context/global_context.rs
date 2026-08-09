@@ -107,11 +107,12 @@ impl GlobalContext {
     pub fn get(&mut self, name: &str) -> Option<ContextValue> {
         let name_key = name.to_string();
         if let Some(var) = self.variables.get_mut(&name_key)
-            && var.cached {
-                var.access_count = var.access_count.saturating_add(1);
-                var.last_access = now_timestamp();
-                return var.value().ok().cloned();
-            }
+            && var.cached
+        {
+            var.access_count = var.access_count.saturating_add(1);
+            var.last_access = now_timestamp();
+            return var.value().ok().cloned();
+        }
         self.load_var(name)
     }
 

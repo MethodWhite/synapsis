@@ -183,9 +183,10 @@ impl ContextRegistry {
         };
 
         if level >= AccessLevel::Partial
-            && let Some(context) = self.get(id) {
-                result.insert(id.clone(), PartialContext::from_full(context, level));
-            }
+            && let Some(context) = self.get(id)
+        {
+            result.insert(id.clone(), PartialContext::from_full(context, level));
+        }
 
         for (conn_id, conn_level) in &connections {
             if let Some(connected) = self.get(conn_id) {
@@ -206,9 +207,10 @@ impl ContextRegistry {
 
         // Mover a hot si está en warm
         if self.warm_contexts.contains_key(id)
-            && let Some(ctx) = self.warm_contexts.remove(id) {
-                self.hot_contexts.insert(id.clone(), ctx);
-            }
+            && let Some(ctx) = self.warm_contexts.remove(id)
+        {
+            self.hot_contexts.insert(id.clone(), ctx);
+        }
 
         // Prefetch contextos relacionados
         if self.config.prefetch_enabled {

@@ -98,14 +98,15 @@ impl TransitionGraph {
         if let Some(prev) = self
             .access_sequence
             .get(self.access_sequence.len().saturating_sub(2))
-            && prev != context_id {
-                self.edges
-                    .entry(prev.clone())
-                    .or_default()
-                    .entry(context_id.clone())
-                    .and_modify(|c: &mut u64| *c += 1)
-                    .or_insert(1);
-            }
+            && prev != context_id
+        {
+            self.edges
+                .entry(prev.clone())
+                .or_default()
+                .entry(context_id.clone())
+                .and_modify(|c: &mut u64| *c += 1)
+                .or_insert(1);
+        }
     }
 
     fn predict_next(&self, current: &ContextId) -> Vec<(ContextId, f64)> {
@@ -228,7 +229,6 @@ impl RelevanceEngine {
         let predicted = self.predict_next(current);
 
         // Basado en patrones aprendidos
-        
 
         predicted
     }

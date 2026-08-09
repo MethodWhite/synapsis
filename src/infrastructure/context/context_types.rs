@@ -390,9 +390,10 @@ impl ContextRegistry {
             ctx.touch();
         }
         if self.warm_contexts.contains_key(id)
-            && let Some(ctx) = self.warm_contexts.remove(id) {
-                self.hot_contexts.insert(id.clone(), ctx);
-            }
+            && let Some(ctx) = self.warm_contexts.remove(id)
+        {
+            self.hot_contexts.insert(id.clone(), ctx);
+        }
     }
 
     pub fn set_global(&mut self, name: &str, value: ContextValue) {

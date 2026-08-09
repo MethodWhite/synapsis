@@ -123,7 +123,7 @@ fn send_initialize(stdin: &mut ChildStdinGuard, reader: &mut BufReader<ChildStdo
         "params": {"protocolVersion": "2024-11-05", "clientInfo": {"name": "cross-test", "version": "1.0.0"}},
         "id": 1
     });
-    writeln!(stdin, "{}", req.to_string()).expect("write init");
+    writeln!(stdin, "{}", req).expect("write init");
     read_json_response(reader)
 }
 
@@ -138,15 +138,15 @@ fn send_tool_call(
         "params": {"name": tool, "arguments": args},
         "id": 1
     });
-    writeln!(stdin, "{}", req.to_string()).expect("write tool call");
+    writeln!(stdin, "{}", req).expect("write tool call");
     read_json_response(reader)
 }
 
 fn get_text(resp: &Value) -> String {
-    if let Some(arr) = resp["result"]["content"].as_array() {
-        if let Some(first) = arr.first() {
-            return first["text"].as_str().unwrap_or("").to_string();
-        }
+    if let Some(arr) = resp["result"]["content"].as_array()
+        && let Some(first) = arr.first()
+    {
+        return first["text"].as_str().unwrap_or("").to_string();
     }
     if resp.get("error").is_some() {
         return format!(
@@ -228,16 +228,13 @@ fn cleanup_old_dirs() {
     if let Ok(entries) = std::fs::read_dir("/tmp") {
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with("synapsis-test-cross-inproc-") {
-                if let Ok(meta) = e.metadata() {
-                    if let Ok(modified) = meta.modified() {
-                        if let Ok(elapsed) = SystemTime::now().duration_since(modified) {
-                            if elapsed > Duration::from_secs(300) {
-                                let _ = std::fs::remove_dir_all(e.path());
-                            }
-                        }
-                    }
-                }
+            if name.starts_with("synapsis-test-cross-inproc-")
+                && let Ok(meta) = e.metadata()
+                && let Ok(modified) = meta.modified()
+                && let Ok(elapsed) = SystemTime::now().duration_since(modified)
+                && elapsed > Duration::from_secs(300)
+            {
+                let _ = std::fs::remove_dir_all(e.path());
             }
         }
     }

@@ -11,9 +11,10 @@ use crate::core::x402;
 pub fn check_premium_access(feature: &str) -> Result<(), PremiumPaymentRequired> {
     // 1. Check license -- free if licensed
     if let Some(lic) = license::load_license()
-        && lic.data.features.iter().any(|f| f == feature) {
-            return Ok(());
-        }
+        && lic.data.features.iter().any(|f| f == feature)
+    {
+        return Ok(());
+    }
 
     // 2. Check if feature is premium
     let premium_features = x402::all_premium_features();

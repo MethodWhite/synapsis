@@ -284,30 +284,6 @@ pub fn run_migrations(conn: &Connection) -> Result<(u32, u32)> {
     Ok((current, applied))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_run_migrations_fresh_db() {
-        let conn = Connection::open_in_memory().unwrap();
-        let (current, applied) = run_migrations(&conn).unwrap();
-        assert_eq!(current, 0);
-        assert_eq!(applied, 7);
-        let status = get_migration_status(&conn).unwrap();
-        assert_eq!(status["current_version"], 7);
-    }
-
-    #[test]
-    fn test_run_migrations_idempotent() {
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
-        let (current, applied) = run_migrations(&conn).unwrap();
-        assert!(current >= 6);
-        assert_eq!(applied, 0);
-    }
-}
-
 /// Get the current migration status as JSON.
 pub fn get_migration_status(conn: &Connection) -> Result<serde_json::Value> {
     let current: u32 = conn
@@ -342,4 +318,28 @@ pub fn get_migration_status(conn: &Connection) -> Result<serde_json::Value> {
         "total_migrations": total,
         "applied_migrations": applied,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_run_migrations_fresh_db() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (current, applied) = run_migrations(&conn).unwrap();
+        assert_eq!(current, 0);
+        assert_eq!(applied, 7);
+        let status = get_migration_status(&conn).unwrap();
+        assert_eq!(status["current_version"], 7);
+    }
+
+    #[test]
+    fn test_run_migrations_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        let (current, applied) = run_migrations(&conn).unwrap();
+        assert!(current >= 6);
+        assert_eq!(applied, 0);
+    }
 }

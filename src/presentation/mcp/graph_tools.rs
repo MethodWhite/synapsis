@@ -1,16 +1,19 @@
-use serde_json::{Value, json};
 use crate::infrastructure::database::Database;
+use serde_json::{Value, json};
 
 fn search_entities(db: &Database, query: &str, limit: i32) -> Vec<(i64, String, String, i64)> {
     let conn = db.get_conn();
-    let sql = "SELECT id, name, entity_type, mention_count FROM entities WHERE name LIKE ?1 LIMIT ?2";
+    let sql =
+        "SELECT id, name, entity_type, mention_count FROM entities WHERE name LIKE ?1 LIMIT ?2";
     if let Ok(mut stmt) = conn.prepare(sql) {
         let search = format!("%{}%", query);
         if let Ok(rows) = stmt.query_map(rusqlite::params![search, limit], |row| {
-            Ok((row.get::<_, i64>(0).unwrap_or(0),
+            Ok((
+                row.get::<_, i64>(0).unwrap_or(0),
                 row.get::<_, String>(1).unwrap_or_default(),
                 row.get::<_, String>(2).unwrap_or_default(),
-                row.get::<_, i64>(3).unwrap_or(0)))
+                row.get::<_, i64>(3).unwrap_or(0),
+            ))
         }) {
             return rows.filter_map(|r| r.ok()).collect();
         }
@@ -18,22 +21,28 @@ fn search_entities(db: &Database, query: &str, limit: i32) -> Vec<(i64, String, 
     vec![]
 }
 
-fn get_relations(db: &Database, entity_id: i64, limit: i32) -> Vec<(String, f64, i64, String, String)> {
+fn get_relations(
+    db: &Database,
+    entity_id: i64,
+    limit: i32,
+) -> Vec<(String, f64, i64, String, String)> {
     let conn = db.get_conn();
     let sql = "SELECT r.relation_type, r.weight, e2.id, e2.name, e2.entity_type
                FROM relations r
                JOIN entities e2 ON (CASE WHEN r.source_id = ?1 THEN r.target_id ELSE r.source_id END) = e2.id
                WHERE r.source_id = ?1 OR r.target_id = ?1 LIMIT ?2";
-    if let Ok(mut stmt) = conn.prepare(sql) {
-        if let Ok(rows) = stmt.query_map(rusqlite::params![entity_id, entity_id, limit], |row| {
-            Ok((row.get::<_, String>(0).unwrap_or_default(),
+    if let Ok(mut stmt) = conn.prepare(sql)
+        && let Ok(rows) = stmt.query_map(rusqlite::params![entity_id, entity_id, limit], |row| {
+            Ok((
+                row.get::<_, String>(0).unwrap_or_default(),
                 row.get::<_, f64>(1).unwrap_or(0.0),
                 row.get::<_, i64>(2).unwrap_or(0),
                 row.get::<_, String>(3).unwrap_or_default(),
-                row.get::<_, String>(4).unwrap_or_default()))
-        }) {
-            return rows.filter_map(|r| r.ok()).collect();
-        }
+                row.get::<_, String>(4).unwrap_or_default(),
+            ))
+        })
+    {
+        return rows.filter_map(|r| r.ok()).collect();
     }
     vec![]
 }
@@ -49,9 +58,14 @@ pub fn handle_graph_search(db: &Database, id: &Value, args: &Value) -> anyhow::R
     let limit = args["limit"].as_u64().unwrap_or(10) as i32;
 
     let entities = search_entities(db, query, limit);
-    let results: Vec<Value> = entities.into_iter().map(|(id, name, etype, count)| json!({
-        "id": id, "name": name, "type": etype, "mention_count": count
-    })).collect();
+    let results: Vec<Value> = entities
+        .into_iter()
+        .map(|(id, name, etype, count)| {
+            json!({
+                "id": id, "name": name, "type": etype, "mention_count": count
+            })
+        })
+        .collect();
 
     Ok(json!({
         "jsonrpc": "2.0", "id": id,
@@ -78,10 +92,15 @@ pub fn handle_entity_expand(db: &Database, id: &Value, args: &Value) -> anyhow::
     }
 
     let related = get_relations(db, entity_id, 50);
-    let rel_json: Vec<Value> = related.into_iter().map(|(rtype, weight, nid, nname, ntype)| json!({
-        "relation_type": rtype, "weight": weight,
-        "entity_id": nid, "entity_name": nname, "entity_type": ntype
-    })).collect();
+    let rel_json: Vec<Value> = related
+        .into_iter()
+        .map(|(rtype, weight, nid, nname, ntype)| {
+            json!({
+                "relation_type": rtype, "weight": weight,
+                "entity_id": nid, "entity_name": nname, "entity_type": ntype
+            })
+        })
+        .collect();
 
     Ok(json!({
         "jsonrpc": "2.0", "id": id,
@@ -104,14 +123,16 @@ pub fn handle_agentic_search(db: &Database, id: &Value, args: &Value) -> anyhow:
     }
 
     let conn = db.get_conn();
-    let result = rag_agentic::AgenticRag::execute(query, |q, limit| {
-        let mut results = Vec::new();
-        let sanitized = q.replace('%', r"\%").replace('_', r"\_");
-        let search = format!("%{}%", sanitized);
-        if let Ok(mut stmt) = conn.prepare(
+    let result = rag_agentic::AgenticRag::execute(
+        query,
+        |q, limit| {
+            let mut results = Vec::new();
+            let sanitized = q.replace('%', r"\%").replace('_', r"\_");
+            let search = format!("%{}%", sanitized);
+            if let Ok(mut stmt) = conn.prepare(
             "SELECT content FROM observations WHERE content LIKE ?1 AND deleted_at IS NULL LIMIT ?2"
-        ) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params![search, limit as i32], |row| {
+        )
+            && let Ok(rows) = stmt.query_map(rusqlite::params![search, limit as i32], |row| {
                 row.get::<_, String>(0)
             }) {
                 for (i, content) in rows.filter_map(|r| r.ok()).enumerate() {
@@ -119,27 +140,33 @@ pub fn handle_agentic_search(db: &Database, id: &Value, args: &Value) -> anyhow:
                     results.push((content, score));
                 }
             }
-        }
-        if results.is_empty() {
-            if let Ok(mut stmt) = conn.prepare(
-                "SELECT content FROM observations ORDER BY created_at DESC LIMIT ?1"
-            ) {
-                if let Ok(rows) = stmt.query_map(rusqlite::params![limit as i32], |row| {
+            if results.is_empty()
+                && let Ok(mut stmt) = conn
+                    .prepare("SELECT content FROM observations ORDER BY created_at DESC LIMIT ?1")
+                && let Ok(rows) = stmt.query_map(rusqlite::params![limit as i32], |row| {
                     row.get::<_, String>(0)
-                }) {
-                    for content in rows.filter_map(|r| r.ok()) {
-                        results.push((content, 0.1));
-                    }
+                })
+            {
+                for content in rows.filter_map(|r| r.ok()) {
+                    results.push((content, 0.1));
                 }
             }
-        }
-        results
-    }, max_iterations);
+            results
+        },
+        max_iterations,
+    );
 
     let mut text = format!(
         "## Agentic Search\nQuery: {}\nStrategy: {:?}\nIterations: {}\nEntities: {}\n\n",
-        query, result.plan.strategy, result.iterations,
-        result.entities.iter().map(|(n, t)| format!("{} ({:?})", n, t)).collect::<Vec<_>>().join(", ")
+        query,
+        result.plan.strategy,
+        result.iterations,
+        result
+            .entities
+            .iter()
+            .map(|(n, t)| format!("{} ({:?})", n, t))
+            .collect::<Vec<_>>()
+            .join(", ")
     );
 
     if !result.graph_context.is_empty() {
@@ -162,7 +189,9 @@ pub fn handle_agentic_search(db: &Database, id: &Value, args: &Value) -> anyhow:
 }
 
 pub fn handle_audit_verify(db: &Database, id: &Value) -> anyhow::Result<Value> {
-    let result = db.verify_audit_chain().unwrap_or_else(|e| vec![format!("Error: {}", e)]);
+    let result = db
+        .verify_audit_chain()
+        .unwrap_or_else(|e| vec![format!("Error: {}", e)]);
     let text = if result.len() == 1 && result[0] == "OK" {
         "✅ Audit chain integrity verified".to_string()
     } else {

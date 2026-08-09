@@ -127,6 +127,32 @@ impl X402Engine {
 
     /// Verify a USDC transfer on-chain
     pub async fn verify_payment(&self, tx_hash: &str, feature: &str) -> Result<bool, String> {
+        if let Ok(service_url) = std::env::var("SYNAPSIS_X402_SERVICE_URL") {
+            let license_key = std::env::var("SYNAPSIS_X402_LICENSE_KEY")
+                .map_err(|_| "SYNAPSIS_X402_LICENSE_KEY is required".to_string())?;
+            let endpoint = format!("{}/api/v1/x402/spend", service_url.trim_end_matches('/'));
+            let response = reqwest::Client::new()
+                .post(endpoint)
+                .json(&serde_json::json!({
+                    "license_key": license_key,
+                    "feature": feature,
+                }))
+                .send()
+                .await
+                .map_err(|e| format!("x402 service request failed: {e}"))?;
+            let status = response.status();
+            let body = response
+                .json::<serde_json::Value>()
+                .await
+                .map_err(|e| format!("invalid x402 service response: {e}"))?;
+            if !status.is_success() {
+                return Err(body["detail"]
+                    .as_str()
+                    .unwrap_or("x402 service rejected consumption")
+                    .to_string());
+            }
+            return Ok(body["success"].as_bool().unwrap_or(false));
+        }
         // Check cache first
         {
             let cached = self.verified_payments.lock().unwrap();
@@ -161,25 +187,11 @@ impl X402Engine {
             .map_err(|e| format!("RPC response: {}", e))?;
 
         // Check if transaction was to our wallet with USDC transfer
-        // For now, accept any confirmed tx (full verification later)
-        if let Some(result) = resp.get("result")
-            && !result.is_null() {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as i64;
-                let record = PaymentRecord {
-                    tx_hash: tx_hash.to_string(),
-                    feature: feature.to_string(),
-                    amount_usdc: 0.0, // Parse from logs in production
-                    payer_wallet: "pending".into(),
-                    verified_at: now,
-                    expires_at: now + 86400, // 24h
-                };
-                self.verified_payments.lock().unwrap().push(record);
-                return Ok(true);
-            }
-        Ok(false)
+        // Fail closed until receipt, chain, token, transfer, amount, recipient,
+        // confirmation, and replay checks are all performed by the settlement
+        // authority.
+        let _ = (resp, feature);
+        Err("payment verification is unavailable until full receipt validation is enabled".into())
     }
 
     /// Check if a feature is already paid for

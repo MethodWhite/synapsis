@@ -559,39 +559,43 @@ impl TaskQueue {
 
     pub fn load(&self) -> std::io::Result<()> {
         if let Ok(file) = std::fs::File::open(self.data_dir.join("pending.json"))
-            && let Ok(pending) = serde_json::from_reader::<_, Vec<Task>>(file) {
-                let mut queue = self.pending_queue.write_safe();
-                let mut order = 0u64;
-                for task in pending {
-                    queue.push(PriorityTask::new(task, order));
-                    order += 1;
-                }
-                self.task_order.store(order, AtomicOrdering::Relaxed);
+            && let Ok(pending) = serde_json::from_reader::<_, Vec<Task>>(file)
+        {
+            let mut queue = self.pending_queue.write_safe();
+            let mut order = 0u64;
+            for task in pending {
+                queue.push(PriorityTask::new(task, order));
+                order += 1;
             }
+            self.task_order.store(order, AtomicOrdering::Relaxed);
+        }
 
         if let Ok(file) = std::fs::File::open(self.data_dir.join("assigned.json"))
-            && let Ok(assigned) = serde_json::from_reader::<_, Vec<Task>>(file) {
-                let mut a = self.assigned_tasks.write_safe();
-                for task in assigned {
-                    a.insert(task.id.clone(), task);
-                }
+            && let Ok(assigned) = serde_json::from_reader::<_, Vec<Task>>(file)
+        {
+            let mut a = self.assigned_tasks.write_safe();
+            for task in assigned {
+                a.insert(task.id.clone(), task);
             }
+        }
 
         if let Ok(file) = std::fs::File::open(self.data_dir.join("completed.json"))
-            && let Ok(completed) = serde_json::from_reader::<_, Vec<Task>>(file) {
-                let mut c = self.completed_tasks.write_safe();
-                for task in completed {
-                    c.insert(task.id.clone(), task);
-                }
+            && let Ok(completed) = serde_json::from_reader::<_, Vec<Task>>(file)
+        {
+            let mut c = self.completed_tasks.write_safe();
+            for task in completed {
+                c.insert(task.id.clone(), task);
             }
+        }
 
         if let Ok(file) = std::fs::File::open(self.data_dir.join("agents.json"))
-            && let Ok(agents) = serde_json::from_reader::<_, Vec<AgentInfo>>(file) {
-                let mut a = self.agents.write_safe();
-                for agent in agents {
-                    a.insert(agent.id.clone(), agent);
-                }
+            && let Ok(agents) = serde_json::from_reader::<_, Vec<AgentInfo>>(file)
+        {
+            let mut a = self.agents.write_safe();
+            for agent in agents {
+                a.insert(agent.id.clone(), agent);
             }
+        }
 
         Ok(())
     }

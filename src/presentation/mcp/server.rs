@@ -8,7 +8,9 @@ use std::sync::Arc;
 use crate::core::agent_registry_ext::AgentRegistryExt;
 use crate::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
 use crate::core::auth::challenge::ChallengeResponse;
-use crate::core::auth::classifier::{AgentClassifier, AgentMetadata, ClassificationResult, ClientType, ConnectionType};
+use crate::core::auth::classifier::{
+    AgentClassifier, AgentMetadata, ClassificationResult, ClientType, ConnectionType,
+};
 use crate::core::auth::permissions::Permission;
 use crate::core::auth::tpm::TpmMfaProvider;
 use crate::core::auto_integrate::AutoIntegrate;
@@ -31,9 +33,9 @@ use crate::infrastructure::agents::AgentRegistry;
 use crate::infrastructure::database::Database;
 use crate::infrastructure::skills::SkillRegistry;
 
+use super::graph_tools;
 use super::html::format_args_snapshot;
 use super::tools;
-use super::graph_tools;
 
 macro_rules! info_log {
     ($($arg:tt)*) => {{
@@ -70,6 +72,7 @@ pub struct McpServer {
     tpm: TpmMfaProvider,
     resources: ResourceManager,
     classifier: Option<AgentClassifier>,
+    #[allow(dead_code)]
     challenge: Option<ChallengeResponse>,
     session_classifications: std::sync::RwLock<HashMap<String, ClassificationResult>>,
     sessions: std::sync::RwLock<HashMap<String, SessionInfo>>,
@@ -1246,11 +1249,11 @@ impl McpServer {
             "mcp_call" => tools::handle_mcp_call(id, args),
             "browser_navigate" => tools::handle_browser_navigate(id, args),
             "browser_snapshot" => tools::handle_browser_snapshot(id, args),
-            "graph_search" => graph_tools::handle_graph_search(&*self.db, id, args),
-            "entity_expand" => graph_tools::handle_entity_expand(&*self.db, id, args),
-            "graph_context" => graph_tools::handle_graph_context(&*self.db, id, args),
-            "agentic_search" => graph_tools::handle_agentic_search(&*self.db, id, args),
-            "audit_verify" => graph_tools::handle_audit_verify(&*self.db, id),
+            "graph_search" => graph_tools::handle_graph_search(&self.db, id, args),
+            "entity_expand" => graph_tools::handle_entity_expand(&self.db, id, args),
+            "graph_context" => graph_tools::handle_graph_context(&self.db, id, args),
+            "agentic_search" => graph_tools::handle_agentic_search(&self.db, id, args),
+            "audit_verify" => graph_tools::handle_audit_verify(&self.db, id),
             "premium_status" => tools::handle_premium_status(id),
             _ => Ok(json!({
                 "jsonrpc": "2.0",
@@ -1319,13 +1322,20 @@ impl McpServer {
 
     fn tool_permission(tool_name: &str) -> Option<Permission> {
         match tool_name {
-            "mem_save" | "mem_update" | "mem_delete" | "mem_judge"
-            | "mem_compare" | "mem_merge_projects" | "ghost_audit" => Some(Permission::WriteContext),
+            "mem_save" | "mem_update" | "mem_delete" | "mem_judge" | "mem_compare"
+            | "mem_merge_projects" | "ghost_audit" => Some(Permission::WriteContext),
 
-            "mem_search" | "mem_context" | "mem_timeline" | "mem_stats"
-            | "mem_get_observation" | "mem_doctor" | "mem_audit_log" => Some(Permission::ReadContext),
+            "mem_search"
+            | "mem_context"
+            | "mem_timeline"
+            | "mem_stats"
+            | "mem_get_observation"
+            | "mem_doctor"
+            | "mem_audit_log" => Some(Permission::ReadContext),
 
-            "mem_session_start" | "mem_session_end" | "mem_session_summary"
+            "mem_session_start"
+            | "mem_session_end"
+            | "mem_session_summary"
             | "mem_current_project" => Some(Permission::ManageSessions),
 
             "mem_recycle_save" => Some(Permission::WriteRecycleBin),
@@ -1333,26 +1343,40 @@ impl McpServer {
             "mem_recycle_delete" => Some(Permission::PurgeRecycleBin),
 
             "skill_register" | "skill_list" => Some(Permission::ManageAgents),
-            "agent_register" | "agent_unregister" | "agent_list"
-            | "agent_list_by_project" => Some(Permission::ManageAgents),
+            "agent_register" | "agent_unregister" | "agent_list" | "agent_list_by_project" => {
+                Some(Permission::ManageAgents)
+            }
 
             "task_create" | "task_list" => Some(Permission::ExecuteTask),
             "worker_execute" | "worker_status" => Some(Permission::ExecuteTask),
 
-            "pqc_encrypt" | "vault_store" | "vault_session_key" | "vault_list_sessions" => Some(Permission::PqcEncrypt),
+            "pqc_encrypt" | "vault_store" | "vault_session_key" | "vault_list_sessions" => {
+                Some(Permission::PqcEncrypt)
+            }
             "pqc_decrypt" | "vault_retrieve" => Some(Permission::PqcDecrypt),
 
-            "secure_write_file" | "secure_read_file" | "secure_list_dir" | "secure_random"
-            | "db_backup" | "db_prune" | "db_vacuum" | "db_integrity"
-            | "db_migration_status" | "watchdog_verify" | "watchdog_snapshot"
-            | "watchdog_check_path" | "watchdog_events" => Some(Permission::Admin),
+            "secure_write_file"
+            | "secure_read_file"
+            | "secure_list_dir"
+            | "secure_random"
+            | "db_backup"
+            | "db_prune"
+            | "db_vacuum"
+            | "db_integrity"
+            | "db_migration_status"
+            | "watchdog_verify"
+            | "watchdog_snapshot"
+            | "watchdog_check_path"
+            | "watchdog_events" => Some(Permission::Admin),
 
             "audit_verify" => Some(Permission::ViewAuditLog),
             "graph_search" | "graph_context" | "agentic_search" => Some(Permission::ReadContext),
             "entity_expand" => Some(Permission::ReadContext),
 
-            "antibrick_scan" | "antibrick_enable" | "antibrick_stats"
-            | "auto_discover" | "discovery_scan" | "sync_status" | "sync_memory" => Some(Permission::ConfigureSecurity),
+            "antibrick_scan" | "antibrick_enable" | "antibrick_stats" | "auto_discover"
+            | "discovery_scan" | "sync_status" | "sync_memory" => {
+                Some(Permission::ConfigureSecurity)
+            }
 
             _ => None,
         }

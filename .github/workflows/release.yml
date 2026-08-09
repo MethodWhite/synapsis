@@ -7,6 +7,10 @@ permissions:
   contents: write
 
 env:
+  PRIVATE_REPOS_TOKEN: ${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}
+  GIT_CONFIG_COUNT: 1
+  GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+  GIT_CONFIG_VALUE_0: https://github.com/
   CARGO_TERM_COLOR: always
 
 jobs:

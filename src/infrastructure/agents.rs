@@ -336,16 +336,18 @@ impl AgentRegistry {
         let agents_file = self.data_dir.join("agents.json");
         if agents_file.exists()
             && let Ok(data) = std::fs::read_to_string(&agents_file)
-                && let Ok(agents) = serde_json::from_str::<HashMap<AgentId, Agent>>(&data) {
-                    *self.agents.write_safe() = agents;
-                }
+            && let Ok(agents) = serde_json::from_str::<HashMap<AgentId, Agent>>(&data)
+        {
+            *self.agents.write_safe() = agents;
+        }
 
         let tasks_file = self.data_dir.join("tasks.json");
         if tasks_file.exists()
             && let Ok(data) = std::fs::read_to_string(&tasks_file)
-                && let Ok(tasks) = serde_json::from_str::<Vec<Task>>(&data) {
-                    *self.tasks.write_safe() = tasks;
-                }
+            && let Ok(tasks) = serde_json::from_str::<Vec<Task>>(&data)
+        {
+            *self.tasks.write_safe() = tasks;
+        }
 
         Ok(())
     }

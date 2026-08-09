@@ -160,129 +160,120 @@ mod tui_impl {
             loop {
                 terminal.draw(|f| self.render(f))?;
 
-                if let event::Event::Key(key) = event::read()? {
-                    if key.kind == KeyEventKind::Press {
-                        match self.state.mode {
-                            AppMode::Timeline => match key.code {
-                                KeyCode::Char('q') => self.state.mode = AppMode::ConfirmQuit,
-                                KeyCode::Char('a') => {
-                                    self.state.mode = AppMode::AddObservation;
-                                    self.state.input_buffer.clear();
+                if let event::Event::Key(key) = event::read()?
+                    && key.kind == KeyEventKind::Press
+                {
+                    match self.state.mode {
+                        AppMode::Timeline => match key.code {
+                            KeyCode::Char('q') => self.state.mode = AppMode::ConfirmQuit,
+                            KeyCode::Char('a') => {
+                                self.state.mode = AppMode::AddObservation;
+                                self.state.input_buffer.clear();
+                            }
+                            KeyCode::Char('s') => {
+                                self.state.mode = AppMode::Search;
+                                self.state.input_buffer.clear();
+                                self.state.search_query.clear();
+                                self.state.search_results.clear();
+                            }
+                            KeyCode::Char('l') => {
+                                self.state.mode = AppMode::Sessions;
+                                if let Ok(sessions) = self.sessions.list_sessions() {
+                                    self.state.sessions = sessions;
                                 }
-                                KeyCode::Char('s') => {
-                                    self.state.mode = AppMode::Search;
-                                    self.state.input_buffer.clear();
-                                    self.state.search_query.clear();
-                                    self.state.search_results.clear();
+                            }
+                            KeyCode::Char('t') => {
+                                self.refresh_data().ok();
+                            }
+                            KeyCode::Char('S') => {
+                                self.state.mode = AppMode::Stats;
+                                self.calculate_stats().ok();
+                            }
+                            KeyCode::Up | KeyCode::Char('k') if self.state.selected_index > 0 => {
+                                self.state.selected_index -= 1;
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                let max = self.state.observations.len().saturating_sub(1);
+                                if self.state.selected_index < max {
+                                    self.state.selected_index += 1;
                                 }
-                                KeyCode::Char('l') => {
-                                    self.state.mode = AppMode::Sessions;
-                                    if let Ok(sessions) = self.sessions.list_sessions() {
-                                        self.state.sessions = sessions;
-                                    }
+                            }
+                            _ => {}
+                        },
+                        AppMode::AddObservation => match key.code {
+                            KeyCode::Enter if !self.state.input_buffer.is_empty() => {
+                                self.state.message = Some(
+                                    "Create session first with 'l' to add observations".to_string(),
+                                );
+                                self.state.input_buffer.clear();
+                                self.state.mode = AppMode::Timeline;
+                            }
+                            KeyCode::Char(c) => {
+                                self.state.input_buffer.push(c);
+                            }
+                            KeyCode::Backspace => {
+                                self.state.input_buffer.pop();
+                            }
+                            KeyCode::Esc => {
+                                self.state.input_buffer.clear();
+                                self.state.mode = AppMode::Timeline;
+                            }
+                            _ => {}
+                        },
+                        AppMode::Search => match key.code {
+                            KeyCode::Enter if !self.state.input_buffer.is_empty() => {
+                                self.state.search_query = self.state.input_buffer.clone();
+                                self.perform_search().ok();
+                            }
+                            KeyCode::Char(c) => {
+                                self.state.input_buffer.push(c);
+                            }
+                            KeyCode::Backspace => {
+                                self.state.input_buffer.pop();
+                            }
+                            KeyCode::Esc => {
+                                self.state.input_buffer.clear();
+                                self.state.search_query.clear();
+                                self.state.search_results.clear();
+                                self.state.mode = AppMode::Timeline;
+                            }
+                            _ => {}
+                        },
+                        AppMode::Sessions => match key.code {
+                            KeyCode::Char('q') | KeyCode::Esc => {
+                                self.state.mode = AppMode::Timeline;
+                            }
+                            KeyCode::Up | KeyCode::Char('k') if self.state.selected_index > 0 => {
+                                self.state.selected_index -= 1;
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                let max = self.state.sessions.len().saturating_sub(1);
+                                if self.state.selected_index < max {
+                                    self.state.selected_index += 1;
                                 }
-                                KeyCode::Char('t') => {
-                                    self.refresh_data().ok();
+                            }
+                            KeyCode::Char('r') => {
+                                if let Ok(sessions) = self.sessions.list_sessions() {
+                                    self.state.sessions = sessions;
                                 }
-                                KeyCode::Char('S') => {
-                                    self.state.mode = AppMode::Stats;
-                                    self.calculate_stats().ok();
-                                }
-                                KeyCode::Up | KeyCode::Char('k') => {
-                                    if self.state.selected_index > 0 {
-                                        self.state.selected_index -= 1;
-                                    }
-                                }
-                                KeyCode::Down | KeyCode::Char('j') => {
-                                    let max = self.state.observations.len().saturating_sub(1);
-                                    if self.state.selected_index < max {
-                                        self.state.selected_index += 1;
-                                    }
-                                }
-                                _ => {}
-                            },
-                            AppMode::AddObservation => match key.code {
-                                KeyCode::Enter => {
-                                    if !self.state.input_buffer.is_empty() {
-                                        self.state.message = Some(
-                                            "Create session first with 'l' to add observations"
-                                                .to_string(),
-                                        );
-                                        self.state.input_buffer.clear();
-                                        self.state.mode = AppMode::Timeline;
-                                    }
-                                }
-                                KeyCode::Char(c) => {
-                                    self.state.input_buffer.push(c);
-                                }
-                                KeyCode::Backspace => {
-                                    self.state.input_buffer.pop();
-                                }
-                                KeyCode::Esc => {
-                                    self.state.input_buffer.clear();
-                                    self.state.mode = AppMode::Timeline;
-                                }
-                                _ => {}
-                            },
-                            AppMode::Search => match key.code {
-                                KeyCode::Enter => {
-                                    if !self.state.input_buffer.is_empty() {
-                                        self.state.search_query = self.state.input_buffer.clone();
-                                        self.perform_search().ok();
-                                    }
-                                }
-                                KeyCode::Char(c) => {
-                                    self.state.input_buffer.push(c);
-                                }
-                                KeyCode::Backspace => {
-                                    self.state.input_buffer.pop();
-                                }
-                                KeyCode::Esc => {
-                                    self.state.input_buffer.clear();
-                                    self.state.search_query.clear();
-                                    self.state.search_results.clear();
-                                    self.state.mode = AppMode::Timeline;
-                                }
-                                _ => {}
-                            },
-                            AppMode::Sessions => match key.code {
-                                KeyCode::Char('q') | KeyCode::Esc => {
-                                    self.state.mode = AppMode::Timeline;
-                                }
-                                KeyCode::Up | KeyCode::Char('k') => {
-                                    if self.state.selected_index > 0 {
-                                        self.state.selected_index -= 1;
-                                    }
-                                }
-                                KeyCode::Down | KeyCode::Char('j') => {
-                                    let max = self.state.sessions.len().saturating_sub(1);
-                                    if self.state.selected_index < max {
-                                        self.state.selected_index += 1;
-                                    }
-                                }
-                                KeyCode::Char('r') => {
-                                    if let Ok(sessions) = self.sessions.list_sessions() {
-                                        self.state.sessions = sessions;
-                                    }
-                                }
-                                _ => {}
-                            },
-                            AppMode::Stats => match key.code {
-                                KeyCode::Char('q') | KeyCode::Esc => {
-                                    self.state.mode = AppMode::Timeline;
-                                }
-                                KeyCode::Char('r') => {
-                                    self.calculate_stats().ok();
-                                }
-                                _ => {}
-                            },
-                            AppMode::ConfirmQuit => {
-                                if let KeyCode::Char('y') | KeyCode::Enter = key.code {
-                                    break;
-                                }
-                                if let KeyCode::Char('n') | KeyCode::Esc = key.code {
-                                    self.state.mode = AppMode::Timeline;
-                                }
+                            }
+                            _ => {}
+                        },
+                        AppMode::Stats => match key.code {
+                            KeyCode::Char('q') | KeyCode::Esc => {
+                                self.state.mode = AppMode::Timeline;
+                            }
+                            KeyCode::Char('r') => {
+                                self.calculate_stats().ok();
+                            }
+                            _ => {}
+                        },
+                        AppMode::ConfirmQuit => {
+                            if let KeyCode::Char('y') | KeyCode::Enter = key.code {
+                                break;
+                            }
+                            if let KeyCode::Char('n') | KeyCode::Esc = key.code {
+                                self.state.mode = AppMode::Timeline;
                             }
                         }
                     }
