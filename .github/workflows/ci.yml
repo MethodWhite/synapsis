@@ -196,7 +196,7 @@ jobs:
           script: |
             const results = process.env.NEEDS_JSON;
             const parsed = JSON.parse(results);
-            const allSuccess = Object.values(parsed).every(n => n.result === 'success');
+            const allSuccess = Object.values(parsed).every(n => n.conclusion === 'success');
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
