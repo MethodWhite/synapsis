@@ -391,13 +391,13 @@ impl AgentRegistry {
     pub fn register(&self, agent: Agent) -> AgentId {
         let id = agent.id.clone();
         self.agents.write_safe().insert(id.clone(), agent);
-        let _ = self.flush();
+        let _ = self.save();
         id
     }
 
     pub fn unregister(&self, id: &AgentId) -> Option<Agent> {
         let agent = self.agents.write_safe().remove(id);
-        let _ = self.flush();
+        let _ = self.save();
         agent
     }
 
