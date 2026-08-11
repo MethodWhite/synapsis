@@ -1856,7 +1856,9 @@ pub fn handle_orchestrator_tree(
     let all = agents.list(None);
     let parent = all.iter().find(|a| a.id.as_str() == agent_id);
     if parent.is_none() {
-        return Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Agent '{}' not found", agent_id)}}));
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Agent '{}' not found", agent_id)}}),
+        );
     }
 
     let sub_agents: Vec<&Agent> = all
@@ -1872,7 +1874,11 @@ pub fn handle_orchestrator_tree(
     let text = if sub_agents.is_empty() {
         format!("Agent '{}' has no sub-agents.", agent_id)
     } else {
-        let mut lines = vec![format!("Sub-agents of '{}' ({}):", agent_id, sub_agents.len())];
+        let mut lines = vec![format!(
+            "Sub-agents of '{}' ({}):",
+            agent_id,
+            sub_agents.len()
+        )];
         for a in &sub_agents {
             lines.push(format!(
                 "- {} ({:?}) [{}]",
@@ -1893,10 +1899,7 @@ pub fn handle_orchestrator_tree(
 
 pub fn handle_orchestrator_idle(agents: &AgentRegistry, id: &Value) -> anyhow::Result<Value> {
     let all = agents.list(None);
-    let idle: Vec<&Agent> = all
-        .iter()
-        .filter(|a| a.state == AgentState::Idle)
-        .collect();
+    let idle: Vec<&Agent> = all.iter().filter(|a| a.state == AgentState::Idle).collect();
 
     let text = if idle.is_empty() {
         "No idle agents.".to_string()
