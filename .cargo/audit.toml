@@ -3,4 +3,7 @@ ignore = [
     "RUSTSEC-2026-0097",
     "RUSTSEC-2024-0436",
     "RUSTSEC-2026-0002",
+    # Arca wallet (optional feature, not enabled by default) transitives
+    "RUSTSEC-2026-0187", # lopdf 0.31 (stack overflow) via printpdf/arca
+    "RUSTSEC-2025-0009", # ring 0.16.20 (AES overflow panic) via arca
 ]
