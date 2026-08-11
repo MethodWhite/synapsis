@@ -121,6 +121,28 @@ pub fn get_config_target_path(platform_name: &str) -> Option<String> {
     }
 }
 
+fn resolve_synapsis_mcp_path() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if exe
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with("synapsis-mcp"))
+            .unwrap_or(false)
+        {
+            return exe;
+        }
+        if let Some(dir) = exe.parent() {
+            for name in ["synapsis-mcp", "synapsis"] {
+                let candidate = dir.join(name);
+                if candidate.exists() {
+                    return candidate;
+                }
+            }
+        }
+    }
+    PathBuf::from("synapsis-mcp")
+}
+
 pub fn generate_synapsis_mcp_entry() -> McpConfigEntry {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
     let config_path = home
@@ -128,10 +150,7 @@ pub fn generate_synapsis_mcp_entry() -> McpConfigEntry {
         .to_string_lossy()
         .to_string();
 
-    let exe_path = std::env::current_exe()
-        .unwrap_or_else(|_| PathBuf::from("synapsis-mcp"))
-        .to_string_lossy()
-        .to_string();
+    let exe_path = resolve_synapsis_mcp_path().to_string_lossy().to_string();
 
     let config_content = serde_json::json!({
         "mcp": {
@@ -161,10 +180,7 @@ fn build_entry(platform_name: &str, config_path: &str) -> McpConfigEntry {
 }
 
 fn wrap_synapsis_entry(platform_name: &str) -> serde_json::Value {
-    let exe_path = std::env::current_exe()
-        .unwrap_or_else(|_| PathBuf::from("synapsis-mcp"))
-        .to_string_lossy()
-        .to_string();
+    let exe_path = resolve_synapsis_mcp_path().to_string_lossy().to_string();
 
     let synapsis_server = serde_json::json!({
         "command": exe_path,

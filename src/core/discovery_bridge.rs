@@ -100,7 +100,20 @@ impl DiscoveryBridge {
     /// Auto-configure discovered platforms: generate & write MCP configs.
     pub fn auto_configure(&self, _report: &DiscoveryReport) -> Result<AutoConfigReport> {
         let config_report = detect_and_generate_configs();
-        write_configs(&config_report, false)?;
+
+        let is_real_binary = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.file_name().map(|n| n.to_string_lossy().to_string()))
+            .map(|n| n.starts_with("synapsis"))
+            .unwrap_or(false);
+
+        if is_real_binary || std::env::var("SYNAPSIS_AUTOCONFIG_WRITE").is_ok() {
+            write_configs(&config_report, false)?;
+        } else {
+            eprintln!(
+                "[DiscoveryBridge] Skipping config writes: process is not the synapsis binary"
+            );
+        }
 
         Ok(config_report)
     }
