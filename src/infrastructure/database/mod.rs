@@ -756,6 +756,79 @@ impl Database {
         Ok(())
     }
 
+    /// Find a similar, non-deleted observation in the same project to avoid
+    /// duplicating it. Returns (id, revision_count) of the best match:
+    /// exact content_hash first, then same-project title match.
+    pub fn find_similar_observation(
+        &self,
+        project: Option<&str>,
+        title: &str,
+        content_hash: &[u8; 32],
+    ) -> Result<Option<(i64, u32)>> {
+        let conn = self.get_conn();
+        if let Some(p) = project {
+            let mut stmt = conn.prepare(
+                "SELECT id, revision_count FROM observations
+                 WHERE deleted_at IS NULL AND project = ?1 AND content_hash = ?2
+                 ORDER BY updated_at DESC LIMIT 1",
+            )?;
+            let mut rows = stmt.query_map(rusqlite::params![p, content_hash], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?))
+            })?;
+            if let Some(row) = rows.next() {
+                if let Ok(row) = row {
+                    return Ok(Some(row));
+                }
+            }
+        }
+        // Fall back to same-project title similarity (normalized, exact title).
+        let normalized = title.trim().to_lowercase();
+        if normalized.len() < 4 {
+            return Ok(None);
+        }
+        let mut stmt = conn.prepare(
+            "SELECT id, revision_count FROM observations
+             WHERE deleted_at IS NULL AND project = ?1
+             AND LOWER(TRIM(title)) = ?2
+             ORDER BY updated_at DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![project, normalized], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?))
+        })?;
+        if let Some(row) = rows.next() {
+            if let Ok(row) = row {
+                return Ok(Some(row));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Update an existing observation, bumping revision_count and content_hash.
+    pub fn revise_observation(
+        &self,
+        id: i64,
+        title: &str,
+        content: &str,
+        hash: &[u8; 32],
+        revision: u32,
+    ) -> Result<()> {
+        let conn = self.get_conn();
+        let now = Timestamp::now().0;
+        conn.execute(
+            "UPDATE observations SET title = ?1, content = ?2, content_hash = ?3, revision_count = ?4, updated_at = ?5 WHERE id = ?6 AND deleted_at IS NULL",
+            params![title, content, hash, revision, now, id],
+        )?;
+        let _ = conn.execute(
+            "INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES('delete', ?1, '', '')",
+            params![id],
+        );
+        let _ = conn.execute(
+            "INSERT INTO observations_fts(rowid, title, content) VALUES (?1, ?2, ?3)",
+            params![id, title, content],
+        );
+        Ok(())
+    }
+
     pub fn insert_relation(
         &self,
         source_id: i64,

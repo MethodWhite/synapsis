@@ -154,6 +154,19 @@ impl McpServer {
     }
 
     pub fn run(&self) -> Result<()> {
+        let db = self.db.clone();
+        let watchdog_interval = std::env::var("SYNAPSIS_AUTO_SAVE_MINUTES")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(15);
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(watchdog_interval * 60));
+                auto_save_periodic_context(&db);
+            }
+        });
+
         let stdin = io::stdin();
         let mut stdout = io::stdout();
         let mut reader = io::BufReader::new(stdin.lock());
@@ -259,7 +272,21 @@ impl McpServer {
         );
         obs.project = Some("synapsis".to_string());
         obs.scope = crate::domain::Scope::Project;
-        self.db.save_observation(&obs).ok();
+        // Dedup: update the existing "tool:<name>" observation instead of duplicating.
+        if let Ok(Some((existing_id, revision))) =
+            self.db
+                .find_similar_observation(Some("synapsis"), &obs.title, &obs.content_hash.0)
+        {
+            let _ = self.db.revise_observation(
+                existing_id,
+                &obs.title,
+                &obs.content,
+                &obs.content_hash.0,
+                revision.saturating_add(1),
+            );
+        } else {
+            self.db.save_observation(&obs).ok();
+        }
     }
 
     fn handle_request(&self, request: &Value) -> Result<Value> {
@@ -1432,5 +1459,37 @@ impl McpServer {
                 })
             })
             .collect()
+    }
+}
+
+/// Periodic context guard: persists a heartbeat observation for the "synapsis"
+/// project, deduplicated by a stable title so it is revised instead of stacked.
+fn auto_save_periodic_context(db: &Database) {
+    let now = crate::domain::Timestamp::now().0;
+    let title = "periodic-context-heartbeat";
+    let content = format!(
+        "Periodic context checkpoint (ts={}): server alive, session active.",
+        now
+    );
+    let mut obs = crate::domain::Observation::new(
+        crate::domain::SessionId::new("mcp-watchdog"),
+        crate::domain::ObservationType::Discovery,
+        title.to_string(),
+        content,
+    );
+    obs.project = Some("synapsis".to_string());
+    obs.scope = crate::domain::Scope::Project;
+    if let Ok(Some((existing_id, revision))) =
+        db.find_similar_observation(Some("synapsis"), title, &obs.content_hash.0)
+    {
+        let _ = db.revise_observation(
+            existing_id,
+            &obs.title,
+            &obs.content,
+            &obs.content_hash.0,
+            revision.saturating_add(1),
+        );
+    } else {
+        let _ = db.save_observation(&obs);
     }
 }

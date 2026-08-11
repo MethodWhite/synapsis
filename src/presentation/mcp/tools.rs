@@ -49,20 +49,45 @@ pub fn handle_mem_save(db: &Database, id: &Value, args: &Value) -> anyhow::Resul
         Scope::Project
     };
 
-    match db.save_observation(&obs) {
-        Ok(id_val) => Ok(json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": {
-                "content": [{ "type": "text", "text": format!("Saved: '{}' (id={})", title, id_val) }]
+    // Smart dedup: update a related observation instead of duplicating.
+    let project_ref = obs.project.as_deref();
+    match db.find_similar_observation(project_ref, &obs.title, &obs.content_hash.0) {
+        Ok(Some((existing_id, revision))) => {
+            let new_rev = revision.saturating_add(1);
+            match db.revise_observation(
+                existing_id,
+                &obs.title,
+                &obs.content,
+                &obs.content_hash.0,
+                new_rev,
+            ) {
+                Ok(()) => Ok(json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "content": [{ "type": "text", "text": format!(
+                        "Updated related observation '{}' (id={}, rev={})", title, existing_id, new_rev
+                    ) }] }
+                })),
+                Err(e) => Ok(json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "error": { "code": -32603, "message": format!("Revise failed: {}", e) }
+                })),
             }
-        })),
+        }
+        Ok(None) => match db.save_observation(&obs) {
+            Ok(id_val) => Ok(json!({
+                "jsonrpc": "2.0", "id": id,
+                "result": {
+                    "content": [{ "type": "text", "text": format!("Saved: '{}' (id={})", title, id_val) }]
+                }
+            })),
+            Err(e) => Ok(json!({
+                "jsonrpc": "2.0", "id": id,
+                "error": { "code": -32603, "message": format!("Save failed: {}", e) }
+            })),
+        },
         Err(e) => Ok(json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": {
-                "content": [{ "type": "text", "text": format!("Save failed: {}", e) }]
-            }
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32603, "message": format!("Dedup lookup failed: {}", e) }
         })),
     }
 }
