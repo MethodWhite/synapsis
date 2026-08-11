@@ -5,14 +5,12 @@
 
 use serde_json::json;
 use std::sync::Arc;
-use synapsis::core::orchestrator::Orchestrator;
 use synapsis::infrastructure::database::Database;
 use synapsis::presentation::mcp::McpServer;
 
 fn test_server() -> McpServer {
     let db = Arc::new(Database::new());
-    let orchestrator = Arc::new(Orchestrator::new());
-    McpServer::new(db, orchestrator)
+    McpServer::new(db)
 }
 
 mod mcp_tests {

@@ -95,7 +95,6 @@ fn main() {
     state.init();
     let server = Arc::new(synapsis::presentation::mcp::McpServer::new(
         state.db.clone(),
-        Arc::new(synapsis::core::orchestrator::Orchestrator::new()),
     ));
     server.init();
 

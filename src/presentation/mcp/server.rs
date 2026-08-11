@@ -16,11 +16,11 @@ use crate::core::auth::tpm::TpmMfaProvider;
 use crate::core::auto_integrate::AutoIntegrate;
 use crate::core::chunk_query::ChunkQueryManager;
 use crate::core::discovery::EnvironmentDiscovery;
-use crate::core::orchestrator::Orchestrator;
 use crate::core::recycle::RecycleBin;
 use crate::core::resource_manager::ResourceManager;
 use crate::core::session_manager::SessionManager;
 use crate::core::sync::GitSyncEngine;
+use crate::core::task_queue::TaskQueue;
 use crate::core::timeline_manager::TimelineManager;
 use crate::core::tool_registry::ToolRegistryState;
 use crate::core::vault::SecureVault;
@@ -57,7 +57,7 @@ pub struct McpServer {
     db: Arc<Database>,
     skills: Arc<SkillRegistry>,
     agents: Arc<AgentRegistry>,
-    orchestrator: Arc<Orchestrator>,
+    task_queue: Arc<TaskQueue>,
     antibrick: Arc<AntiBrickEngine>,
     watchdog: Arc<FilesystemWatchdog>,
     recycle: RecycleBin,
@@ -97,7 +97,7 @@ pub struct AgentMessage {
 }
 
 impl McpServer {
-    pub fn new(db: Arc<Database>, orchestrator: Arc<Orchestrator>) -> Self {
+    pub fn new(db: Arc<Database>) -> Self {
         let auth_enabled = std::env::var("SYNAPSIS_AUTH").is_ok();
         Self {
             db: db.clone(),
@@ -132,7 +132,11 @@ impl McpServer {
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
             agents: Arc::new(AgentRegistry::new()),
-            orchestrator,
+            task_queue: {
+                let tq = Arc::new(TaskQueue::new(None));
+                let _ = tq.load();
+                tq
+            },
             antibrick: Arc::new(AntiBrickEngine::new(AntiBrickConfig::default())),
             watchdog: Arc::new(FilesystemWatchdog::new(Default::default())),
             session_classifications: std::sync::RwLock::new(HashMap::new()),
@@ -520,7 +524,8 @@ impl McpServer {
                         "properties": {
                             "name": { "type": "string" },
                             "role": { "type": "string", "default": "general" },
-                            "description": { "type": "string" }
+                            "description": { "type": "string" },
+                            "parent_agent_id": { "type": "string", "description": "Optional parent agent id for orchestrator_tree hierarchy" }
                         },
                         "required": ["name"]
                     }
@@ -1186,7 +1191,7 @@ impl McpServer {
             "mem_recycle_search" => tools::handle_mem_recycle_search(&self.recycle, id, args),
             "mem_recycle_stats" => tools::handle_mem_recycle_stats(&self.recycle, id),
             "mem_recycle_delete" => tools::handle_mem_recycle_delete(&self.recycle, id, args),
-            "ghost_audit" => tools::handle_ghost_audit(&self.orchestrator, id, args),
+            "ghost_audit" => tools::handle_ghost_audit(&self.task_queue, id, args),
             "pqc_encrypt" => tools::handle_pqc_encrypt(id, args),
             "wasm_run" => tools::handle_wasm_run(id, args),
             "antibrick_scan" => tools::handle_antibrick_scan(&self.antibrick, id, args),
@@ -1233,8 +1238,8 @@ impl McpServer {
             "resource_recommendations" => {
                 tools::handle_resource_recommendations(&self.resources, id, args)
             }
-            "orchestrator_tree" => tools::handle_orchestrator_tree(&self.orchestrator, id, args),
-            "orchestrator_idle" => tools::handle_orchestrator_idle(&self.orchestrator, id),
+            "orchestrator_tree" => tools::handle_orchestrator_tree(&self.agents, id, args),
+            "orchestrator_idle" => tools::handle_orchestrator_idle(&self.agents, id),
             "shared_sessions_list" => tools::handle_shared_sessions_list(id),
             "shared_sessions_by_project" => tools::handle_shared_sessions_by_project(id, args),
             "shared_sessions_broadcast" => tools::handle_shared_sessions_broadcast(id, args),
@@ -1244,8 +1249,8 @@ impl McpServer {
                     json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Auth not enabled (set SYNAPSIS_AUTH env var)"}}),
                 ),
             },
-            "task_create" => tools::handle_task_create(&self.orchestrator, id, args),
-            "task_list" => tools::handle_task_list(&self.orchestrator, id),
+            "task_create" => tools::handle_task_create(&self.task_queue, id, args),
+            "task_list" => tools::handle_task_list(&self.task_queue, id),
             "mcp_call" => tools::handle_mcp_call(id, args),
             "browser_navigate" => tools::handle_browser_navigate(id, args),
             "browser_snapshot" => tools::handle_browser_snapshot(id, args),

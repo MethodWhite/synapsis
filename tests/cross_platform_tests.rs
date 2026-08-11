@@ -189,7 +189,6 @@ where
 
 fn create_inprocess_server() -> (
     Arc<synapsis::infrastructure::database::Database>,
-    Arc<synapsis::core::orchestrator::Orchestrator>,
     synapsis::presentation::mcp::McpServer,
 ) {
     let ts = SystemTime::now()
@@ -207,10 +206,9 @@ fn create_inprocess_server() -> (
     }
 
     let db = Arc::new(synapsis::infrastructure::database::Database::new());
-    let orch = Arc::new(synapsis::core::orchestrator::Orchestrator::new());
-    let server = synapsis::presentation::mcp::McpServer::new(db.clone(), orch.clone());
+    let server = synapsis::presentation::mcp::McpServer::new(db.clone());
     server.init();
-    (db, orch, server)
+    (db, server)
 }
 
 fn inproc_call(server: &synapsis::presentation::mcp::McpServer, tool: &str, args: &Value) -> Value {
@@ -355,7 +353,7 @@ fn test_cli_to_tui_opencode_saves_tui_reads_context() {
 /// The SessionBridge is in-memory, so both agents must share a process.
 #[test]
 fn test_cli_to_ide_session_sharing() {
-    let (_db, _orch, server) = create_inprocess_server();
+    let (_db, server) = create_inprocess_server();
 
     // Start session as opencode-agent
     let resp = inproc_call(
@@ -529,7 +527,7 @@ fn test_tui_to_tui_two_instances_share_data() {
 /// Test 6: IDE -> IDE   Cursor starts session, VS Code sees it
 #[test]
 fn test_ide_to_ide_session_sharing() {
-    let (_db, _orch, server) = create_inprocess_server();
+    let (_db, server) = create_inprocess_server();
 
     // Cursor starts session
     let resp = inproc_call(
@@ -605,7 +603,7 @@ fn test_ide_to_ide_session_sharing() {
 /// Test 7: Session Bridge broadcast
 #[test]
 fn test_session_bridge_broadcast() {
-    let (_db, _orch, server) = create_inprocess_server();
+    let (_db, server) = create_inprocess_server();
 
     // Start 3 agent sessions in same project
     let agents = ["cli-agent", "tui-agent", "ide-agent"];
@@ -673,7 +671,7 @@ fn test_session_bridge_broadcast() {
 /// Test 8: Discovery scan via MCP (in-process only, due to println! on stdout)
 #[test]
 fn test_discovery_scan_via_mcp() {
-    let (_db, _orch, server) = create_inprocess_server();
+    let (_db, server) = create_inprocess_server();
 
     let resp = inproc_call(&server, "discovery_scan", &json!({}));
     let text = get_text(&resp);
@@ -865,7 +863,7 @@ fn test_cli_to_cli_error_recovery() {
 /// Test 13: In-process MCP server: mem_doctor diagnostics
 #[test]
 fn test_mem_doctor_diagnostics() {
-    let (_db, _orch, server) = create_inprocess_server();
+    let (_db, server) = create_inprocess_server();
 
     // Save something first
     inproc_call(
@@ -891,7 +889,7 @@ fn test_mem_doctor_diagnostics() {
 /// Test 14: In-process: mcp_call validation
 #[test]
 fn test_mcp_call_validation() {
-    let (_db, _orch, server) = create_inprocess_server();
+    let (_db, server) = create_inprocess_server();
 
     // mcp_call without required params should error
     let resp = inproc_call(&server, "mcp_call", &json!({}));
@@ -949,7 +947,7 @@ fn test_chinese_content_roundtrip() {
 /// Test 16: Task creation and listing cross-platform
 #[test]
 fn test_task_cross_platform() {
-    let (_db, _orch, server) = create_inprocess_server();
+    let (_db, server) = create_inprocess_server();
 
     // Create a task
     let resp = inproc_call(

@@ -29,10 +29,7 @@ fn main() {
 
     let state = synapsis::infrastructure::shared_state::SharedState::new();
     state.init();
-    let server = synapsis::presentation::mcp::McpServer::new(
-        state.db.clone(),
-        std::sync::Arc::new(synapsis::core::orchestrator::Orchestrator::new()),
-    );
+    let server = synapsis::presentation::mcp::McpServer::new(state.db.clone());
     server.init();
 
     if !quiet {

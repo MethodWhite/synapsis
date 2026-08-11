@@ -250,11 +250,7 @@ fn main() {
     }
 
     let db = Arc::new(synapsis::infrastructure::database::Database::new());
-    let orchestrator = Arc::new(synapsis::core::orchestrator::Orchestrator::new());
-    let server = Arc::new(synapsis::presentation::mcp::McpServer::new(
-        db,
-        orchestrator,
-    ));
+    let server = Arc::new(synapsis::presentation::mcp::McpServer::new(db));
     server.init();
 
     let x402 = std::env::var("SYNAPSIS_X402_WALLET").ok().map(|wallet| {
