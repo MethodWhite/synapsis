@@ -600,3 +600,142 @@ Cada pipeline debe ser reproducible, auditable e inmutable en el tiempo:
   verificables.
 - El verify.sh del notarize valida evidencia + firma + timestamp, no solo la
   firma.
+
+## 31. Seguridad de IA, LLM y agentes (Secure AI)
+
+### 31.1 Riesgos propios de IA/LLM
+
+- **Prompt injection** (directa e indirecta): el contenido de entrada externo
+  nunca debe poder reescribir las instrucciones del sistema. Aislamiento de
+  instrucciones, separación de datos no confiables, detectores/guardas.
+- **Tool poisoning**: un modelo con acceso a herramientas (ejecución, RAG,
+  API) puede ser manipulado. Whitelist de herramientas, permisos mínimos,
+  confirmación humana para acciones destructivas.
+- **Excesiva agencia**: el agente no debe poder hacer más de lo necesario.
+  Capability-based (reutilizar §5/§28), sandbox para ejecución.
+- **Envenenamiento de modelos/RAG**: datos de entrenamiento o RAG corruptos.
+  Provenance del corpus, verificación de fuentes, inmutabilidad de vectores.
+- **Data exfiltration vía contexto**: el modelo puede filtrar secretos o
+  datos sensibles del contexto. Redacción de secretos antes de enviar,
+  minimización de contexto.
+- **Alucinaciones en decisiones de seguridad**: nunca usar la salida del LLM
+  como único control de seguridad (fail-closed, ver §1.4).
+
+### 31.2 OWASP LLM Top 10 (2025) como checklist
+
+- LLM01 Prompt injection; LLM02 Sensitive information disclosure; LLM03 Supply
+  chain; LLM04 Data and model poisoning; LLM05 Improper output handling;
+  LLM06 Excessive agency; LLM07 System prompt leakage; LLM08 Vector and
+  embedding weaknesses; LLM09 Misinformation; LLM10 Unbounded consumption.
+- Para cada técnica: mitigación, test (red team de prompts), telemetría.
+
+### 31.3 EU AI Act / riesgo
+
+- Clasificar el uso de IA (riesgo inaceptable/alto/limitado/mínimo) según EU
+  AI Act; el análisis automatizado de binarios/side-channel es de riesgo
+  limitado/minimo → transparencia y documentación técnica.
+- Registro de modelos, datos de entrenamiento, límites de uso documentados.
+- Evaluación de sesgo y robustez adversarial.
+
+### 31.4 Gobernanza de agentes
+
+- Todo agente (MCP server, subagente, autónomo) tiene: identidad, permisos,
+  límites de recursos, logging completo, y kill-switch.
+- Los agentes que modifican archivos siguen el mismo integrity gate que el
+  remedy (§0 de tools/remedy): solo archivos pristinos, backup antes.
+- MITRE ATLAS para modelar amenazas adversariales de ML/agentes.
+
+## 32. Respuesta a incidentes y playbooks (NIST SP 800-61 Rev. 3)
+
+### 32.1 Fases
+
+- **Preparation**: equipo, herramientas, contactos, runbooks, canal seguro.
+- **Detection & Analysis**: detección (EDR/audit), triage, análisis de
+  impacto, cadena de custodia.
+- **Containment, Eradication & Recovery**: aislamiento, remoción, restauración
+  verificada, hardening post-incidente.
+- **Post-Incident Activity**: lecciones aprendidas, informe, métricas, DoD.
+
+### 32.2 Playbooks (RB-*)
+
+- Un playbook por tipología: breach, ransomware, secret leak, supply-chain
+  compromise, abuso de API, incidente de IA/agente, incidente AML.
+- Cada playbook: detonadores, severidad (SSVC), acciones paso a paso, dueños,
+  plazos, escalación.
+- Los playbooks viven en `standards/runbooks/` (ver repo de estándares).
+
+### 32.3 Notificación legal (plazos)
+
+- GDPR: 72 h a la autoridad; NIS2: alerta temprana 24 h + notificación 72 h;
+  DORA: a la autoridad competente; CRA: a ENISA y a la autoridad nacional.
+- Modelo de incidentes con estados y fechas; evidencia en `evidence/`.
+
+## 33. Cumplimiento y privacidad (CRA/DORA/NIS2/GDPR)
+
+### 33.1 Marcos aplicables según dominio
+
+- **CRA (Cyber Resilience Act)** para productos digitales en la UE: requisitos
+  de seguridad desde diseño, SBOM, reporte de vulnerabilidades y explotación
+  activa a ENISA.
+- **DORA** para el sector financiero: resiliencia operativa digital, pruebas
+  de resiliencia (TLPT), gestión de TPP.
+- **NIS2** para operadores esenciales: gestión de riesgos, cadena de suministro,
+  reporte de incidentes.
+- **GDPR art. 25** (privacy by design/default): minimización, seudonimización,
+  DPIAs para procesamiento de alto riesgo.
+- **MiCA / Travel Rule** para activos on-chain (integrar con §4 x402).
+
+### 33.2 Privacy by design
+
+- Minimización de datos por defecto; PII nunca en logs ni en JSON canónico
+  salvo requerimiento; retención con expiración.
+- DSAR (right to access/delete) operativo: export y borrado verificable.
+- DPIAs registrados en `evidence/` cuando aplique.
+
+## 34. Gestión de vulnerabilidades priorizada (EPSS / CISA KEV / CVSS 4.0)
+
+### 34.1 Priorización (no solo contar)
+
+- Todo hallazgo SAST/SCA/fuzz se prioriza con: CVSS 4.0 + **EPSS**
+  (probabilidad de explotación) + **CISA KEV** (explotación activa conocida)
+  + contexto local (exposición, reachability).
+- Los hallazgos en CISA KEV con EPSS alto se tratan como P0 (SLA de horas).
+- SSVC (Stakeholder-Specific Vulnerability Categorization) para decisiones de
+  prioridad y tiempo.
+
+### 34.2 VEX y avisos
+
+- Emitir **VEX** (Vulnerability Exploitability eXchange) por cada release:
+  qué vulnerabilidades del SBOM aplican, cuáles no explotables, workarounds.
+- Aviso de seguridad público (SECURITY.md / advisory) con severidad, CVSS,
+  EPSS, KEV status, mitigación, timeline.
+
+### 34.3 SLAs de remediación
+
+- SLA por severidad (P0 horas, P1 días, P2 semanas) configurable por proyecto;
+  el CI bloquea si un P0 supera el SLA sin excepción documentada.
+
+## 35. Zero Trust operativo (NIST SP 800-207 / ZTNA)
+
+### 35.1 Principios desplegados (no declarativos)
+
+- **Nunca confiar, siempre verificar**: cada acceso autenticado y autorizado
+  con contexto (identidad, dispositivo, red, riesgo).
+- **Workload identity**: cada servicio (Noctua API, Arca, x402) tiene
+  identidad propia (SPIFFE/mTLS o token corto) — no comparte credenciales.
+- **Microsegmentación**: acceso por policy, no por ubicación de red; deny por
+  defecto entre servicios.
+- **Continuous verification**: re-validación de sesión/contexto, no solo
+  login; anomalía → challenge.
+
+### 35.2 ZTNA / access
+
+- Los dashboards y APIs se exponen solo vía gateway ZTNA (o bind 127.0.0.1 +
+  tunnel) — nunca red abierta (§24.2).
+- Dispositivos/gente con identidad verificada antes del acceso; sin
+  confianza implícita de VPN legacy.
+
+### 35.3 Telemetría y auditoría
+
+- Logs de acceso con decisión (allow/deny + motivo), sujeto, destino, contexto.
+- Monitoreo continuo de desvíos de policy; alertas en tiempo real.
