@@ -52,6 +52,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install OpenSSL (sqlcipher dependency)
+        shell: bash
+        run: |
+          vcpkg install openssl:x64-windows
+          echo "OPENSSL_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows" >> "$GITHUB_ENV"
+          echo "OPENSSL_INCLUDE_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include" >> "$GITHUB_ENV"
+          echo "OPENSSL_LIB_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib" >> "$GITHUB_ENV"
       - name: Build check (Windows)
         run: cargo check --all-targets
         env:
@@ -110,10 +117,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install cargo-audit (precompiled, MSRV 1.95 compatible)
+      - name: Install cargo-audit (precompiled, CVSS v4 support)
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-audit@0.21
+          tool: cargo-audit@0.22.2
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
