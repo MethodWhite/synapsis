@@ -272,3 +272,145 @@ Cada pipeline debe ser reproducible, auditable e inmutable en el tiempo:
 | Arca Quant | Backend 110+ tests; web y móvil con CI verde; conectores firmados; cripto sin AES |
 | x402-service | Hardening pendiente; contrato de endpoints |
 | Noctua | Contrato x402 común |
+
+## 20. Gobernanza
+
+### 20.1 Roles y responsabilidades
+
+- **Responsable de seguridad del ecosistema (Security Owner):** autoridad final sobre
+  excepciones, revocación de secretos y evaluación de riesgos cross-proyecto.
+- **Maintainer por proyecto:** responsable del DoD, revisión de cambios y del threat
+  model de su proyecto.
+- **Revisor (reviewer):** puede aprobar PRs de código no sensible; los cambios de
+  seguridad requieren revisión del Security Owner o un maintainer delegado.
+- **Autor del cambio:** responsable de documentar impacto, tests y compatibilidad.
+
+### 20.2 Proceso de aprobación
+
+- Todo cambio de seguridad (auth, cripto, pagos, secretos, fail-closed) requiere:
+  1. PR con referencia al control Tier S++ que toca.
+  2. Al menos una revisión humana (dos si toca cripto o pagos).
+  3. CI verde (lint, tests, SAST, SCA, secretos).
+  4. Registro del impacto de seguridad en la descripción del PR.
+- Ningún miembro aprueba su propio PR de seguridad.
+- Excepciones: documentadas con justificación y fecha de revisión; nunca silenciosas.
+
+### 20.3 Regla de cambios compartidos
+
+- Antes de tocar una pieza compartida (protocolo, catálogo, primitivas seguras):
+  - Identificar consumidores (§14).
+  - Actualizar contrato, tests y documentación en el mismo PR.
+  - Verificar que no rompe otros proyectos del ecosistema (matriz §13/§19).
+- Prohibido crear implementaciones paralelas del protocolo para evitar integración.
+
+### 20.4 Responsabilidad de cambios de seguridad
+
+- CVE/incidente: el Security Owner coordina; el proyecto afectado publica el análisis
+  y la mitigación en privado (SECURITY.md), nunca como issue público.
+- Rotación de secretos: documentada, con fecha límite y verificación de revocación.
+- Cambios de hardening: se registran con el control que satisfacen y el método de
+  verificación (build, test, auditoría).
+
+### 20.5 Métricas de gobernanza
+
+- % de PRs de seguridad con revisión humana = 100%.
+- % de excepciones documentadas = 100% (ninguna silenciosa).
+- DoD cumplido en cada merge (verificable vía checklist del PR).
+- Auditoría de gobernanza ejecutable en CI (módulo secdevops-audit).
+
+## 21. Diseño y UX segura
+
+### 21.1 Principios de diseño seguro
+
+- **Secure UX:** el diseño hace que el usuario haga lo seguro por defecto; las
+  decisiones de seguridad visibles (permisos, consentimiento, advertencias) usan
+  patrones comprensibles, nunca engañosos.
+- **Fail-closed visible:** ante un error de seguridad, la UI muestra estado claro
+  y acción de recuperación; nunca silencia un riesgo (dark patterns prohibidos).
+- **Menor sorpresa:** la interfaz no oculta acciones destructivas ni exige
+  confirmaciones ambiguas; confirmación explícita para operaciones irreversibles.
+- **Defensa en profundidad en UX:** validación en UI y backend; la UI nunca es
+  el único control de seguridad.
+
+### 21.2 Usabilidad (ISO 9241 / ISO 25010)
+
+- Efectividad, eficiencia y satisfacción medibles (no solo estética).
+- Protección contra errores del usuario (undo, confirmación, validación inline).
+- Consistencia de patrones y terminología; evitar jerga técnica innecesaria.
+- Onboarding y documentación accesibles dentro del producto.
+
+### 21.3 Accesibilidad (WCAG 2.2)
+
+- Perceptible, operable, comprensible y robusto.
+- Nivel AA mínimo obligatorio para interfaces de usuario.
+- Soporte de teclado, lectores de pantalla, contraste y alternativas textuales.
+- Modo claro/oscuro sin pérdida de legibilidad.
+
+### 21.4 Seguridad de la interfaz
+
+- No exponer secretos, tokens ni información sensible en la UI.
+- Mensajes de error sin revelar detalles internos (no stack traces al usuario).
+- Logs de UI sin PII innecesaria.
+- Rate limiting y validación en la UI donde aplique (sin confiar solo en cliente).
+
+## 22. Stakeholders y producto
+
+### 22.1 Análisis de interesados
+
+- Identificar y documentar stakeholders (usuarios finales, operadores, seguridad,
+  negocio, reguladores, otros proyectos del ecosistema).
+- Registrar su influencia, expectativas y requisitos en un registro de interesados.
+- Revisar el registro en cada hito; actualizar ante cambios de alcance.
+
+### 22.2 Requisitos
+
+- Requisitos funcionales y no funcionales (incl. seguridad, usabilidad, accesibilidad,
+  rendimiento) trazables y verificables.
+- Los requisitos de seguridad se tratan como requisitos de primera clase, con
+  criterio de aceptación y método de verificación.
+- Priorización explícita (MoSCoW o equivalente) documentada.
+
+### 22.3 Producto y roadmap
+
+- Roadmap con hitos verificables y criterios de done por release.
+- Las features se evalúan contra el modelo de amenaza (§11) y el DoD (§12).
+- Retroalimentación de usuarios y stakeholders incorporada en el ciclo.
+- Cambios de alcance aprobados y documentados (§20.2, §20.3).
+
+### 22.4 Comunicación
+
+- Canales definidos para reportar vulnerabilidades (privado) y para feedback de
+  producto.
+- Transparencia sobre capacidades, límites y estado de seguridad del producto.
+
+## 23. Modelado de amenazas y testing (MITRE ATT&CK / OSSTMM)
+
+### 23.1 MITRE ATT&CK
+
+- El threat model (§11) debe mapear sus amenazas a las tácticas y técnicas de
+  MITRE ATT&CK (enterprise, mobile, ICS según el dominio).
+- Cada mitigación se asocia a la técnica ATT&CK que neutraliza, y cada control a
+  la técnica que detecta o bloquea.
+- Las pruebas de seguridad (red team, pentest, detección) se diseñan contra
+  técnicas ATT&CK, no solo contra CVE.
+- Los casos de detección/telemetría se validan contra técnicas relevantes del
+  threat model.
+
+### 23.2 OSSTMM
+
+- Las auditorías de seguridad se estructuran siguiendo OSSTMM:
+  - Análisis de seguridad (postura, visibilidad, acceso, confianza, cumplimiento).
+  - Validación de los canales aplicables (humanos, físicos, inalámbricos,
+    telecomunicaciones, redes de datos).
+  - Verificación de controles (interactivos, de proceso, de contenido,
+    criptográficos, de validación).
+- Las métricas usan el modelo RAV (Risk Assessment Values): RA, SEV, TRV, CV.
+- Toda auditoría es verificable, repetible y con alcance documentado.
+- Los hallazgos se priorizan por impacto y se vinculan al control Tier S++ y a
+  la técnica ATT&CK que exponen.
+
+### 23.3 Integración con el pipeline
+
+- SAST, SCA y detección de secretos (§10) se complementan con pruebas dinámicas
+  y de threat model (§23.1) y con auditoría estructurada (§23.2).
+- Los hallazgos de testing alimentan el registro de riesgos y el DoD (§12).
