@@ -414,3 +414,189 @@ Cada pipeline debe ser reproducible, auditable e inmutable en el tiempo:
 - SAST, SCA y detección de secretos (§10) se complementan con pruebas dinámicas
   y de threat model (§23.1) y con auditoría estructurada (§23.2).
 - Los hallazgos de testing alimentan el registro de riesgos y el DoD (§12).
+
+## 24. Plataformas SaaS (aprendizaje aplicado)
+
+### 24.1 Arquitectura
+
+- Separación frontend/backend: SPA con shell persistente (sidebar+topbar no se recargan, solo el main content).
+- Layout raíz: Sidebar (logo, navegación, footer) + Topbar (breadcrumbs, búsqueda, theme toggle) + main content.
+- Componentes reutilizables: Card, DataTable, Badge, Button, Input, Dialog, Toast, Skeleton, Chart.
+- API REST consumida por el frontend; datos vía fetch con estados loading/error/empty diseñados.
+
+### 24.2 Seguridad del SaaS (obligatorio)
+
+- **Autenticación**: token de sesión (secrets.token_urlsafe) con comparación en tiempo constante (hmac.compare_digest). Todas las APIs exigen el token (401 sin él).
+- **Bind por defecto a 127.0.0.1**; si se expone en red (--host 0.0.0.0), advertir sobre TLS.
+- **CSRF**: validar header custom (X-Requested-With/token); GET nunca cambia estado.
+- **XSS**: escapar todo dato de usuario interpolado en innerHTML (helper esc()); CSP (default-src 'self') + X-Frame-Options: DENY + X-Content-Type-Options: nosniff.
+- **Limits**: Content-Length cap (1MB), máx. sesiones simultáneas, rate limiting por IP.
+- **TLS** para producción; cert autofirmado generado una vez.
+
+### 24.3 UI/UX
+
+- **KPI cards**: grid de cards (label pequeño, valor grande, delta, sparkline).
+- **Data tables densas**: texto sm, borders sutiles, hover, badges de estado, font-mono para IDs/hashes.
+- **Dark mode** obligatorio: tokens CSS en :root/.dark, toggle 3 estados (light/dark/system), sin FOUC.
+- **Colores semánticos**: primary, success (emerald), warning (ámbar), destructive (rojo), chart-1..5.
+- **Paleta**: base zinc/slate; tipografía Inter + mono para datos técnicos.
+- **Responsive**: sidebar→overlay, KPIs→stack, tablas→scroll.
+
+## 25. CLI y TUI moderno
+
+### 25.1 CLI
+
+- Estructura `sustantivo verbo`; flags largos estándar (-h/--help, --json, --plain, --no-color, --no-input, --dry-run, --version).
+- stdout = datos (pipeable, --json); stderr = mensajes/errores. Nunca mensajes a stdout.
+- Exit codes: 0 éxito, 1 runtime, 2 uso/parseo.
+- Autocompletado nativo; help con ejemplos primero.
+- Colores: respetar NO_COLOR, TERM, FORCE_COLOR, TTY detection (Rich lo maneja).
+- Progress/spinner solo si TTY; nunca prompt si stdin no es TTY.
+- Secrets solo por archivo/stdin, nunca en flags/env.
+- Config precedencia: flags > env > archivo > defaults (XDG via platformdirs).
+
+### 25.2 TUI (Textual/BubbleTea)
+
+- Arquitectura reactiva: Model/App con estado, eventos, vistas declarativas.
+- Widgets: DataTable (sort/filtro/scroll), ListView, Input, Tabs, ProgressBar, LoadingIndicator.
+- Dark mode adaptativo (detectar fondo del terminal).
+- Keybindings declarativos (footer automático); vim-style.
+- Logging a stderr o archivo (nunca stdout en TUI).
+
+## 26. GUI de escritorio
+
+- **Recomendación**: Tauri 2.0 (Rust core + webview) con motor Python como sidecar (PyInstaller). Bundle pequeño, bajo RAM, seguridad por capabilities + CSP.
+- Alternativa Python-pura: PySide6/Qt (widgets nativos, QtCharts, QTermWidget).
+- No recomendado: Electron (pesado, RAM) ni Kivy (UI pobre para datos densos).
+- Patrones: sidebar + multi-panel redimensionable, dark mode, tablas virtualizadas, monitorización por eventos (streaming, no polling), terminal integrada (xterm.js/QTermWidget), charts (ECharts/QtCharts).
+- Screenshot del emulador: base64 data-URL o asset protocol, actualizado por evento.
+- Empaquetado: Tauri → AppImage/deb/rpm (Linux), MSI/NSIS (Win), DMG (macOS), con firma.
+
+## 27. AML y SARS (Suspicious Activity Report)
+
+### 27.1 Flujo regulatorio (FinCEN)
+
+- Detonadores: structuring/smurfing, layering, funnel accounts, velocity spikes, out-of-pattern.
+- Thresholds configurables por segmento (no umbral único).
+- Flujo: detección → triage → investigación (two-eyes para alto riesgo) → decisión → SAR.
+- Timeline: Day 0 detección, Day 30 filing inicial, Day 120 periodo, Day 150 continuing activity.
+- Campos SAR (Form 111): Part I subject info, Part II suspicious activity (amount, date, items 32-41 tipos, cyber indicators 42-44), Part III institución, Part V narrative.
+- Recordkeeping: retener evidencia 5 años.
+
+### 27.2 Dashboard AML
+
+- KPIs: volumen monitoreado, alertas, casos abiertos, SARs filed, tasa falsos positivos.
+- Transaction/event table: fecha, sujeto, contraparte, tipo, monto, score, status badge.
+- Status lifecycle: monitoring → alert → under_review → cleared | escalated | reported.
+- Risk score visual 0-100 color-coded (verde/ámbar/rojo), explicable (risk factors loggeados).
+- Case management: alert queues, auto-assignment, SLA, dispositions, audit trail.
+- Network graph: unifica users/devices/IPs/contrapartes para ver rings coordinados.
+
+### 27.3 Fusión con emulación de dispositivos
+
+- Evento del dispositivo emulado (boot, syscall, network, login) = transacción AML.
+- Sujeto = identidad del dispositivo (fingerprint, IP, MAC); contraparte = servicio accedido.
+- Tipologías: structuring (accesos bajo threshold), layering (rotación IPs), funnel (bursts), device-intelligence flags.
+- Arquitectura: emulador → eventos JSON → SarsEngine (reglas/scoring) → alertas → dashboard → SAR generator (narrativa auto) → export PDF/BSA.
+
+## 28. Desarrollo operacional seguro (DevSecOps)
+
+### 28.1 Auditoría de seguridad
+
+- **Secretos**: gitleaks en CI; sin tokens/keys en código ni historial git.
+- **Auth/CSRF/XSS** en cualquier interfaz web (ver §24.2).
+- **Fail-closed**: set -euo pipefail en scripts; except: pass prohibido (deben loggear); subprocess con check= o manejo de returncode.
+- **Backups**: todo auto-fix debe crear backup antes de modificar (ej. *.remedy.bak), abortar si falla.
+- **Temp files**: tempfile.mkdtemp() con O_NOFOLLOW; nunca paths predecibles en /tmp.
+- **Inyección**: validar inputs contra allowlists (nunca concatenar raw a comandos); sin shell=True/eval/exec.
+- **pkill/pgrep**: nunca por substring sin verificación de binario/usuario.
+
+### 28.2 CI/CD mínimo (verificable)
+
+- GitHub Actions: ruff, shellcheck, gitleaks, bandit, pip-audit.
+- Tests pytest mínimos; release job con sha256sum.
+- El auditor (secdevops-audit) debe ejecutar ruff check real (no solo which).
+
+### 28.3 Endurecimiento del dashboard
+
+- Logging estructurado (sin PII en logs).
+- Audit trail para acciones AML.
+- No exponer paths internos del entorno en scripts (PYTHON hardcodeado).
+
+## 29. Enforcements y gobernanza de CI/CD (auditoría P0)
+
+### 29.1 El CI DEBE BLOQUEAR (fail-closed, no continue-on-error)
+
+- Ningún check de seguridad puede usar `continue-on-error` para pasar: CodeQL,
+  gitleaks, bandit/pip-audit, cppcheck, ruff, shellcheck, tests y build DEBEN
+  fallar el merge cuando detectan un hallazgo real.
+- `exit 0` falso prohibido: un job que no corre el análisis real no puede
+  reportar éxito (p. ej. el auditor debe ejecutar `ruff check` de verdad, no
+  `which ruff`).
+- Branch protection + rulesets: `main` no recibe push directo; PR obligatorio
+  con checks verdes; los cambios a `.github/workflows/*`, `SECURITY.md` y
+  `TIER_SPLUS_SECDEVOPS.md` requieren 2 reviews humanos (nadie auto-mergea
+  infraestructura de seguridad).
+- Auto-merge de dependencias solo con los checks verdes del PR (nunca mergear
+  antes de que el CI confirme build+test+scan).
+
+### 29.2 Supply chain reproducible
+
+- Python: lockfile (uv/poetry/pip-tools) con hashes commitado; `pip-audit` en CI.
+- C/C++: dependencias pinneadas por tag/rev (no `--depth 1` a HEAD móvil);
+  vendoring de deps críticas (argtable3, microhttpd) con checksum verificado.
+- Descargas externas (jadx, linuxdeploy, chromium, fuentes YARA): verificar
+  SHA-256 del artefacto, no solo el tarball.
+- SBOM: generar (CycloneDX/SPDX) en cada release y adjuntarlo al release; el
+  CI lo regenera automáticamente (anchore/sbom-action o syft).
+- Dependabot/Renovate cubriendo TODAS las dependencias (incluidas C/C++ vía
+  vcpkg/conan o el manifest propio), con auto-PR que espera checks verdes.
+
+### 29.3 Integridad de releases
+
+- Tags firmados (anotados + GPG); la firma no puede ser condicional a un
+  secreto con `continue-on-error`.
+- Binarios firmados + checksums.sha256 en cada release.
+- Provenance: SLSA provenance (attestation) generado por el workflow de
+  release (actions/attest-build-provenance) para trazabilidad build→artefacto.
+- Changelog obligatorio en el release; `VERSION` bump con Conventional Commits.
+
+### 29.4 Testing avanzado en CI
+
+- Fuzzing: target de fuzzing (libFuzzer/AFL) corriendo en CI con corpus mínimo
+  (p. ej. 60s por PR o nightly) sobre los parsers críticos (ELF, PE, DEX, pcap,
+  configs cifradas).
+- Coverage gate: `make coverage`/pytest --cov con umbral configurable (p. ej.
+  ≥70% en módulos nuevos); el release no procede bajo el umbral.
+- DAST: para los daemons REST (noctua_rest_api, FastAPI), smoke HTTP de los
+  endpoints con auth/token, SSRF checks, inyección básica.
+
+## 30. Contrato de módulos y API estable (benchmark Rizin/SQLite/Binary Ninja)
+
+### 30.1 API C estable y versionada
+
+- `libnoctua` exporta una API C pública estable y versionada (`libnoctua.so.1`)
+  con un test de ABI (tipo SQLite) que falla el CI si un símbolo público cambia.
+- Funciones públicas con prefijo `noctua_`, structs opacos, flags de error
+  consistentes (ver `noctua_err_str`).
+- El core nunca depende de la interfaz: CLI/TUI/GUI/REST/bindings son capas
+  delgadas sobre `libnoctua` (regla ya cumplida en Noctua-C — blindarla).
+
+### 30.2 JSON canónico y determinista por módulo
+
+- Cada módulo produce un JSON **canónico** (claves ordenadas, sin timestamps
+  aleatorios, tipos estables) tanto en C como en Python — misma salida para la
+  misma entrada en ambos ports (mirror).
+- Patrón rizin `-j` / Volatility: la salida JSON ES el contrato de datos; el
+  texto/HTML/PDF son vistas derivadas.
+- Test de golden files: comparar el JSON de cada módulo entre el port C y el
+  port Python; divergencia = fallo del mirror.
+
+### 30.3 Cadena de custodia en reportes notariales
+
+- Además del PDF notarial, generar `evidence.json` canónico (hashes, fases,
+  decisiones) + `custody.json` (quién/quién accedió/cuándo) + timestamp
+  RFC3161 (TSA) para que el PDF sea solo una vista reproducible de datos
+  verificables.
+- El verify.sh del notarize valida evidencia + firma + timestamp, no solo la
+  firma.
