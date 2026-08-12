@@ -1,10 +1,10 @@
 use serde_json::Value;
 
 pub fn extract_title(html: &str) -> String {
-    if let Some(start) = html.find("<title>") {
-        if let Some(end) = html[start + 7..].find("</title>") {
-            return html_to_text(&html[start + 7..start + 7 + end]);
-        }
+    if let Some(start) = html.find("<title>")
+        && let Some(end) = html[start + 7..].find("</title>")
+    {
+        return html_to_text(&html[start + 7..start + 7 + end]);
     }
     String::new()
 }
@@ -206,24 +206,23 @@ pub fn format_size2(bytes: u64) -> String {
 }
 
 pub fn derive_encryption_key() -> [u8; 32] {
-    if let Ok(hex_key) = std::env::var("SYNAPSIS_DB_KEY") {
-        if let Ok(decoded) = hex::decode(hex_key) {
-            if decoded.len() >= 32 {
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&decoded[..32]);
-                return key;
-            }
-        }
+    if let Ok(hex_key) = std::env::var("SYNAPSIS_DB_KEY")
+        && let Ok(decoded) = hex::decode(hex_key)
+        && decoded.len() >= 32
+    {
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&decoded[..32]);
+        return key;
     }
     let key_path = crate::config::data_dir().join(".browser_encryption_key");
-    if let Ok(data) = std::fs::read(&key_path) {
-        if data.len() == 32 {
-            let mut key_vec = data.clone();
-            key_vec.truncate(32);
-            let mut key = [0u8; 32];
-            key.copy_from_slice(&key_vec);
-            return key;
-        }
+    if let Ok(data) = std::fs::read(&key_path)
+        && data.len() == 32
+    {
+        let mut key_vec = data.clone();
+        key_vec.truncate(32);
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&key_vec);
+        return key;
     }
     let mut key = [0u8; 32];
     getrandom::getrandom(&mut key).expect("getrandom failed");

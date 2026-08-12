@@ -1,29 +1,73 @@
 [advisories]
-unmaintained = "all"
-yanked = "warn"
 ignore = []
 
 [licenses]
 allow = [
     "MIT",
     "Apache-2.0",
-    "BSD-3-Clause",
+    "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
+    "BSD-3-Clause",
     "ISC",
     "Zlib",
-    "MPL-2.0",
     "Unicode-3.0",
+    "CC0-1.0",
+    "MPL-2.0",
+    "BUSL-1.1",
     "CDLA-Permissive-2.0",
 ]
-confidence-threshold = 0.93
 
 [bans]
-multiple-versions = "warn"
-wildcards = "allow"
+multiple-versions = "deny"
+wildcards = "deny"
 highlight = "all"
-
-[sources]
-unknown-registry = "deny"
-unknown-git = "deny"
-allow-git = []
-allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+deny = []
+skip = [
+    # Duplicados conocidos por la doble familia RustCrypto (digest 0.10/0.11)
+    { name = "block-buffer", version = "0.10.4" },
+    { name = "block-buffer", version = "0.12.1" },
+    { name = "cpufeatures", version = "0.2.17" },
+    { name = "cpufeatures", version = "0.3.0" },
+    { name = "crypto-common", version = "0.1.7" },
+    { name = "crypto-common", version = "0.2.2" },
+    { name = "digest", version = "0.10.7" },
+    { name = "digest", version = "0.11.3" },
+    { name = "getrandom", version = "0.2.17" },
+    { name = "getrandom", version = "0.4.3" },
+    { name = "rand", version = "0.8.6" },
+    { name = "rand", version = "0.10.2" },
+    { name = "rand_core", version = "0.6.4" },
+    { name = "rand_core", version = "0.10.1" },
+    { name = "sha2", version = "0.10.9" },
+    { name = "sha2", version = "0.11.0" },
+    { name = "signature", version = "2.2.0" },
+    { name = "signature", version = "3.0.0" },
+    # thiserror 1.x (transitivo) y 2.x (directo)
+    { name = "thiserror", version = "1.0.69" },
+    { name = "thiserror", version = "2.0.18" },
+    { name = "thiserror-impl", version = "1.0.69" },
+    { name = "thiserror-impl", version = "2.0.18" },
+    # windows-sys del árbol de dependencias
+    { name = "windows-sys", version = "0.48.0" },
+    { name = "windows-sys", version = "0.52.0" },
+    { name = "windows-sys", version = "0.61.2" },
+    { name = "windows-targets", version = "0.48.5" },
+    { name = "windows-targets", version = "0.52.6" },
+    { name = "windows_aarch64_gnullvm", version = "0.48.5" },
+    { name = "windows_aarch64_gnullvm", version = "0.52.6" },
+    { name = "windows_aarch64_msvc", version = "0.48.5" },
+    { name = "windows_aarch64_msvc", version = "0.52.6" },
+    { name = "windows_i686_gnu", version = "0.48.5" },
+    { name = "windows_i686_gnu", version = "0.52.6" },
+    { name = "windows_i686_msvc", version = "0.48.5" },
+    { name = "windows_i686_msvc", version = "0.52.6" },
+    { name = "windows_x86_64_gnu", version = "0.48.5" },
+    { name = "windows_x86_64_gnu", version = "0.52.6" },
+    { name = "windows_x86_64_gnullvm", version = "0.48.5" },
+    { name = "windows_x86_64_gnullvm", version = "0.52.6" },
+    { name = "windows_x86_64_msvc", version = "0.48.5" },
+    { name = "windows_x86_64_msvc", version = "0.52.6" },
+]
+skip-tree = [
+    { name = "serde_derive", version = "1" },
+]

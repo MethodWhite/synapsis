@@ -389,10 +389,10 @@ impl ContextRegistry {
         if let Some(ctx) = self.get_mut(id) {
             ctx.touch();
         }
-        if self.warm_contexts.contains_key(id) {
-            if let Some(ctx) = self.warm_contexts.remove(id) {
-                self.hot_contexts.insert(id.clone(), ctx);
-            }
+        if self.warm_contexts.contains_key(id)
+            && let Some(ctx) = self.warm_contexts.remove(id)
+        {
+            self.hot_contexts.insert(id.clone(), ctx);
         }
     }
 

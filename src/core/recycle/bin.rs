@@ -377,22 +377,22 @@ impl RecycleBin {
                     return false;
                 }
 
-                if let Some(ref cat) = query.category {
-                    if &e.category != cat {
-                        return false;
-                    }
+                if let Some(ref cat) = query.category
+                    && &e.category != cat
+                {
+                    return false;
                 }
 
-                if let Some(from) = query.from_time {
-                    if e.created_at < from {
-                        return false;
-                    }
+                if let Some(from) = query.from_time
+                    && e.created_at < from
+                {
+                    return false;
                 }
 
-                if let Some(to) = query.to_time {
-                    if e.created_at > to {
-                        return false;
-                    }
+                if let Some(to) = query.to_time
+                    && e.created_at > to
+                {
+                    return false;
                 }
 
                 true

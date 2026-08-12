@@ -334,21 +334,19 @@ impl AgentRegistry {
 
     pub fn load(&self) -> std::io::Result<()> {
         let agents_file = self.data_dir.join("agents.json");
-        if agents_file.exists() {
-            if let Ok(data) = std::fs::read_to_string(&agents_file) {
-                if let Ok(agents) = serde_json::from_str::<HashMap<AgentId, Agent>>(&data) {
-                    *self.agents.write_safe() = agents;
-                }
-            }
+        if agents_file.exists()
+            && let Ok(data) = std::fs::read_to_string(&agents_file)
+            && let Ok(agents) = serde_json::from_str::<HashMap<AgentId, Agent>>(&data)
+        {
+            *self.agents.write_safe() = agents;
         }
 
         let tasks_file = self.data_dir.join("tasks.json");
-        if tasks_file.exists() {
-            if let Ok(data) = std::fs::read_to_string(&tasks_file) {
-                if let Ok(tasks) = serde_json::from_str::<Vec<Task>>(&data) {
-                    *self.tasks.write_safe() = tasks;
-                }
-            }
+        if tasks_file.exists()
+            && let Ok(data) = std::fs::read_to_string(&tasks_file)
+            && let Ok(tasks) = serde_json::from_str::<Vec<Task>>(&data)
+        {
+            *self.tasks.write_safe() = tasks;
         }
 
         Ok(())
@@ -393,13 +391,13 @@ impl AgentRegistry {
     pub fn register(&self, agent: Agent) -> AgentId {
         let id = agent.id.clone();
         self.agents.write_safe().insert(id.clone(), agent);
-        let _ = self.flush();
+        let _ = self.save();
         id
     }
 
     pub fn unregister(&self, id: &AgentId) -> Option<Agent> {
         let agent = self.agents.write_safe().remove(id);
-        let _ = self.flush();
+        let _ = self.save();
         agent
     }
 

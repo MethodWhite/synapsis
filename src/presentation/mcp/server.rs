@@ -8,16 +8,19 @@ use std::sync::Arc;
 use crate::core::agent_registry_ext::AgentRegistryExt;
 use crate::core::antibrick::{AntiBrickConfig, AntiBrickEngine};
 use crate::core::auth::challenge::ChallengeResponse;
-use crate::core::auth::classifier::AgentClassifier;
+use crate::core::auth::classifier::{
+    AgentClassifier, AgentMetadata, ClassificationResult, ClientType, ConnectionType,
+};
+use crate::core::auth::permissions::Permission;
 use crate::core::auth::tpm::TpmMfaProvider;
 use crate::core::auto_integrate::AutoIntegrate;
 use crate::core::chunk_query::ChunkQueryManager;
 use crate::core::discovery::EnvironmentDiscovery;
-use crate::core::orchestrator::Orchestrator;
 use crate::core::recycle::RecycleBin;
 use crate::core::resource_manager::ResourceManager;
 use crate::core::session_manager::SessionManager;
 use crate::core::sync::GitSyncEngine;
+use crate::core::task_queue::TaskQueue;
 use crate::core::timeline_manager::TimelineManager;
 use crate::core::tool_registry::ToolRegistryState;
 use crate::core::vault::SecureVault;
@@ -30,6 +33,7 @@ use crate::infrastructure::agents::AgentRegistry;
 use crate::infrastructure::database::Database;
 use crate::infrastructure::skills::SkillRegistry;
 
+use super::graph_tools;
 use super::html::format_args_snapshot;
 use super::tools;
 
@@ -53,7 +57,7 @@ pub struct McpServer {
     db: Arc<Database>,
     skills: Arc<SkillRegistry>,
     agents: Arc<AgentRegistry>,
-    orchestrator: Arc<Orchestrator>,
+    task_queue: Arc<TaskQueue>,
     antibrick: Arc<AntiBrickEngine>,
     watchdog: Arc<FilesystemWatchdog>,
     recycle: RecycleBin,
@@ -70,6 +74,7 @@ pub struct McpServer {
     classifier: Option<AgentClassifier>,
     #[allow(dead_code)]
     challenge: Option<ChallengeResponse>,
+    session_classifications: std::sync::RwLock<HashMap<String, ClassificationResult>>,
     sessions: std::sync::RwLock<HashMap<String, SessionInfo>>,
     messages: std::sync::Mutex<Vec<AgentMessage>>,
     next_msg_id: std::sync::atomic::AtomicI64,
@@ -92,7 +97,7 @@ pub struct AgentMessage {
 }
 
 impl McpServer {
-    pub fn new(db: Arc<Database>, orchestrator: Arc<Orchestrator>) -> Self {
+    pub fn new(db: Arc<Database>) -> Self {
         let auth_enabled = std::env::var("SYNAPSIS_AUTH").is_ok();
         Self {
             db: db.clone(),
@@ -127,9 +132,14 @@ impl McpServer {
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
             agents: Arc::new(AgentRegistry::new()),
-            orchestrator,
+            task_queue: {
+                let tq = Arc::new(TaskQueue::new(None));
+                let _ = tq.load();
+                tq
+            },
             antibrick: Arc::new(AntiBrickEngine::new(AntiBrickConfig::default())),
             watchdog: Arc::new(FilesystemWatchdog::new(Default::default())),
+            session_classifications: std::sync::RwLock::new(HashMap::new()),
             sessions: std::sync::RwLock::new(HashMap::new()),
             messages: std::sync::Mutex::new(Vec::new()),
             next_msg_id: std::sync::atomic::AtomicI64::new(1),
@@ -144,6 +154,19 @@ impl McpServer {
     }
 
     pub fn run(&self) -> Result<()> {
+        let db = self.db.clone();
+        let watchdog_interval = std::env::var("SYNAPSIS_AUTO_SAVE_MINUTES")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(15);
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(watchdog_interval * 60));
+                auto_save_periodic_context(&db);
+            }
+        });
+
         let stdin = io::stdin();
         let mut stdout = io::stdout();
         let mut reader = io::BufReader::new(stdin.lock());
@@ -249,7 +272,21 @@ impl McpServer {
         );
         obs.project = Some("synapsis".to_string());
         obs.scope = crate::domain::Scope::Project;
-        self.db.save_observation(&obs).ok();
+        // Dedup: update the existing "tool:<name>" observation instead of duplicating.
+        if let Ok(Some((existing_id, revision))) =
+            self.db
+                .find_similar_observation(Some("synapsis"), &obs.title, &obs.content_hash.0)
+        {
+            let _ = self.db.revise_observation(
+                existing_id,
+                &obs.title,
+                &obs.content,
+                &obs.content_hash.0,
+                revision.saturating_add(1),
+            );
+        } else {
+            self.db.save_observation(&obs).ok();
+        }
     }
 
     fn handle_request(&self, request: &Value) -> Result<Value> {
@@ -514,7 +551,8 @@ impl McpServer {
                         "properties": {
                             "name": { "type": "string" },
                             "role": { "type": "string", "default": "general" },
-                            "description": { "type": "string" }
+                            "description": { "type": "string" },
+                            "parent_agent_id": { "type": "string", "description": "Optional parent agent id for orchestrator_tree hierarchy" }
                         },
                         "required": ["name"]
                     }
@@ -1082,6 +1120,63 @@ impl McpServer {
                     }
                 },
                 {
+                    "name": "audit_verify",
+                    "description": "Verify the integrity of the audit log hash chain.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "agentic_search",
+                    "description": "Intelligent search using Agentic RAG — plans strategy, expands queries, iterates.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string" },
+                            "max_iterations": { "type": "integer", "default": 3 }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "graph_search",
+                    "description": "Search entities in the knowledge graph.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string", "description": "Search query" },
+                            "limit": { "type": "integer", "default": 10 }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "entity_expand",
+                    "description": "Expand an entity to see its relations and connected entities.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "entity_id": { "type": "integer", "description": "Entity ID to expand" },
+                            "depth": { "type": "integer", "default": 1 }
+                        },
+                        "required": ["entity_id"]
+                    }
+                },
+                {
+                    "name": "graph_context",
+                    "description": "Get enriched context from the knowledge graph for a query.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string" },
+                            "depth": { "type": "integer", "default": 2 },
+                            "max_entities": { "type": "integer", "default": 10 }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
                     "name": "premium_status",
                     "description": "Check premium feature availability, license status, and x402 payment info.",
                     "inputSchema": { "type": "object", "properties": {} }
@@ -1093,6 +1188,14 @@ impl McpServer {
     fn call_tool(&self, id: &Value, params: &Value) -> Result<Value> {
         let name = params["name"].as_str().unwrap_or("");
         let args = &params["arguments"];
+        let session_id = args["session_id"].as_str();
+
+        if !self.check_tool_permission(name, session_id) {
+            return Ok(json!({
+                "jsonrpc": "2.0", "id": id,
+                "error": { "code": -32001, "message": format!("Permission denied for tool: {}", name) }
+            }));
+        }
 
         match name {
             "mem_save" => tools::handle_mem_save(&self.db, id, args),
@@ -1115,7 +1218,7 @@ impl McpServer {
             "mem_recycle_search" => tools::handle_mem_recycle_search(&self.recycle, id, args),
             "mem_recycle_stats" => tools::handle_mem_recycle_stats(&self.recycle, id),
             "mem_recycle_delete" => tools::handle_mem_recycle_delete(&self.recycle, id, args),
-            "ghost_audit" => tools::handle_ghost_audit(&self.orchestrator, id, args),
+            "ghost_audit" => tools::handle_ghost_audit(&self.task_queue, id, args),
             "pqc_encrypt" => tools::handle_pqc_encrypt(id, args),
             "wasm_run" => tools::handle_wasm_run(id, args),
             "antibrick_scan" => tools::handle_antibrick_scan(&self.antibrick, id, args),
@@ -1162,8 +1265,8 @@ impl McpServer {
             "resource_recommendations" => {
                 tools::handle_resource_recommendations(&self.resources, id, args)
             }
-            "orchestrator_tree" => tools::handle_orchestrator_tree(&self.orchestrator, id, args),
-            "orchestrator_idle" => tools::handle_orchestrator_idle(&self.orchestrator, id),
+            "orchestrator_tree" => tools::handle_orchestrator_tree(&self.agents, id, args),
+            "orchestrator_idle" => tools::handle_orchestrator_idle(&self.agents, id),
             "shared_sessions_list" => tools::handle_shared_sessions_list(id),
             "shared_sessions_by_project" => tools::handle_shared_sessions_by_project(id, args),
             "shared_sessions_broadcast" => tools::handle_shared_sessions_broadcast(id, args),
@@ -1173,11 +1276,16 @@ impl McpServer {
                     json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Auth not enabled (set SYNAPSIS_AUTH env var)"}}),
                 ),
             },
-            "task_create" => tools::handle_task_create(&self.orchestrator, id, args),
-            "task_list" => tools::handle_task_list(&self.orchestrator, id),
+            "task_create" => tools::handle_task_create(&self.task_queue, id, args),
+            "task_list" => tools::handle_task_list(&self.task_queue, id),
             "mcp_call" => tools::handle_mcp_call(id, args),
             "browser_navigate" => tools::handle_browser_navigate(id, args),
             "browser_snapshot" => tools::handle_browser_snapshot(id, args),
+            "graph_search" => graph_tools::handle_graph_search(&self.db, id, args),
+            "entity_expand" => graph_tools::handle_entity_expand(&self.db, id, args),
+            "graph_context" => graph_tools::handle_graph_context(&self.db, id, args),
+            "agentic_search" => graph_tools::handle_agentic_search(&self.db, id, args),
+            "audit_verify" => graph_tools::handle_audit_verify(&self.db, id),
             "premium_status" => tools::handle_premium_status(id),
             _ => Ok(json!({
                 "jsonrpc": "2.0",
@@ -1201,6 +1309,109 @@ impl McpServer {
                 last_seen: now,
             },
         );
+        self.classify_session(agent_type, session_id);
+    }
+
+    fn classify_session(&self, agent_type: &str, session_id: &str) {
+        if let Some(ref classifier) = self.classifier {
+            let ip: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+            let metadata = AgentMetadata {
+                agent_type: agent_type.to_string(),
+                client_name: None,
+                client_version: None,
+                client_type: ClientType::from_agent_type(agent_type),
+                capabilities: vec![],
+                has_api_key: false,
+                has_dilithium_key: false,
+                is_dilithium_verified: false,
+                connection_ip: None,
+                hostname: None,
+                environment: std::collections::HashMap::new(),
+            };
+            let result = classifier.classify(&metadata, ConnectionType::from_ip(&ip), None, false);
+            let mut classes = self.session_classifications.write_safe();
+            classes.insert(session_id.to_string(), result);
+        }
+    }
+
+    fn check_tool_permission(&self, tool_name: &str, session_id: Option<&str>) -> bool {
+        let Some(ref classifier) = self.classifier else {
+            return true;
+        };
+        let Some(required_perm) = Self::tool_permission(tool_name) else {
+            return true;
+        };
+        let class = session_id.and_then(|sid| {
+            let classes = self.session_classifications.read_safe();
+            classes.get(sid).cloned()
+        });
+        let class = match class {
+            Some(c) => c,
+            None => return false,
+        };
+        classifier.check_permission(&class, required_perm)
+    }
+
+    fn tool_permission(tool_name: &str) -> Option<Permission> {
+        match tool_name {
+            "mem_save" | "mem_update" | "mem_delete" | "mem_judge" | "mem_compare"
+            | "mem_merge_projects" | "ghost_audit" => Some(Permission::WriteContext),
+
+            "mem_search"
+            | "mem_context"
+            | "mem_timeline"
+            | "mem_stats"
+            | "mem_get_observation"
+            | "mem_doctor"
+            | "mem_audit_log" => Some(Permission::ReadContext),
+
+            "mem_session_start"
+            | "mem_session_end"
+            | "mem_session_summary"
+            | "mem_current_project" => Some(Permission::ManageSessions),
+
+            "mem_recycle_save" => Some(Permission::WriteRecycleBin),
+            "mem_recycle_search" | "mem_recycle_stats" => Some(Permission::ReadRecycleBin),
+            "mem_recycle_delete" => Some(Permission::PurgeRecycleBin),
+
+            "skill_register" | "skill_list" => Some(Permission::ManageAgents),
+            "agent_register" | "agent_unregister" | "agent_list" | "agent_list_by_project" => {
+                Some(Permission::ManageAgents)
+            }
+
+            "task_create" | "task_list" => Some(Permission::ExecuteTask),
+            "worker_execute" | "worker_status" => Some(Permission::ExecuteTask),
+
+            "pqc_encrypt" | "vault_store" | "vault_session_key" | "vault_list_sessions" => {
+                Some(Permission::PqcEncrypt)
+            }
+            "pqc_decrypt" | "vault_retrieve" => Some(Permission::PqcDecrypt),
+
+            "secure_write_file"
+            | "secure_read_file"
+            | "secure_list_dir"
+            | "secure_random"
+            | "db_backup"
+            | "db_prune"
+            | "db_vacuum"
+            | "db_integrity"
+            | "db_migration_status"
+            | "watchdog_verify"
+            | "watchdog_snapshot"
+            | "watchdog_check_path"
+            | "watchdog_events" => Some(Permission::Admin),
+
+            "audit_verify" => Some(Permission::ViewAuditLog),
+            "graph_search" | "graph_context" | "agentic_search" => Some(Permission::ReadContext),
+            "entity_expand" => Some(Permission::ReadContext),
+
+            "antibrick_scan" | "antibrick_enable" | "antibrick_stats" | "auto_discover"
+            | "discovery_scan" | "sync_status" | "sync_memory" => {
+                Some(Permission::ConfigureSecurity)
+            }
+
+            _ => None,
+        }
     }
 
     pub fn send_message(&self, from: &str, to: &str, content: &str) -> i64 {
@@ -1248,5 +1459,37 @@ impl McpServer {
                 })
             })
             .collect()
+    }
+}
+
+/// Periodic context guard: persists a heartbeat observation for the "synapsis"
+/// project, deduplicated by a stable title so it is revised instead of stacked.
+fn auto_save_periodic_context(db: &Database) {
+    let now = crate::domain::Timestamp::now().0;
+    let title = "periodic-context-heartbeat";
+    let content = format!(
+        "Periodic context checkpoint (ts={}): server alive, session active.",
+        now
+    );
+    let mut obs = crate::domain::Observation::new(
+        crate::domain::SessionId::new("mcp-watchdog"),
+        crate::domain::ObservationType::Discovery,
+        title.to_string(),
+        content,
+    );
+    obs.project = Some("synapsis".to_string());
+    obs.scope = crate::domain::Scope::Project;
+    if let Ok(Some((existing_id, revision))) =
+        db.find_similar_observation(Some("synapsis"), title, &obs.content_hash.0)
+    {
+        let _ = db.revise_observation(
+            existing_id,
+            &obs.title,
+            &obs.content,
+            &obs.content_hash.0,
+            revision.saturating_add(1),
+        );
+    } else {
+        let _ = db.save_observation(&obs);
     }
 }

@@ -56,7 +56,7 @@ impl SessionBridge {
 
     pub fn global() -> &'static Self {
         static BRIDGE: OnceLock<SessionBridge> = OnceLock::new();
-        BRIDGE.get_or_init(|| SessionBridge::new())
+        BRIDGE.get_or_init(SessionBridge::new)
     }
 
     pub fn register_session(&self, session: SharedSession) {

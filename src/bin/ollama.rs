@@ -117,10 +117,10 @@ fn interactive_chat(model: &str) {
         match response {
             Ok(resp) => {
                 let json_res: Result<OllamaResponse, reqwest::Error> = resp.json();
-                if let Ok(json) = json_res {
-                    if let Some(text) = json.response {
-                        println!("🤖 {}", text);
-                    }
+                if let Ok(json) = json_res
+                    && let Some(text) = json.response
+                {
+                    println!("🤖 {}", text);
                 }
             }
             Err(e) => eprintln!("Error: {}", e),

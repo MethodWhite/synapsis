@@ -1,11 +1,11 @@
 use crate::core::antibrick::AntiBrickEngine;
 use crate::core::auth::permissions::{Permission, PermissionSet};
 use crate::core::discovery_bridge::DiscoveryBridge;
-use crate::core::orchestrator::Orchestrator;
 use crate::core::session_bridge::{self, SessionBridge, SharedSession};
+use crate::core::task_queue::{Priority, TaskQueue};
 use crate::core::watchdog::FilesystemWatchdog;
 use crate::domain::*;
-use crate::infrastructure::agents::{Agent, AgentRegistry, AgentRole};
+use crate::infrastructure::agents::{Agent, AgentRegistry, AgentRole, AgentState};
 use crate::infrastructure::database::Database;
 use crate::infrastructure::skills::{Skill, SkillCategory, SkillRegistry};
 use serde_json::{Value, json};
@@ -49,20 +49,45 @@ pub fn handle_mem_save(db: &Database, id: &Value, args: &Value) -> anyhow::Resul
         Scope::Project
     };
 
-    match db.save_observation(&obs) {
-        Ok(id_val) => Ok(json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": {
-                "content": [{ "type": "text", "text": format!("Saved: '{}' (id={})", title, id_val) }]
+    // Smart dedup: update a related observation instead of duplicating.
+    let project_ref = obs.project.as_deref();
+    match db.find_similar_observation(project_ref, &obs.title, &obs.content_hash.0) {
+        Ok(Some((existing_id, revision))) => {
+            let new_rev = revision.saturating_add(1);
+            match db.revise_observation(
+                existing_id,
+                &obs.title,
+                &obs.content,
+                &obs.content_hash.0,
+                new_rev,
+            ) {
+                Ok(()) => Ok(json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "content": [{ "type": "text", "text": format!(
+                        "Updated related observation '{}' (id={}, rev={})", title, existing_id, new_rev
+                    ) }] }
+                })),
+                Err(e) => Ok(json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "error": { "code": -32603, "message": format!("Revise failed: {}", e) }
+                })),
             }
-        })),
+        }
+        Ok(None) => match db.save_observation(&obs) {
+            Ok(id_val) => Ok(json!({
+                "jsonrpc": "2.0", "id": id,
+                "result": {
+                    "content": [{ "type": "text", "text": format!("Saved: '{}' (id={})", title, id_val) }]
+                }
+            })),
+            Err(e) => Ok(json!({
+                "jsonrpc": "2.0", "id": id,
+                "error": { "code": -32603, "message": format!("Save failed: {}", e) }
+            })),
+        },
         Err(e) => Ok(json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": {
-                "content": [{ "type": "text", "text": format!("Save failed: {}", e) }]
-            }
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32603, "message": format!("Dedup lookup failed: {}", e) }
         })),
     }
 }
@@ -222,16 +247,15 @@ pub fn handle_mem_delete(db: &Database, id: &Value, args: &Value) -> anyhow::Res
 }
 
 pub fn handle_ghost_audit(
-    orchestrator: &Orchestrator,
+    task_queue: &TaskQueue,
     id: &Value,
     args: &Value,
 ) -> anyhow::Result<Value> {
     let path = args["path"].as_str().unwrap_or(".");
-    let task_id = orchestrator.create_task(
-        &format!("External audit request for {}", path),
-        vec!["code_analysis".into()],
-        5,
-        None,
+    let task_id = task_queue.create_task(
+        format!("External audit request for {}", path),
+        vec!["code_analysis".to_string()],
+        Priority::Normal,
     );
 
     Ok(json!({
@@ -397,22 +421,22 @@ fn is_private_url(url_str: &str) -> bool {
     {
         return true;
     }
-    if let Ok(parsed) = url::Url::parse(url_str) {
-        if let Some(host) = parsed.host_str() {
-            if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0" {
-                return true;
-            }
-            if host.ends_with(".local") || host.ends_with(".internal") {
-                return true;
-            }
-            if let Some(addr) = host.parse::<std::net::IpAddr>().ok() {
-                match addr {
-                    std::net::IpAddr::V4(a) => {
-                        return a.is_loopback() || a.is_private() || a.is_link_local();
-                    }
-                    std::net::IpAddr::V6(a) => {
-                        return a.is_loopback() || a.is_unicast_link_local();
-                    }
+    if let Ok(parsed) = url::Url::parse(url_str)
+        && let Some(host) = parsed.host_str()
+    {
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0" {
+            return true;
+        }
+        if host.ends_with(".local") || host.ends_with(".internal") {
+            return true;
+        }
+        if let Ok(addr) = host.parse::<std::net::IpAddr>() {
+            match addr {
+                std::net::IpAddr::V4(a) => {
+                    return a.is_loopback() || a.is_private() || a.is_link_local();
+                }
+                std::net::IpAddr::V6(a) => {
+                    return a.is_loopback() || a.is_unicast_link_local();
                 }
             }
         }
@@ -600,12 +624,24 @@ pub fn handle_agent_register(
         }));
     }
     let role = role_str.parse::<AgentRole>().unwrap_or(AgentRole::General);
-    let agent = Agent::new(name.clone(), role, description);
+    let mut agent = Agent::new(name.clone(), role, description);
+    if let Some(parent) = args["parent_agent_id"].as_str() {
+        if !parent.is_empty() {
+            agent
+                .metadata
+                .insert("parent_agent_id".to_string(), parent.to_string());
+        }
+    }
     let agent_id = agents.register(agent);
+    let parent_note = args["parent_agent_id"]
+        .as_str()
+        .filter(|p| !p.is_empty())
+        .map(|p| format!(" (sub-agent of {})", p))
+        .unwrap_or_default();
     Ok(json!({
         "jsonrpc": "2.0",
         "id": id,
-        "result": { "content": [{ "type": "text", "text": format!("Agent '{}' registered with id={}", name, agent_id.as_str()) }] }
+        "result": { "content": [{ "type": "text", "text": format!("Agent '{}' registered with id={}{}", name, agent_id.as_str(), parent_note) }] }
     }))
 }
 
@@ -629,7 +665,7 @@ pub fn handle_agent_list(agents: &AgentRegistry, id: &Value) -> anyhow::Result<V
 }
 
 pub fn handle_task_create(
-    orchestrator: &Orchestrator,
+    task_queue: &TaskQueue,
     id: &Value,
     args: &Value,
 ) -> anyhow::Result<Value> {
@@ -640,9 +676,14 @@ pub fn handle_task_create(
     } else {
         description
     };
-    let priority = args["priority"].as_i64().unwrap_or(1) as i32;
-    let task_id = orchestrator.create_task(&payload, vec!["developer".into()], priority, None);
-    let text = format!("Task created: {} (priority={})", task_id, priority);
+    let priority = match args["priority"].as_i64().unwrap_or(1) {
+        p if p >= 3 => Priority::Critical,
+        p if p == 2 => Priority::High,
+        p if p == 1 => Priority::Normal,
+        _ => Priority::Low,
+    };
+    let task_id = task_queue.create_task(payload, vec!["developer".to_string()], priority);
+    let text = format!("Task created: {} (priority={:?})", task_id, priority);
     Ok(json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -650,13 +691,38 @@ pub fn handle_task_create(
     }))
 }
 
-pub fn handle_task_list(_orchestrator: &Orchestrator, id: &Value) -> anyhow::Result<Value> {
+pub fn handle_task_list(task_queue: &TaskQueue, id: &Value) -> anyhow::Result<Value> {
+    let pending = task_queue.get_pending_tasks();
+    let assigned = task_queue.get_assigned_tasks();
+
+    let all: Vec<&crate::core::task_queue::Task> = pending.iter().chain(assigned.iter()).collect();
+    let text = if all.is_empty() {
+        "No tasks pending.".to_string()
+    } else {
+        let mut lines = vec![format!("Tasks ({}):", all.len())];
+        for (i, t) in all.iter().enumerate() {
+            let status = format!("{:?}", t.status);
+            let priority = format!("{:?}", t.priority);
+            let assigned = t
+                .assigned_to
+                .as_deref()
+                .map(|a| format!(" → {}", a))
+                .unwrap_or_default();
+            lines.push(format!(
+                "{}. {} [{}] [{}]{}",
+                i + 1,
+                t.description,
+                status,
+                priority,
+                assigned
+            ));
+        }
+        lines.join("\n")
+    };
     Ok(json!({
         "jsonrpc": "2.0",
         "id": id,
-        "result": {
-            "content": [{ "type": "text", "text": "No tasks (stub)." }]
-        }
+        "result": { "content": [{ "type": "text", "text": text }] }
     }))
 }
 
@@ -1802,7 +1868,7 @@ pub fn handle_resource_recommendations(
 }
 
 pub fn handle_orchestrator_tree(
-    _orchestrator: &crate::core::orchestrator::Orchestrator,
+    agents: &AgentRegistry,
     id: &Value,
     args: &Value,
 ) -> anyhow::Result<Value> {
@@ -1812,18 +1878,69 @@ pub fn handle_orchestrator_tree(
             json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'agent_id'"}}),
         );
     }
-    Ok(
-        json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("No sub-agents for '{}' (stub).", agent_id)}]}}),
-    )
+    let all = agents.list(None);
+    let parent = all.iter().find(|a| a.id.as_str() == agent_id);
+    if parent.is_none() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Agent '{}' not found", agent_id)}}),
+        );
+    }
+
+    let sub_agents: Vec<&Agent> = all
+        .iter()
+        .filter(|a| {
+            a.metadata
+                .get("parent_agent_id")
+                .map(|p| p == agent_id)
+                .unwrap_or(false)
+        })
+        .collect();
+
+    let text = if sub_agents.is_empty() {
+        format!("Agent '{}' has no sub-agents.", agent_id)
+    } else {
+        let mut lines = vec![format!(
+            "Sub-agents of '{}' ({}):",
+            agent_id,
+            sub_agents.len()
+        )];
+        for a in &sub_agents {
+            lines.push(format!(
+                "- {} ({:?}) [{}]",
+                a.name,
+                a.role,
+                format!("{:?}", a.state)
+            ));
+        }
+        lines.join("\n")
+    };
+
+    Ok(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "content": [{ "type": "text", "text": text }] }
+    }))
 }
 
-pub fn handle_orchestrator_idle(
-    _orchestrator: &crate::core::orchestrator::Orchestrator,
-    id: &Value,
-) -> anyhow::Result<Value> {
-    Ok(
-        json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"No idle agents (stub)."}]}}),
-    )
+pub fn handle_orchestrator_idle(agents: &AgentRegistry, id: &Value) -> anyhow::Result<Value> {
+    let all = agents.list(None);
+    let idle: Vec<&Agent> = all.iter().filter(|a| a.state == AgentState::Idle).collect();
+
+    let text = if idle.is_empty() {
+        "No idle agents.".to_string()
+    } else {
+        let mut lines = vec![format!("Idle agents ({}):", idle.len())];
+        for a in &idle {
+            lines.push(format!("- {} ({:?})", a.name, a.role));
+        }
+        lines.join("\n")
+    };
+
+    Ok(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "content": [{ "type": "text", "text": text }] }
+    }))
 }
 
 pub fn handle_browser_navigate(id: &Value, args: &Value) -> anyhow::Result<Value> {

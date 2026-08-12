@@ -10,10 +10,10 @@ use crate::core::x402;
 /// Returns Ok(()) if allowed, Err with payment info if not
 pub fn check_premium_access(feature: &str) -> Result<(), PremiumPaymentRequired> {
     // 1. Check license -- free if licensed
-    if let Some(lic) = license::load_license() {
-        if lic.data.features.iter().any(|f| f == feature) {
-            return Ok(());
-        }
+    if let Some(lic) = license::load_license()
+        && lic.data.features.iter().any(|f| f == feature)
+    {
+        return Ok(());
     }
 
     // 2. Check if feature is premium

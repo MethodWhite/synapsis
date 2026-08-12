@@ -295,13 +295,13 @@ impl ResourceManager {
 
     /// Load limits from JSON file
     pub fn load_limits(&self, path: &std::path::Path) -> std::io::Result<()> {
-        if let Ok(data) = std::fs::read_to_string(path) {
-            if let Ok(config) = serde_json::from_str::<ResourceLimitsConfig>(&data) {
-                let mut agent_limits = self.agent_limits.lock_safe();
-                let mut global_limits = self.global_limits.lock_safe();
-                *agent_limits = config.agent_limits;
-                *global_limits = config.global;
-            }
+        if let Ok(data) = std::fs::read_to_string(path)
+            && let Ok(config) = serde_json::from_str::<ResourceLimitsConfig>(&data)
+        {
+            let mut agent_limits = self.agent_limits.lock_safe();
+            let mut global_limits = self.global_limits.lock_safe();
+            *agent_limits = config.agent_limits;
+            *global_limits = config.global;
         }
         Ok(())
     }

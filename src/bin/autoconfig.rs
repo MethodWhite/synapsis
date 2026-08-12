@@ -83,10 +83,11 @@ fn watch_loop(apply: bool) {
             println!("  ⚡ New platform detected: {name}");
         }
 
-        if !new_platforms.is_empty() && apply {
-            if let Err(e) = synapsis::core::mcp_autoconfig::write_configs(&report, false) {
-                eprintln!("  ✗ Error writing config: {e}");
-            }
+        if !new_platforms.is_empty()
+            && apply
+            && let Err(e) = synapsis::core::mcp_autoconfig::write_configs(&report, false)
+        {
+            eprintln!("  ✗ Error writing config: {e}");
         }
 
         previous_names = current_names;

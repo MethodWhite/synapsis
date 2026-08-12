@@ -267,34 +267,34 @@ impl AgentDiscovery {
     pub async fn discover_available_agents(&self) -> Vec<AvailableAgent> {
         let mut agents = Vec::new();
 
-        if let Ok(output) = std::process::Command::new("which").arg("opencode").output() {
-            if output.status.success() {
-                agents.push(AvailableAgent {
-                    name: "opencode".to_string(),
-                    path: "opencode".to_string(),
-                    connector_type: "opencode".to_string(),
-                });
-            }
+        if let Ok(output) = std::process::Command::new("which").arg("opencode").output()
+            && output.status.success()
+        {
+            agents.push(AvailableAgent {
+                name: "opencode".to_string(),
+                path: "opencode".to_string(),
+                connector_type: "opencode".to_string(),
+            });
         }
 
-        if let Ok(output) = std::process::Command::new("which").arg("qwen").output() {
-            if output.status.success() {
-                agents.push(AvailableAgent {
-                    name: "qwen".to_string(),
-                    path: "qwen".to_string(),
-                    connector_type: "qwen".to_string(),
-                });
-            }
+        if let Ok(output) = std::process::Command::new("which").arg("qwen").output()
+            && output.status.success()
+        {
+            agents.push(AvailableAgent {
+                name: "qwen".to_string(),
+                path: "qwen".to_string(),
+                connector_type: "qwen".to_string(),
+            });
         }
 
-        if let Ok(output) = std::process::Command::new("which").arg("claude").output() {
-            if output.status.success() {
-                agents.push(AvailableAgent {
-                    name: "claude".to_string(),
-                    path: "claude".to_string(),
-                    connector_type: "claude".to_string(),
-                });
-            }
+        if let Ok(output) = std::process::Command::new("which").arg("claude").output()
+            && output.status.success()
+        {
+            agents.push(AvailableAgent {
+                name: "claude".to_string(),
+                path: "claude".to_string(),
+                connector_type: "claude".to_string(),
+            });
         }
 
         agents

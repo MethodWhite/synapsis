@@ -2,6 +2,7 @@
 //!
 //! Implements: mem_timeline with focus entry and surrounding context
 
+use crate::domain::ObservationType;
 use crate::infrastructure::database::Database;
 use anyhow::Result;
 use rusqlite::OptionalExtension;
@@ -50,10 +51,11 @@ impl TimelineManager {
         )?;
 
         let entries = stmt.query_map([limit], |row: &rusqlite::Row| {
+            let obs_type: ObservationType = row.get(2)?;
             Ok(TimelineEntry {
                 observation_id: row.get(0)?,
                 title: row.get(1)?,
-                observation_type: row.get(2)?,
+                observation_type: obs_type.to_string(),
                 created_at: row.get(3)?,
                 is_focus: false,
             })
@@ -81,10 +83,11 @@ impl TimelineManager {
              WHERE id = ?1 AND deleted_at IS NULL",
                 [focus_id],
                 |row: &rusqlite::Row| {
+                    let obs_type: ObservationType = row.get(2)?;
                     Ok(TimelineEntry {
                         observation_id: row.get(0)?,
                         title: row.get(1)?,
-                        observation_type: row.get(2)?,
+                        observation_type: obs_type.to_string(),
                         created_at: row.get(3)?,
                         is_focus: true,
                     })
@@ -129,10 +132,11 @@ impl TimelineManager {
         )?;
 
         let entries = stmt.query_map([focus_id, limit.into()], |row: &rusqlite::Row| {
+            let obs_type: ObservationType = row.get(2)?;
             Ok(TimelineEntry {
                 observation_id: row.get(0)?,
                 title: row.get(1)?,
-                observation_type: row.get(2)?,
+                observation_type: obs_type.to_string(),
                 created_at: row.get(3)?,
                 is_focus: false,
             })
@@ -159,10 +163,11 @@ impl TimelineManager {
         )?;
 
         let entries = stmt.query_map([focus_id, limit.into()], |row: &rusqlite::Row| {
+            let obs_type: ObservationType = row.get(2)?;
             Ok(TimelineEntry {
                 observation_id: row.get(0)?,
                 title: row.get(1)?,
-                observation_type: row.get(2)?,
+                observation_type: obs_type.to_string(),
                 created_at: row.get(3)?,
                 is_focus: false,
             })

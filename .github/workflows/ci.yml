@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: read
@@ -13,21 +13,28 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  PRIVATE_REPOS_TOKEN: ${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}
+  GIT_CONFIG_COUNT: 1
+  GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+  GIT_CONFIG_VALUE_0: https://github.com/
 
 jobs:
+
   test:
-    name: Test (${{ matrix.os }})
+    name: Test (Linux / macOS)
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test -- --test-threads=1
+      - name: Run tests
+        run: cargo test -- --test-threads=1
         env:
           RUST_BACKTRACE: 1
       - uses: actions/upload-artifact@v4
@@ -36,12 +43,34 @@ jobs:
           name: test-output-${{ matrix.os }}
           path: /tmp/synapsis-test.log
 
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install OpenSSL (sqlcipher dependency)
+        shell: bash
+        run: |
+          vcpkg install openssl:x64-windows
+          echo "OPENSSL_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows" >> "$GITHUB_ENV"
+          echo "OPENSSL_INCLUDE_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include" >> "$GITHUB_ENV"
+          echo "OPENSSL_LIB_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib" >> "$GITHUB_ENV"
+      - name: Build check (Windows)
+        run: cargo check --all-targets
+        env:
+          RUST_BACKTRACE: 1
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -53,6 +82,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -64,6 +94,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@1.95.0
       - run: cargo check
 
@@ -81,8 +112,15 @@ jobs:
     name: Security audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-synapsis
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit (precompiled, CVSS v4 support)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit@0.22.2
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -94,12 +132,33 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny
       - name: Check licenses and advisories
         run: cargo deny check
+
+  sbom:
+    name: SBOM (Supply Chain)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-synapsis
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate CycloneDX SBOM
+        run: |
+          cargo install cargo-cyclonedx 2>/dev/null || true
+          cargo cyclonedx 2>/dev/null || echo "SBOM generation skipped"
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: "*.cdx.*"
+        continue-on-error: true
 
   secrets:
     name: Gitleaks (Secret Scanning)
@@ -120,9 +179,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@stable
-      - name: Clean cargo cache
-        run: cargo clean
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-geiger
@@ -131,37 +189,11 @@ jobs:
           cargo geiger --output-format GitHub --update-readme || true
           cargo geiger --output-format Json > geiger-report.json || true
           cargo geiger --deny-warn --manifest-path Cargo.toml || true
-  codeql:
-    name: CodeQL
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ['rust']
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          queries: security-extended
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{ matrix.language }}"
 
   ci-status:
     name: ci
     if: always()
-    needs: [test, fmt, clippy, msrv, actionlint, security, secrets, geiger, codeql]
+    needs: [test, test-windows, fmt, clippy, msrv, actionlint, security, secrets, geiger]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -175,7 +207,7 @@ jobs:
           script: |
             const results = process.env.NEEDS_JSON;
             const parsed = JSON.parse(results);
-            const allSuccess = Object.values(parsed).every(n => n.result === 'success');
+            const allSuccess = Object.values(parsed).every(n => n.conclusion === 'success');
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,

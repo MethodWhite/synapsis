@@ -1,0 +1,6 @@
+[net]
+git-fetch-with-cli = true
+
+# Local dependency overrides are intentionally omitted here. The related
+# repositories are not guaranteed to be sibling checkouts; CI and clean
+# builds must resolve the pinned Git dependencies from Cargo.toml.
