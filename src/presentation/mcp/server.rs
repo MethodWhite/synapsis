@@ -203,7 +203,7 @@ impl McpServer {
             }
         };
 
-        // Auth check: if SYNAPSIS_AUTH is set, require valid API key in initialize
+        // Auth check: if SYNAPSIS_AUTH is set, require a valid API key.
         if let Some(ref _classifier) = self.classifier {
             let is_initialize = request["method"].as_str() == Some("initialize");
             if !is_initialize {
@@ -211,8 +211,15 @@ impl McpServer {
                     .as_str()
                     .or_else(|| request["params"]["token"].as_str())
                     .unwrap_or("");
-                if key.is_empty() {
-                    return Some(json!({"jsonrpc":"2.0","id":&request["id"],"error":{"code":-32001,"message":"Authentication required. Pass api_key in params."}}).to_string());
+                let keys = crate::config::api_keys();
+                let valid = if keys.is_empty() {
+                    // No keys configured: require a non-empty key (minimal gate).
+                    !key.is_empty()
+                } else {
+                    keys.iter().any(|k| k == key)
+                };
+                if !valid {
+                    return Some(json!({"jsonrpc":"2.0","id":&request["id"],"error":{"code":-32001,"message":"Authentication failed: invalid api_key."}}).to_string());
                 }
             }
         }

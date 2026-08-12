@@ -60,6 +60,60 @@ pub fn secure_random_u32() -> u32 {
 
 pub struct SysCall;
 
+/// Determine the sandbox root for file operations. Defaults to the current
+/// working directory, overridable via SYNAPSIS_SANDBOX_DIR. This prevents MCP
+/// file tools from reading/writing arbitrary paths outside the workspace.
+fn sandbox_root() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("SYNAPSIS_SANDBOX_DIR") {
+        let p = std::path::PathBuf::from(dir);
+        if p.exists() {
+            return p;
+        }
+    }
+    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+}
+
+/// Resolve `input` and ensure it stays within the sandbox root.
+fn resolve_within_root(input: &str) -> std::io::Result<std::path::PathBuf> {
+    use std::path::Component;
+    let root = sandbox_root();
+    let root_canon = root.canonicalize()?;
+    let candidate = std::path::Path::new(input);
+    let resolved = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        root.join(candidate)
+    };
+    // Reject obvious traversal before touching the filesystem.
+    if resolved.components().any(|c| matches!(c, Component::ParentDir)) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Path traversal detected",
+        ));
+    }
+    let canonical = resolved.canonicalize().or_else(|_| {
+        // Path may not exist yet (e.g. write target): canonicalize the parent.
+        if let Some(parent) = resolved.parent() {
+            let cp = parent.canonicalize()?;
+            if let Some(name) = resolved.file_name() {
+                return Ok(cp.join(name));
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Cannot resolve path",
+        ))
+    })?;
+    if canonical.starts_with(&root_canon) {
+        Ok(canonical)
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Path outside sandbox root",
+        ))
+    }
+}
+
 impl SysCall {
     pub fn timestamp() -> u64 {
         std::time::SystemTime::now()
@@ -69,24 +123,30 @@ impl SysCall {
     }
 
     pub fn write_file(path: &str, data: &[u8]) -> std::io::Result<()> {
-        std::fs::write(path, data)
+        let safe = resolve_within_root(path)?;
+        std::fs::write(safe, data)
     }
 
     pub fn read_file(path: &str) -> std::io::Result<Vec<u8>> {
-        std::fs::read(path)
+        let safe = resolve_within_root(path)?;
+        std::fs::read(safe)
     }
 
     pub fn delete_file(path: &str) -> std::io::Result<()> {
-        std::fs::remove_file(path)
+        let safe = resolve_within_root(path)?;
+        std::fs::remove_file(safe)
     }
 
     pub fn atomic_rename(old_path: &str, new_path: &str) -> std::io::Result<()> {
-        std::fs::rename(old_path, new_path)
+        let old_safe = resolve_within_root(old_path)?;
+        let new_safe = resolve_within_root(new_path)?;
+        std::fs::rename(old_safe, new_safe)
     }
 
     pub fn list_directory(path: &str) -> std::io::Result<Vec<String>> {
+        let safe = resolve_within_root(path)?;
         let mut entries = Vec::new();
-        for e in std::fs::read_dir(path)?.flatten() {
+        for e in std::fs::read_dir(safe)?.flatten() {
             entries.push(e.file_name().into_string().unwrap_or_default());
         }
         Ok(entries)
