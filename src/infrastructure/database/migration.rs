@@ -308,6 +308,29 @@ fn migration_v9_add_thinking(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Cross-platform message mailbox: agents publish structured messages that
+/// peers in the same project can consume, so IDE/TUI/CLI sessions communicate
+/// intelligently instead of only receiving flat notification strings.
+fn migration_v10_add_bridge_messages(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS bridge_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT NOT NULL UNIQUE,
+            project TEXT NOT NULL,
+            from_session TEXT NOT NULL,
+            from_agent TEXT NOT NULL,
+            to_session TEXT,
+            message_type TEXT NOT NULL DEFAULT 'observation',
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            delivered INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_bridge_messages_project
+            ON bridge_messages(project, delivered, created_at);"
+    )?;
+    Ok(())
+}
+
 /// Registry of all migrations. Add new migrations at the END.
 pub fn all_migrations() -> Vec<MigrationFn> {
     vec![
@@ -320,6 +343,7 @@ pub fn all_migrations() -> Vec<MigrationFn> {
         migration_v7_add_audit_chain,
         migration_v8_backfill_audit_chain,
         migration_v9_add_thinking,
+        migration_v10_add_bridge_messages,
     ]
 }
 
@@ -333,6 +357,7 @@ const MIGRATION_NAMES: &[&str] = &[
     "v7_audit_chain",
     "v8_backfill_audit_chain",
     "v9_thinking",
+    "v10_bridge_messages",
 ];
 
 /// Run all pending migrations. Returns (current_version, migrations_applied).

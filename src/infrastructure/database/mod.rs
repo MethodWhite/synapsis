@@ -1028,6 +1028,98 @@ impl Database {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Publish a structured message into the cross-platform mailbox.
+    pub fn bridge_publish(
+        &self,
+        message_id: &str,
+        project: &str,
+        from_session: &str,
+        from_agent: &str,
+        to_session: Option<&str>,
+        message_type: &str,
+        content: &str,
+    ) -> Result<()> {
+        let conn = self.get_conn();
+        let now = Timestamp::now().0;
+        conn.execute(
+            "INSERT INTO bridge_messages (message_id, project, from_session, from_agent, to_session, message_type, content, created_at, delivered)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
+            params![
+                message_id,
+                project,
+                from_session,
+                from_agent,
+                to_session,
+                message_type,
+                content,
+                now
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Fetch undelivered messages for a project, optionally targeted at a
+    /// specific agent/session or from a specific sender.
+    pub fn bridge_inbox(
+        &self,
+        project: &str,
+        session_id: Option<&str>,
+        agent_id: Option<&str>,
+        from_agent: Option<&str>,
+        limit: i32,
+    ) -> Result<Vec<serde_json::Value>> {
+        let conn = self.get_conn();
+        let mut sql = String::from(
+            "SELECT message_id, project, from_session, from_agent, to_session, message_type, content, created_at, delivered
+             FROM bridge_messages WHERE project = ?1 AND delivered = 0",
+        );
+        let mut params_vec: Vec<rusqlite::types::Value> = vec![project.to_string().into()];
+        if let Some(s) = session_id {
+            sql.push_str(" AND (to_session IS NULL OR to_session = ?");
+            params_vec.push(s.to_string().into());
+            sql.push_str(")");
+        }
+        if let Some(a) = agent_id {
+            sql.push_str(" AND from_agent != ?");
+            params_vec.push(a.to_string().into());
+        }
+        if let Some(f) = from_agent {
+            sql.push_str(" AND from_agent = ?");
+            params_vec.push(f.to_string().into());
+        }
+        sql.push_str(" ORDER BY created_at ASC LIMIT ?");
+        params_vec.push((limit as i64).into());
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+            Ok(serde_json::json!({
+                "message_id": row.get::<_, String>(0)?,
+                "project": row.get::<_, String>(1)?,
+                "from_session": row.get::<_, String>(2)?,
+                "from_agent": row.get::<_, String>(3)?,
+                "to_session": row.get::<_, Option<String>>(4)?,
+                "message_type": row.get::<_, String>(5)?,
+                "content": row.get::<_, String>(6)?,
+                "created_at": row.get::<_, i64>(7)?,
+                "delivered": row.get::<_, i64>(8)?,
+            }))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Mark mailbox messages as delivered (consumed by the receiving agent).
+    pub fn bridge_ack(&self, message_ids: &[&str]) -> Result<usize> {
+        let conn = self.get_conn();
+        let mut count = 0usize;
+        for mid in message_ids {
+            count += conn.execute(
+                "UPDATE bridge_messages SET delivered = 1 WHERE message_id = ?1 AND delivered = 0",
+                params![mid],
+            )?;
+        }
+        Ok(count)
+    }
+
     pub fn doctor_check(&self) -> Result<serde_json::Value> {
         let conn = self.get_conn();
         let obs_ok = conn

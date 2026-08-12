@@ -1136,6 +1136,93 @@ pub fn handle_shared_sessions_broadcast(id: &Value, args: &Value) -> anyhow::Res
     )
 }
 
+pub fn handle_bridge_publish(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let project = args["project"].as_str().unwrap_or("").to_string();
+    let from_session = args["from_session"].as_str().unwrap_or("").to_string();
+    let from_agent = args["from_agent"].as_str().unwrap_or("").to_string();
+    let content = args["content"].as_str().unwrap_or("").to_string();
+    let message_type = args["message_type"].as_str().unwrap_or("observation").to_string();
+    let to_session = args["to_session"].as_str().map(|s| s.to_string());
+    if project.is_empty() || content.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'project' or 'content'"}}),
+        );
+    }
+    let message_id = format!(
+        "msg-{}-{:x}",
+        project,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    match db.bridge_publish(
+        &message_id,
+        &project,
+        &from_session,
+        &from_agent,
+        to_session.as_deref(),
+        &message_type,
+        &content,
+    ) {
+        Ok(()) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Message published: {} ({})", message_id, message_type)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_bridge_inbox(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let project = args["project"].as_str().unwrap_or("").to_string();
+    let session_id = args["session_id"].as_str();
+    let agent_id = args["agent_id"].as_str();
+    let from_agent = args["from_agent"].as_str();
+    let limit = args["limit"].as_i64().unwrap_or(20) as i32;
+    if project.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'project'"}}),
+        );
+    }
+    match db.bridge_inbox(&project, session_id, agent_id, from_agent, limit) {
+        Ok(msgs) => {
+            if msgs.is_empty() {
+                return Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"No pending messages."}]}}));
+            }
+            let mut lines = vec![format!("Inbox ({}):", msgs.len())];
+            for m in &msgs {
+                lines.push(format!(
+                    "\n[{}] {} → {} ({})\n{}",
+                    m["message_id"].as_str().unwrap_or(""),
+                    m["from_agent"].as_str().unwrap_or(""),
+                    m["to_session"].as_str().unwrap_or("everyone"),
+                    m["message_type"].as_str().unwrap_or(""),
+                    m["content"].as_str().unwrap_or("")
+                ));
+            }
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":lines.join("\n")}]}}))
+        }
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_bridge_ack(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let ids: Vec<&str> = args["message_ids"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<&str>>()
+        })
+        .unwrap_or_default();
+    if ids.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'message_ids'"}}),
+        );
+    }
+    match db.bridge_ack(&ids) {
+        Ok(n) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Acknowledged {} message(s)", n)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
 pub fn handle_mem_doctor(db: &Database, id: &Value) -> anyhow::Result<Value> {
     match db.doctor_check() {
         Ok(diag) => {

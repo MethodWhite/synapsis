@@ -1179,6 +1179,48 @@ impl McpServer {
                     }
                 },
                 {
+                    "name": "bridge_publish",
+                    "description": "Publish a structured message to the cross-platform mailbox (agents/IDEs in the same project can consume it).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project": { "type": "string" },
+                            "from_session": { "type": "string" },
+                            "from_agent": { "type": "string" },
+                            "content": { "type": "string" },
+                            "message_type": { "type": "string", "default": "observation" },
+                            "to_session": { "type": "string" }
+                        },
+                        "required": ["project", "from_session", "from_agent", "content"]
+                    }
+                },
+                {
+                    "name": "bridge_inbox",
+                    "description": "Read undelivered cross-platform messages for the project (optionally for this agent/session).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project": { "type": "string" },
+                            "session_id": { "type": "string" },
+                            "agent_id": { "type": "string" },
+                            "from_agent": { "type": "string" },
+                            "limit": { "type": "integer", "default": 20 }
+                        },
+                        "required": ["project"]
+                    }
+                },
+                {
+                    "name": "bridge_ack",
+                    "description": "Mark mailbox messages as delivered/consumed.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "message_ids": { "type": "array", "items": { "type": "string" } }
+                        },
+                        "required": ["message_ids"]
+                    }
+                },
+                {
                     "name": "audit_verify",
                     "description": "Verify the integrity of the audit log hash chain.",
                     "inputSchema": {
@@ -1331,6 +1373,9 @@ impl McpServer {
             "shared_sessions_list" => tools::handle_shared_sessions_list(id),
             "shared_sessions_by_project" => tools::handle_shared_sessions_by_project(id, args),
             "shared_sessions_broadcast" => tools::handle_shared_sessions_broadcast(id, args),
+            "bridge_publish" => tools::handle_bridge_publish(&self.db, id, args),
+            "bridge_inbox" => tools::handle_bridge_inbox(&self.db, id, args),
+            "bridge_ack" => tools::handle_bridge_ack(&self.db, id, args),
             "auth_classify_agent" => match &self.classifier {
                 Some(c) => tools::handle_auth_classify_agent(c, id, args),
                 None => Ok(
