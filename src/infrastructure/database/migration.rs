@@ -279,6 +279,35 @@ fn migration_v8_backfill_audit_chain(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Sequential thinking trees: reasoning steps that branch and track depth.
+/// Keeps reasoning state inside Synapsis instead of depending on an external
+/// MCP server like sequential-thinking.
+fn migration_v9_add_thinking(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS thinking_trees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tree_id TEXT NOT NULL UNIQUE,
+            project TEXT,
+            session_id TEXT,
+            topic TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS thinking_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tree_id TEXT NOT NULL,
+            step_index INTEGER NOT NULL,
+            parent_index INTEGER,
+            branch INTEGER NOT NULL DEFAULT 0,
+            thought TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE(tree_id, branch, step_index)
+        );"
+    )?;
+    Ok(())
+}
+
 /// Registry of all migrations. Add new migrations at the END.
 pub fn all_migrations() -> Vec<MigrationFn> {
     vec![
@@ -290,6 +319,7 @@ pub fn all_migrations() -> Vec<MigrationFn> {
         migration_v6_add_x402_payments,
         migration_v7_add_audit_chain,
         migration_v8_backfill_audit_chain,
+        migration_v9_add_thinking,
     ]
 }
 
@@ -302,6 +332,7 @@ const MIGRATION_NAMES: &[&str] = &[
     "v6_x402",
     "v7_audit_chain",
     "v8_backfill_audit_chain",
+    "v9_thinking",
 ];
 
 /// Run all pending migrations. Returns (current_version, migrations_applied).

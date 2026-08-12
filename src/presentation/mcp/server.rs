@@ -15,6 +15,7 @@ use crate::core::auth::permissions::Permission;
 use crate::core::auth::tpm::TpmMfaProvider;
 use crate::core::auto_integrate::AutoIntegrate;
 use crate::core::chunk_query::ChunkQueryManager;
+use crate::core::sequential_thinking::SequentialThinking;
 use crate::core::discovery::EnvironmentDiscovery;
 use crate::core::recycle::RecycleBin;
 use crate::core::resource_manager::ResourceManager;
@@ -65,6 +66,7 @@ pub struct McpServer {
     session_mgr: SessionManager,
     timelines: TimelineManager,
     chunks: ChunkQueryManager,
+    thinking: SequentialThinking,
     vault: SecureVault,
     workers: WorkerOrchestrator,
     git_sync: GitSyncEngine,
@@ -106,6 +108,7 @@ impl McpServer {
             session_mgr: SessionManager::new(db.clone()),
             timelines: TimelineManager::new(db.clone()),
             chunks: ChunkQueryManager::new(db.clone()),
+            thinking: SequentialThinking::new(db.clone()),
             vault: SecureVault::new(crate::config::data_dir()),
             workers: {
                 let mut wo = WorkerOrchestrator::new();
@@ -586,6 +589,55 @@ impl McpServer {
                     "name": "task_list",
                     "description": "List all tasks",
                     "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "think_start",
+                    "description": "Start a sequential thinking tree (structured reasoning)",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "tree_id": { "type": "string" },
+                            "topic": { "type": "string" },
+                            "project": { "type": "string" },
+                            "session_id": { "type": "string" }
+                        },
+                        "required": ["tree_id", "topic"]
+                    }
+                },
+                {
+                    "name": "think_step",
+                    "description": "Add a reasoning step to a thinking tree",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "tree_id": { "type": "string" },
+                            "thought": { "type": "string" },
+                            "branch": { "type": "integer", "default": 0 },
+                            "parent_index": { "type": "integer" }
+                        },
+                        "required": ["tree_id", "thought"]
+                    }
+                },
+                {
+                    "name": "think_state",
+                    "description": "Get the current state of a thinking tree",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": { "tree_id": { "type": "string" } },
+                        "required": ["tree_id"]
+                    }
+                },
+                {
+                    "name": "think_finish",
+                    "description": "Finish a thinking tree with a status",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "tree_id": { "type": "string" },
+                            "status": { "type": "string", "default": "completed" }
+                        },
+                        "required": ["tree_id"]
+                    }
                 },
                 {
                     "name": "mcp_call",
@@ -1207,7 +1259,7 @@ impl McpServer {
         match name {
             "mem_save" => tools::handle_mem_save(&self.db, id, args),
             "mem_search" => tools::handle_mem_search(&self.db, id, args),
-            "mem_context" => tools::handle_mem_context(&self.db, id, args),
+            "mem_context" => tools::handle_mem_context(&self.db, &self.skills, id, args),
             "mem_timeline" => tools::handle_mem_timeline(&self.timelines, id, args),
             "mem_stats" => tools::handle_mem_stats(&self.db, id),
             "mem_delete" => tools::handle_mem_delete(&self.db, id, args),
@@ -1215,7 +1267,9 @@ impl McpServer {
             "mem_get_observation" => tools::handle_mem_get_observation(&self.db, id, args),
             "mem_judge" => tools::handle_mem_judge(&self.db, id, args),
             "mem_compare" => tools::handle_mem_compare(&self.db, id, args),
-            "mem_session_start" => tools::handle_mem_session_start(&self.session_mgr, id, args),
+            "mem_session_start" => {
+                tools::handle_mem_session_start(&self.session_mgr, &self.db, &self.skills, id, args)
+            }
             "mem_session_end" => tools::handle_mem_session_end(&self.session_mgr, id, args),
             "mem_session_summary" => tools::handle_mem_session_summary(&self.session_mgr, id, args),
             "mem_doctor" => tools::handle_mem_doctor(&self.db, id),
@@ -1285,6 +1339,10 @@ impl McpServer {
             },
             "task_create" => tools::handle_task_create(&self.task_queue, id, args),
             "task_list" => tools::handle_task_list(&self.task_queue, id),
+            "think_start" => tools::handle_think_start(&self.thinking, id, args),
+            "think_step" => tools::handle_think_step(&self.thinking, id, args),
+            "think_state" => tools::handle_think_state(&self.thinking, id, args),
+            "think_finish" => tools::handle_think_finish(&self.thinking, id, args),
             "mcp_call" => tools::handle_mcp_call(id, args),
             "browser_navigate" => tools::handle_browser_navigate(id, args),
             "browser_snapshot" => tools::handle_browser_snapshot(id, args),
@@ -1386,7 +1444,8 @@ impl McpServer {
                 Some(Permission::ManageAgents)
             }
 
-            "task_create" | "task_list" => Some(Permission::ExecuteTask),
+            "task_create" | "task_list" | "think_start" | "think_step" | "think_state"
+            | "think_finish" => Some(Permission::ExecuteTask),
             "worker_execute" | "worker_status" => Some(Permission::ExecuteTask),
 
             "pqc_encrypt" | "vault_store" | "vault_session_key" | "vault_list_sessions" => {

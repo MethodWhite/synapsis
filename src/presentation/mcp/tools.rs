@@ -127,9 +127,15 @@ pub fn handle_mem_search(db: &Database, id: &Value, args: &Value) -> anyhow::Res
     }))
 }
 
-pub fn handle_mem_context(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+pub fn handle_mem_context(
+    db: &Database,
+    skills: &SkillRegistry,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
     let limit = args["limit"].as_i64().unwrap_or(5) as i32;
     let project = args["project"].as_str();
+    let query = args["query"].as_str().unwrap_or("");
 
     let timeline = db.get_timeline_direct(limit).unwrap_or_default();
     let total = db.stats().unwrap_or_default();
@@ -147,6 +153,23 @@ pub fn handle_mem_context(db: &Database, id: &Value, args: &Value) -> anyhow::Re
         let c = entry.observation.content.as_str();
         let preview: String = c.chars().take(150).collect();
         context_parts.push(format!("\n{}. **{}**\n   {}", i + 1, t, preview));
+    }
+
+    // Proactive: suggest relevant skills from the catalog based on the query
+    // or project, so the agent loads the right capabilities without searching.
+    let search_term = if !query.is_empty() {
+        query
+    } else {
+        project.unwrap_or("")
+    };
+    if !search_term.is_empty() {
+        let suggested = skills.search(search_term);
+        if !suggested.is_empty() {
+            context_parts.push(format!("\nSuggested skills ({}):", suggested.len()));
+            for s in suggested.iter().take(8) {
+                context_parts.push(format!("- **{}** — {}", s.name, s.description));
+            }
+        }
     }
 
     let text = context_parts.join("\n");
@@ -933,6 +956,8 @@ pub fn handle_mem_compare(db: &Database, id: &Value, args: &Value) -> anyhow::Re
 
 pub fn handle_mem_session_start(
     sessions: &crate::core::session_manager::SessionManager,
+    db: &Database,
+    skills: &SkillRegistry,
     id: &Value,
     args: &Value,
 ) -> anyhow::Result<Value> {
@@ -960,8 +985,33 @@ pub fn handle_mem_session_start(
                 &session_bridge::detect_platform(),
             );
             bridge.register_session(shared);
+
+            // Proactive context: pull recent observations and suggested skills
+            // for this project so the agent starts with memory loaded.
+            let mut parts = vec![format!("Session started: {}", sid)];
+            let recent = db
+                .search_fts(project, Some(project), 5)
+                .unwrap_or_default();
+            if !recent.is_empty() {
+                parts.push(format!("\nRecent context for '{}':", project));
+                for r in recent.iter().take(5) {
+                    let t = r["title"].as_str().unwrap_or("");
+                    let c = r["content"].as_str().unwrap_or("");
+                    let preview: String = c.chars().take(120).collect();
+                    parts.push(format!("\n- **{}**\n  {}", t, preview));
+                }
+            }
+            let suggested = skills.search(project);
+            if !suggested.is_empty() {
+                parts.push(format!("\nSuggested skills ({}):", suggested.len()));
+                for s in suggested.iter().take(6) {
+                    parts.push(format!("- **{}** — {}", s.name, s.description));
+                }
+            }
+
+            let text = parts.join("\n");
             Ok(
-                json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session started: {}", sid)}]}}),
+                json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}),
             )
         }
         Err(e) => {
@@ -2203,4 +2253,97 @@ pub fn handle_premium_status(id: &Value) -> anyhow::Result<Value> {
         "id": id,
         "result": { "content": [{ "type": "text", "text": text }] }
     }))
+}
+
+pub fn handle_think_start(
+    thinking: &crate::core::sequential_thinking::SequentialThinking,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let tree_id = args["tree_id"].as_str().unwrap_or("").to_string();
+    let topic = args["topic"].as_str().unwrap_or("").to_string();
+    let project = args["project"].as_str();
+    let session_id = args["session_id"].as_str();
+    if tree_id.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'tree_id'"}}),
+        );
+    }
+    match thinking.start_tree(&tree_id, project, session_id, &topic) {
+        Ok(()) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Thinking tree started: {} ({})", tree_id, topic)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_think_step(
+    thinking: &crate::core::sequential_thinking::SequentialThinking,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let tree_id = args["tree_id"].as_str().unwrap_or("").to_string();
+    let thought = args["thought"].as_str().unwrap_or("").to_string();
+    let branch = args["branch"].as_i64().unwrap_or(0);
+    let parent_index = args["parent_index"].as_i64();
+    if tree_id.is_empty() || thought.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'tree_id' or 'thought'"}}),
+        );
+    }
+    match thinking.add_step(&tree_id, &thought, branch, parent_index) {
+        Ok(step) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Step {} added (branch {}): {}", step.step_index, step.branch, step.thought)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_think_state(
+    thinking: &crate::core::sequential_thinking::SequentialThinking,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let tree_id = args["tree_id"].as_str().unwrap_or("").to_string();
+    if tree_id.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'tree_id'"}}),
+        );
+    }
+    match thinking.get_tree(&tree_id) {
+        Ok(Some(tree)) => {
+            let mut lines = vec![format!(
+                "Thinking tree '{}' [{}] — {} ({} steps)",
+                tree.tree_id,
+                tree.status,
+                tree.topic,
+                tree.steps.len()
+            )];
+            for s in &tree.steps {
+                let indent = "  ".repeat(s.branch as usize);
+                let parent = s
+                    .parent_index
+                    .map(|p| format!(" <- {}", p))
+                    .unwrap_or_default();
+                lines.push(format!("{}{}. [b{}] {}{}", indent, s.step_index, s.branch, s.thought, parent));
+            }
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":lines.join("\n")}]}}))
+        }
+        Ok(None) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Tree '{}' not found", tree_id)}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
+}
+
+pub fn handle_think_finish(
+    thinking: &crate::core::sequential_thinking::SequentialThinking,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let tree_id = args["tree_id"].as_str().unwrap_or("").to_string();
+    let status = args["status"].as_str().unwrap_or("completed");
+    if tree_id.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'tree_id'"}}),
+        );
+    }
+    match thinking.finish_tree(&tree_id, status) {
+        Ok(()) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Thinking tree '{}' finished ({})", tree_id, status)}]}})),
+        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+    }
 }
