@@ -739,3 +739,92 @@ Cada pipeline debe ser reproducible, auditable e inmutable en el tiempo:
 
 - Logs de acceso con decisión (allow/deny + motivo), sujeto, destino, contexto.
 - Monitoreo continuo de desvíos de policy; alertas en tiempo real.
+
+## 36. Desarrollo de aplicaciones móviles (Flutter/Dart, Android, iOS)
+
+### 36.1 Arquitectura Flutter/Dart
+
+- **MVVM + provider (ChangeNotifier)** recomendado; Riverpod para equipos con rigor; Bloc para apps grandes con trazabilidad. GetX NO recomendado (magia/acoplamiento).
+- Separación UI/data con patrón **repositorio**; flujo de datos unidireccional (UDF).
+- Modelos inmutables (`freezed`); navegación con `go_router`.
+- Cómputos pesados en **Isolates** (`Isolate.run`/`compute`); Streams para datos continuos.
+- Tests: unit, widget (`pumpWidget`), integration (`integration_test`). Lints: `flutter_lints`.
+- Bundle release con Impeller (60/120fps); `--obfuscate --split-debug-info`.
+
+### 36.2 Android nativo
+
+- Kotlin + Jetpack Compose, single-activity, UDF, ViewModel + StateFlow.
+- Coroutines/Flow para async; Hilt para DI; Room/DataStore/WorkManager/Paging 3.
+- Gradle moderno: AGP 9.x, Gradle 9.x, JDK 17, Version Catalog (`libs.versions.toml`).
+- **targetSdk 36** (Android 16) antes de 31-ago-2026; minSdk 23+.
+- R8 con minify + obfuscación; guardar `mapping.txt`.
+
+### 36.3 iOS nativo
+
+- SwiftUI + `@Observable` MVVM; async/await + Actors; NavigationStack.
+- SPM para dependencias; compilar con Xcode 26/iOS 26 SDK (requisito App Store).
+- Privacy manifest (`PrivacyInfo.xcprivacy`) con approved reasons.
+
+### 36.4 Seguridad móvil
+
+- **Secure storage**: flutter_secure_storage v11 (Keychain en iOS, KeyStore en Android con RSA-OAEP + AES-GCM). Desactivar allowBackup.
+- TLS/SSL pinning (Network Security Config en Android, TrustKit/URLSession en iOS); ATS exige HTTPS.
+- **Play Integrity API** (Android) + **App Attest/DeviceCheck** (iOS); verificación server-side, nunca solo en cliente.
+- Runtime permissions: pedir en contexto, degradar con gracia.
+- Políticas: Google Play target API, App Store guidelines, privacy forms.
+
+## 37. Ofuscación, encriptación y defensa anti-RE
+
+### 37.1 Ofuscación
+
+- **OLLVM** (forks: Hikari, YANSOllvm): control flow flattening, bogus control flow, instruction substitution. Strings cifrados.
+- Android: R8/DexGuard, ofuscación JNI + .so OLLVM, DEX packers. iOS: SwiftShield, Mach-O cifrado (FairPlay), anti-Dyld-injection.
+- Flutter/Dart: AOT snapshot es fácil de RE (reFlutter); mover lógica crítica a .so nativo con OLLVM.
+- Anti-debug: ptrace, TracerPid, detección de breakpoints (INT3), timing checks.
+- **Advertencia honesta**: la ofuscación solo sube el coste; los secretos NUNCA van en el cliente.
+
+### 37.2 Encriptación
+
+- **AEAD**: AES-256-GCM o ChaCha20-Poly1305 (nunca CBC+HMAC legacy, nunca ECB).
+- Key management en **hardware**: Keychain (Secure Enclave), KeyStore/StrongBox, TEE/TrustZone.
+- **Key Attestation / Hardware Attestation**: certificado firmado por hardware.
+- White-box crypto: matemáticamente roto (Chow/DCA); solo "costo", no seguridad real.
+- Nonce/IV aleatorio por operación; anti-rollback de firmware.
+
+### 37.3 Defensa contra SCA / RE de hardware (Noctua-C)
+
+- **Constant-time**: sin accesos de memoria dependientes del secreto, sin saltos condicionales sobre secretos; bitslicing; revisar asm (compiladores rompen constant-time).
+- **Masking/blinding** (RSA blinding); ruido/dummy ops para subir trazas DPA/SPA.
+- Firmware: **encriptación con clave en secure element**, secure boot/verified boot, **fuses de read-out protection** (RDP), deshabilitar JTAG/SWD, MPU anti-dump, zeroización.
+- Glitching: redundancia (cómputo doble), checksums/CFI, monitores de voltaje/reloj on-chip, evitar single-point checks.
+- **Física del chip**: mesh/shield activo, coating, memory encryption on-die, PUFs, zeroization ante tamper. El software solo no puede ganar; meter todo en TEE/secure element.
+- Detección de emuladores (como KernelVex): fingerprinting de entorno, timing, comportamientos de instrucciones privilegiadas — pero un emulador serio parchea todo.
+
+### 37.4 Detección de RE
+
+- Frida: `/proc/self/maps` por libfrida/gadget, socket 27042. Xposed: `XposedBridge`, `XposedHelpers`.
+- Emuladores: `Build.FINGERPRINT`, `ro.kernel.qemu`, `/dev/qemu_pipe`. Debuggers: `TracerPid`, `ptrace`, INT3. Integrity: firma APK, checksums.
+- **Mejores prácticas**: enforcement server-side, atestación de hardware, mTLS + pinning + rotación, AEAD, secure boot, capas de defensa. Security theater: ofuscación como única defensa, white-box, cripto custom, claves hardcodeadas.
+
+## 38. Estándar de repositorio Git/GitHub
+
+### 38.1 Estructura de repositorio
+
+- `README.md` (badges, instalación, uso, contribución, licencia), `LICENSE` (MIT/Apache/GPL según), `.gitignore`, `.gitattributes`, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`, `CODE_OF_CONDUCT.md`, `pyproject.toml`, paquete `src/`, `tests/`.
+- `.github/`: workflows, ISSUE_TEMPLATE, PULL_REQUEST_TEMPLATE, CODEOWNERS, dependabot.yml.
+- Nombrado: README.md/CHANGELOG.md en mayúsculas; directorios minúscula.
+
+### 38.2 Git workflow
+
+- **Conventional Commits**: feat/fix/docs/chore/refactor/perf/test/ci/build; `feat!:` o `BREAKING CHANGE:` para MAJOR.
+- **GitHub Flow**: main siempre desplegable + feature branches + PRs. Trunk-based para CI/CD fuerte.
+- PRs: título, descripción, tamaño razonable; code review obligatorio.
+- Tags/releases con **SemVer** (MAJOR.MINOR.PATCH).
+
+### 38.3 GitHub
+
+- **Branch protection**: main protegido, reviews requeridos, status checks.
+- Actions: CI (lint, tests, SAST, SCA), release con assets + checksums.
+- Issues/PR templates, labels, Dependabot/Renovate, CodeQL.
+- Releases: notas, assets con `sha256sum`, provenance.
+- **Seguridad**: secret scanning, dependabot alerts, code scanning, branch protection, signed commits. Secretos nunca en repo.

@@ -33,6 +33,7 @@ use crate::domain::*;
 use crate::infrastructure::agents::AgentRegistry;
 use crate::infrastructure::database::Database;
 use crate::infrastructure::skills::SkillRegistry;
+use crate::infrastructure::standards::StandardRegistry;
 
 use super::graph_tools;
 use super::html::format_args_snapshot;
@@ -57,6 +58,7 @@ macro_rules! debug_log {
 pub struct McpServer {
     db: Arc<Database>,
     skills: Arc<SkillRegistry>,
+    standards: Arc<StandardRegistry>,
     agents: Arc<AgentRegistry>,
     task_queue: Arc<TaskQueue>,
     antibrick: Arc<AntiBrickEngine>,
@@ -134,6 +136,7 @@ impl McpServer {
             classifier: auth_enabled.then(AgentClassifier::new),
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
+            standards: Arc::new(StandardRegistry::new()),
             agents: Arc::new(AgentRegistry::new()),
             task_queue: {
                 let tq = Arc::new(TaskQueue::new(None));
@@ -152,6 +155,7 @@ impl McpServer {
     pub fn init(&self) {
         self.db.init().expect("Failed to initialize database");
         self.skills.init().ok();
+        self.standards.init().ok();
         self.agents.init().ok();
         info_log!("[Synapsis MCP] Server initialized");
     }
@@ -244,6 +248,9 @@ impl McpServer {
                         | "task_create"
                         | "agent_register"
                         | "skill_register"
+                        | "skill_unregister"
+                        | "standard_register"
+                        | "standard_unregister"
                         | "watchdog_snapshot"
                         | "antibrick_enable"
                 );
@@ -323,14 +330,22 @@ impl McpServer {
             "resources/list" => Ok(json!({
                 "jsonrpc": "2.0",
                 "id": id,
-                "result": { "resources": [
-                    {"uri": "synapsis://memory", "name": "Synapsis Memory"},
-                    {"uri": "synapsis://skills", "name": "Synapsis Skills"},
-                    {"uri": "synapsis://agents", "name": "Synapsis Agents"}
-                ]}
+                "result": { "resources": super::standares::list_resources() }
+            })),
+            "resources/templates/list" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "templates": [] }
             })),
             "resources/read" => {
                 let uri = request["params"]["uri"].as_str().unwrap_or("");
+                if let Some(contents) = super::standares::read_resource(uri) {
+                    return Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": contents
+                    }));
+                }
                 let stats = self.db.stats().unwrap_or(json!({}));
                 let default_zero = json!(0);
                 let text = format!(
@@ -552,6 +567,72 @@ impl McpServer {
                     "name": "skill_list",
                     "description": "List all registered skills",
                     "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "skill_unregister",
+                    "description": "Unregister a skill by id",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": { "id": { "type": "string" } },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "standard_register",
+                    "description": "Register a new standard (normative rule, e.g. S-46 MCP Security). Standards are distinct from skills: they describe how things must be, and compliance is mandatory.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string", "description": "Short name, e.g. mcp-security" },
+                            "title": { "type": "string", "description": "Human title, e.g. Seguridad de Servidores MCP" },
+                            "description": { "type": "string" },
+                            "code": { "type": "string", "description": "Normative code, e.g. S-46" },
+                            "category": { "type": "string", "default": "custom", "description": "security | dev-process | architecture | compliance | data | testing | documentation | project-management | ops | custom" },
+                            "status": { "type": "string", "default": "normative", "description": "normative | derived | informative | draft" },
+                            "inherits_from": { "type": "array", "items": { "type": "string" }, "description": "Parent standards codes" },
+                            "base_refs": { "type": "array", "items": { "type": "string" }, "description": "Base references (specs, frameworks)" },
+                            "scope": { "type": "string" },
+                            "tags": { "type": "array", "items": { "type": "string" } },
+                            "content": { "type": "string", "description": "Full standard content (markdown)" }
+                        },
+                        "required": ["name", "title", "description"]
+                    }
+                },
+                {
+                    "name": "standard_list",
+                    "description": "List all registered standards",
+                    "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "standard_search",
+                    "description": "Search standards by name, code, title, description or tags",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": { "query": { "type": "string" } },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "standard_unregister",
+                    "description": "Unregister a standard by id",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": { "id": { "type": "string" } },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "recommend_tooling",
+                    "description": "Intelligent selection assistant. Given the current task description, suggests which skills, standards and Synapsis tools to use and for what purpose. Falls back to sensible alternatives when no strong match.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "task": { "type": "string", "description": "What the model is about to do" },
+                            "project": { "type": "string", "description": "Optional project context" },
+                            "context": { "type": "string", "description": "Optional extra context" }
+                        },
+                        "required": ["task"]
+                    }
                 },
                 {
                     "name": "agent_register",
@@ -1281,6 +1362,27 @@ impl McpServer {
                     "name": "premium_status",
                     "description": "Check premium feature availability, license status, and x402 payment info.",
                     "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "standares_search",
+                    "description": "Buscar en el repositorio de estándares y skills (~/Standares).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string", "description": "Término a buscar" }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "standares_stats",
+                    "description": "Estadísticas del repositorio de estándares y skills.",
+                    "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "standares_list",
+                    "description": "Inventario completo de estándares y skills.",
+                    "inputSchema": { "type": "object", "properties": {} }
                 }
             ]}
         }))
@@ -1339,6 +1441,14 @@ impl McpServer {
             "db_migration_status" => tools::handle_db_migration_status(&self.db, id),
             "skill_register" => tools::handle_skill_register(&self.skills, id, args),
             "skill_list" => tools::handle_skill_list(&self.skills, id),
+            "skill_unregister" => tools::handle_skill_unregister(&self.skills, id, args),
+            "standard_register" => tools::handle_standard_register(&self.standards, id, args),
+            "standard_list" => tools::handle_standard_list(&self.standards, id),
+            "standard_search" => tools::handle_standard_search(&self.standards, id, args),
+            "standard_unregister" => tools::handle_standard_unregister(&self.standards, id, args),
+            "recommend_tooling" => {
+                tools::handle_recommend_tooling(&self.skills, &self.standards, id, args)
+            }
             "agent_register" => tools::handle_agent_register(&self.agents, id, args),
             "agent_list" => tools::handle_agent_list(&self.agents, id),
             "agent_unregister" => tools::handle_agent_unregister(&self.agent_ext, id, args),
@@ -1397,6 +1507,9 @@ impl McpServer {
             "agentic_search" => graph_tools::handle_agentic_search(&self.db, id, args),
             "audit_verify" => graph_tools::handle_audit_verify(&self.db, id),
             "premium_status" => tools::handle_premium_status(id),
+            "standares_search" => super::standares::handle_standares_search(id, args),
+            "standares_stats" => super::standares::handle_standares_stats(id),
+            "standares_list" => super::standares::handle_standares_list(id),
             _ => Ok(json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -1473,7 +1586,10 @@ impl McpServer {
             | "mem_stats"
             | "mem_get_observation"
             | "mem_doctor"
-            | "mem_audit_log" => Some(Permission::ReadContext),
+            | "mem_audit_log"
+            | "standares_search"
+            | "standares_stats"
+            | "standares_list" => Some(Permission::ReadContext),
 
             "mem_session_start"
             | "mem_session_end"
@@ -1484,7 +1600,9 @@ impl McpServer {
             "mem_recycle_search" | "mem_recycle_stats" => Some(Permission::ReadRecycleBin),
             "mem_recycle_delete" => Some(Permission::PurgeRecycleBin),
 
-            "skill_register" | "skill_list" => Some(Permission::ManageAgents),
+            "skill_register" | "skill_list" | "skill_unregister" | "standard_register"
+            | "standard_list" | "standard_search" | "standard_unregister"
+            | "recommend_tooling" => Some(Permission::ManageAgents),
             "agent_register" | "agent_unregister" | "agent_list" | "agent_list_by_project" => {
                 Some(Permission::ManageAgents)
             }
