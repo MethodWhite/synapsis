@@ -973,28 +973,31 @@ impl Database {
     pub fn verify_audit_chain(&self) -> Result<Vec<String>> {
         let conn = self.get_conn();
         let mut stmt = conn.prepare(
-            "SELECT id, action, agent_id, old_value, new_value, reason, created_at, prev_hash, data_hash, chain_hash
+            "SELECT id, action, observation_id, agent_id, session_id, old_value, new_value, reason, created_at, prev_hash, data_hash, chain_hash
              FROM audit_log ORDER BY id ASC"
         )?;
         let rows = stmt.query_map([], |row| {
             let action: String = row.get(1)?;
-            let agent: Option<String> = row.get(2)?;
-            let old_v: Option<String> = row.get(3)?;
-            let new_v: Option<String> = row.get(4)?;
-            let reason: Option<String> = row.get(5)?;
+            let oid: Option<i64> = row.get(2)?;
+            let agent: Option<String> = row.get(3)?;
+            let session: Option<String> = row.get(4)?;
+            let old_v: Option<String> = row.get(5)?;
+            let new_v: Option<String> = row.get(6)?;
+            let reason: Option<String> = row.get(7)?;
+            // Must match log_audit's details format exactly, else hash verification fails.
             let details = format!(
-                "action={} oid= agent={:?} old={:?} new={:?} reason={:?}",
-                action, agent, old_v, new_v, reason
+                "action={} oid={:?} agent={:?} session={:?} old={:?} new={:?} reason={:?}",
+                action, oid, agent, session, old_v, new_v, reason
             );
             Ok(audit_chain::AuditEntry {
                 id: row.get::<_, i64>(0)? as u64,
                 action,
                 agent_id: agent.unwrap_or_default(),
                 details,
-                timestamp: row.get::<_, i64>(6)?,
-                prev_hash: row.get::<_, String>(7).unwrap_or_default(),
-                data_hash: row.get::<_, String>(8).unwrap_or_default(),
-                chain_hash: row.get::<_, String>(9).unwrap_or_default(),
+                timestamp: row.get::<_, i64>(8)?,
+                prev_hash: row.get::<_, String>(9).unwrap_or_default(),
+                data_hash: row.get::<_, String>(10).unwrap_or_default(),
+                chain_hash: row.get::<_, String>(11).unwrap_or_default(),
                 signature: None,
             })
         })?;
