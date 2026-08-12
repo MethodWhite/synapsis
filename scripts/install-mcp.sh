@@ -3,14 +3,20 @@
 # Detects opencode and installs the MCP config
 set -euo pipefail
 
-MCP_BINARY="/home/methodwhite/Proyectos/synapsis/target/release/synapsis-mcp"
-CONFIG_DIR="${HOME}/.config/opencode"
-
-if [ ! -x "$MCP_BINARY" ]; then
-    echo "!! MCP binary not found: ${MCP_BINARY}" >&2
-    echo "!! Build Synapsis first: cargo build --release" >&2
+# Resolve the MCP binary: prefer the installed PATH entry (stable across
+# machines), fall back to this repo's release build. Never hardcode a
+# machine-specific path.
+if command -v synapsis-mcp &>/dev/null; then
+    MCP_BINARY="synapsis-mcp"
+elif [ -x "$(dirname "${BASH_SOURCE[0]}")/../target/release/synapsis-mcp" ]; then
+    MCP_BINARY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/target/release/synapsis-mcp"
+else
+    echo "!! synapsis-mcp not found in PATH and no release build in this repo" >&2
+    echo "!! Build Synapsis first: cargo build --release --bin synapsis-mcp" >&2
     exit 1
 fi
+
+CONFIG_DIR="${HOME}/.config/opencode"
 
 echo "Synapsis MCP Install"
 echo "  Binary: ${MCP_BINARY}"
@@ -39,7 +45,13 @@ if [ -f "$CONFIG_FILE" ]; then
     echo "   Backup: ${CONFIG_FILE}.bak"
 fi
 
-"$PYTHON" -c "
+PYTHON_BIN=$(command -v python3 || command -v python || true)
+if [ -z "$PYTHON_BIN" ]; then
+    echo "!! python3 is required" >&2
+    exit 1
+fi
+
+"$PYTHON_BIN" -c "
 import json, sys
 
 filepath = '$CONFIG_FILE'

@@ -3,7 +3,15 @@
 # Detects installed AI dev tools and generates MCP config for each
 set -euo pipefail
 
-MCP_BINARY="/home/methodwhite/Proyectos/synapsis/target/release/synapsis-mcp"
+# Resolve the MCP binary: prefer the installed PATH entry (stable across
+# machines), fall back to this repo's release build.
+if command -v synapsis-mcp &>/dev/null; then
+    MCP_BINARY="synapsis-mcp"
+elif [ -x "$(dirname "${BASH_SOURCE[0]}")/../target/release/synapsis-mcp" ]; then
+    MCP_BINARY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/target/release/synapsis-mcp"
+else
+    MCP_BINARY=""
+fi
 SCRIPT_NAME="$(basename "$0")"
 
 # Flags

@@ -3,7 +3,14 @@
 # Pure Rust - No Python dependencies
 set -e
 
-VERSION="${SYNAPSIS_VERSION:-0.8.2}"
+# Resolve the latest release unless explicitly pinned with SYNAPSIS_VERSION,
+# so installers always fetch the newest binary instead of a stale tag.
+if [ -z "${SYNAPSIS_VERSION:-}" ]; then
+    VERSION="$(command -v curl >/dev/null 2>&1 && curl -fsSL "https://api.github.com/repos/methodwhite/synapsis/releases/latest" 2>/dev/null | grep -m1 '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')"
+    VERSION="${VERSION:-0.12.0}"
+else
+    VERSION="${SYNAPSIS_VERSION}"
+fi
 REPO="methodwhite/synapsis"
 INSTALL_DIR="${HOME}/.local/bin"
 DATA_DIR="${HOME}/.local/share/synapsis"
