@@ -16,7 +16,7 @@ mod tests {
         use std::sync::Arc;
         use synapsis::infrastructure::Database;
 
-        let storage = Arc::new(Database::new());
+        let storage = Arc::new(Database::in_memory());
         storage.init().unwrap();
 
         let counter = Arc::new(AtomicU64::new(0));
@@ -71,7 +71,7 @@ mod tests {
         use std::sync::Arc;
         use synapsis::infrastructure::Database;
 
-        let storage = Arc::new(Database::new());
+        let storage = Arc::new(Database::in_memory());
         storage.init().unwrap();
 
         let base_obs = Observation::new(
@@ -213,7 +213,7 @@ mod tests {
     fn test_observation_crud() {
         use synapsis::infrastructure::Database;
 
-        let db = Database::new();
+        let db = Database::in_memory();
         db.init().unwrap();
 
         let obs = Observation::new(

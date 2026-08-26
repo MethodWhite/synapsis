@@ -220,11 +220,30 @@ fn migration_v6_add_x402_payments(conn: &Connection) -> Result<()> {
 }
 
 fn migration_v7_add_audit_chain(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
-        "ALTER TABLE audit_log ADD COLUMN prev_hash TEXT DEFAULT '0000000000000000000000000000000000000000000000000000000000000000';
-         ALTER TABLE audit_log ADD COLUMN data_hash TEXT DEFAULT '';
-         ALTER TABLE audit_log ADD COLUMN chain_hash TEXT DEFAULT '';"
-    )?;
+    // SQLite has no `ADD COLUMN IF NOT EXISTS`; inspect the live schema so
+    // partially-applied or legacy databases can safely resume migration.
+    let mut columns = std::collections::HashSet::new();
+    let mut stmt = conn.prepare("PRAGMA table_info(audit_log)")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    for column in rows {
+        columns.insert(column?);
+    }
+
+    for (name, definition) in [
+        (
+            "prev_hash",
+            "TEXT DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'",
+        ),
+        ("data_hash", "TEXT DEFAULT ''"),
+        ("chain_hash", "TEXT DEFAULT ''"),
+    ] {
+        if !columns.contains(name) {
+            conn.execute(
+                &format!("ALTER TABLE audit_log ADD COLUMN {name} {definition}"),
+                [],
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -341,5 +360,31 @@ mod tests {
         let (current, applied) = run_migrations(&conn).unwrap();
         assert!(current >= 6);
         assert_eq!(applied, 0);
+    }
+
+    #[test]
+    fn test_audit_chain_migration_handles_existing_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE audit_log (
+                id INTEGER PRIMARY KEY,
+                prev_hash TEXT,
+                data_hash TEXT,
+                chain_hash TEXT
+            );",
+        )
+        .unwrap();
+
+        migration_v7_add_audit_chain(&conn).unwrap();
+        migration_v7_add_audit_chain(&conn).unwrap();
+
+        let column_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('audit_log')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(column_count, 4);
     }
 }

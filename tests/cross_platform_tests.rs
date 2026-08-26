@@ -27,7 +27,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TEST_DATA_DIR: &str = "/tmp/synapsis-test-cross-platform";
+fn test_data_dir() -> String {
+    let thread_id = format!("{:?}", std::thread::current().id());
+    let suffix: String = thread_id.chars().filter(char::is_ascii_digit).collect();
+    format!("/tmp/synapsis-test-cross-platform-{suffix}")
+}
 const _SERVER_TIMEOUT_SECS: u64 = 30;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,8 +39,9 @@ const _SERVER_TIMEOUT_SECS: u64 = 30;
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn start_mcp_server_fresh() -> Child {
-    std::fs::remove_dir_all(TEST_DATA_DIR).ok();
-    std::fs::create_dir_all(TEST_DATA_DIR).expect("Failed to create test data dir");
+    let data_dir = test_data_dir();
+    std::fs::remove_dir_all(&data_dir).ok();
+    std::fs::create_dir_all(&data_dir).expect("Failed to create test data dir");
     spawn_mcp()
 }
 
@@ -46,8 +51,9 @@ fn start_mcp_server_shared() -> Child {
 
 fn spawn_mcp() -> Child {
     let bin_path = get_mcp_binary();
+    let data_dir = test_data_dir();
     Command::new(&bin_path)
-        .env("SYNAPSIS_DATA_DIR", TEST_DATA_DIR)
+        .env("SYNAPSIS_DATA_DIR", data_dir)
         .env("SYNAPSIS_QUIET", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -57,12 +63,19 @@ fn spawn_mcp() -> Child {
 }
 
 fn get_mcp_binary() -> String {
-    for c in &[
-        "./target/debug/synapsis-mcp",
-        "./target/release/synapsis-mcp",
-    ] {
-        if std::path::Path::new(c).exists() {
-            return c.to_string();
+    let mut candidates = Vec::new();
+    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
+        candidates.push(format!("{target_dir}/debug/synapsis-mcp"));
+        candidates.push(format!("{target_dir}/release/synapsis-mcp"));
+    }
+    candidates.extend([
+        "./target/debug/synapsis-mcp".to_string(),
+        "./target/release/synapsis-mcp".to_string(),
+    ]);
+
+    for candidate in candidates {
+        if std::path::Path::new(&candidate).exists() {
+            return candidate;
         }
     }
     let alt = format!("{}/target/debug/synapsis-mcp", env!("CARGO_MANIFEST_DIR"));
@@ -222,7 +235,7 @@ fn inproc_call(server: &synapsis::presentation::mcp::McpServer, tool: &str, args
 }
 
 fn cleanup_old_dirs() {
-    std::fs::remove_dir_all(TEST_DATA_DIR).ok();
+    std::fs::remove_dir_all(test_data_dir()).ok();
     if let Ok(entries) = std::fs::read_dir("/tmp") {
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().to_string();

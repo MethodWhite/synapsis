@@ -67,6 +67,7 @@ fn main() {
                 println!();
                 println!("Env vars:");
                 println!("  SYNAPSIS_PORT");
+                println!("  SYNAPSIS_BIND_HOST (default: 127.0.0.1)");
                 println!("  SYNAPSIS_TLS_CERT");
                 println!("  SYNAPSIS_TLS_KEY");
                 return;

@@ -97,6 +97,7 @@ fn handle_client(mut stream: TcpStream, engine: &synapsis::core::x402::X402Engin
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut port: u16 = 4020;
+    let mut host = synapsis::config::bind_host();
     let mut wallet = String::from("0x0000000000000000000000000000000000000000");
     let mut rpc = String::from("https://mainnet.base.org");
 
@@ -121,9 +122,18 @@ fn main() {
                     i += 1;
                 }
             }
+            "--host" => {
+                if let Some(h) = args.get(i + 1) {
+                    host = h.clone();
+                    i += 1;
+                }
+            }
             "--help" | "-h" => {
                 eprintln!("x402 Payment Server");
-                eprintln!("Usage: synapsis-x402 [--port <PORT>] [--wallet <ADDR>] [--rpc <URL>]");
+                eprintln!(
+                    "Usage: synapsis-x402 [--host <HOST>] [--port <PORT>] [--wallet <ADDR>] [--rpc <URL>]"
+                );
+                eprintln!("Default host: 127.0.0.1 (override with --host or SYNAPSIS_BIND_HOST)");
                 eprintln!("Default port: 4020");
                 eprintln!("Default RPC: https://mainnet.base.org");
                 return;
@@ -134,11 +144,16 @@ fn main() {
     }
 
     let engine = Arc::new(synapsis::core::x402::X402Engine::new(&wallet, &rpc));
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).expect("Failed to bind");
+    let bind_addr = if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    };
+    let listener = TcpListener::bind(&bind_addr).expect("Failed to bind");
 
     eprintln!("╔══════════════════════════════════════════════╗");
     eprintln!("║  x402 Payment Server                        ║");
-    eprintln!("║  Port: {}                                  ║", port);
+    eprintln!("║  Bind: {}                              ║", bind_addr);
     eprintln!("║  Wallet: {}  ║", &wallet[..wallet.len().min(36)]);
     eprintln!("║  RPC: {}    ║", &rpc[..rpc.len().min(34)]);
     eprintln!("║                                              ║");

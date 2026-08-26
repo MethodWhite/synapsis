@@ -263,6 +263,7 @@ Synapsis usa **SQLite** con **FTS5** para búsqueda de texto completo:
 | `SYNAPSIS_LOG` | Nivel de log (debug, info, warn, error) |
 | `SYNAPSIS_API_KEYS` | API keys separadas por coma para auth |
 | `SYNAPSIS_PORT` | Puerto HTTP (default: 7438) |
+| `SYNAPSIS_BIND_HOST` | Host de escucha HTTP (default: `127.0.0.1`) |
 | `SYNAPSIS_URL` | URL del servidor MCP (para scripts) |
 | `SYNAPSIS_AUTH` | Habilitar clasificador de agentes |
 

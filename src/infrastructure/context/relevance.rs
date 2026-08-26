@@ -1,7 +1,7 @@
 //! # Relevance Engine
 //!
 //! Motor de relevancia para detección inteligente de contexto.
-//! A diferencia de Engram, NO CARGA TODO - solo lo relevante.
+//! Mantiene una ventana de contexto relevante sin cargar todo el historial.
 //!
 //! Características:
 //! 1. Scoring de relevancia en tiempo real

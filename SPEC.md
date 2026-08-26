@@ -495,4 +495,4 @@ mem_lock_status       # Estado de locks
 
 ## Licencia
 
-MIT + Licencia de Seguridad PQC extendida disponible bajo request.
+BSL 1.1 (BUSL-1.1) — ver `LICENSE` para los términos de uso.

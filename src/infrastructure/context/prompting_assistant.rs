@@ -429,7 +429,7 @@ impl SuggestionEngine {
         }
 
         // Ordenar por prioridad
-        suggestions.sort_by(|a, b| b.priority.cmp(&a.priority));
+        suggestions.sort_by_key(|b| std::cmp::Reverse(b.priority));
 
         suggestions.truncate(5);
         suggestions

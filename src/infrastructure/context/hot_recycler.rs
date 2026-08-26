@@ -144,7 +144,7 @@ impl ChunkIndex {
 
         // Ordenar por frecuencia
         let mut sorted: Vec<_> = results.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
 
         sorted.into_iter().map(|(id, _)| id).collect()
     }
@@ -436,9 +436,9 @@ impl HotRecycler {
 
         for (id, chunk) in &self.active_chunks {
             // Chunks de History siempre reciclables
-            if chunk.chunk_type == ChunkType::History {
-                to_recycle.push(id.clone());
-            } else if chunk.relevance_score < 0.2 && chunk.access_count < 5 {
+            if chunk.chunk_type == ChunkType::History
+                || (chunk.relevance_score < 0.2 && chunk.access_count < 5)
+            {
                 to_recycle.push(id.clone());
             }
         }
@@ -475,11 +475,7 @@ impl HotRecycler {
 
         for id in chunk_ids {
             if let Some(chunk) = self.active_chunks.get(id) {
-                let content = format!(
-                    "\n--- {} ---\n{}\n",
-                    format!("{:?}", chunk.chunk_type),
-                    chunk.content
-                );
+                let content = format!("\n--- {:?} ---\n{}\n", chunk.chunk_type, chunk.content);
                 match chunk.chunk_type {
                     ChunkType::Setup => setup.push_str(&content),
                     ChunkType::Core => core.push_str(&content),

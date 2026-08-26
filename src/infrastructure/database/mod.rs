@@ -18,7 +18,6 @@ use crate::core::uuid::Uuid;
 use crate::domain::ports::{SessionPort, StoragePort};
 use crate::domain::*;
 use audit_chain::AuditChain;
-use base64::{Engine as _, engine::general_purpose};
 use hex;
 use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
@@ -38,15 +37,19 @@ pub struct Database {
 
 impl Database {
     pub fn new() -> Self {
-        let encryption_key = std::env::var("SYNAPSIS_DB_KEY")
-            .ok()
-            .and_then(|hex_key| hex::decode(hex_key).ok())
-            .or_else(|| {
-                std::env::var("SYNAPSIS_DB_KEY_BASE64")
-                    .ok()
-                    .and_then(|b64| general_purpose::STANDARD.decode(b64).ok())
-            });
-        Self::new_with_key(encryption_key)
+        Self::new_with_key(crate::config::db_key())
+    }
+
+    /// Create an isolated database for tests and ephemeral consumers.
+    pub fn in_memory() -> Self {
+        Self {
+            conn: Arc::new(Mutex::new(
+                Connection::open_in_memory().expect("in-memory DB"),
+            )),
+            _data_dir: PathBuf::new(),
+            db_path: PathBuf::new(),
+            encryption_key: None,
+        }
     }
 
     pub fn new_with_key(encryption_key: Option<Vec<u8>>) -> Self {
@@ -775,10 +778,8 @@ impl Database {
             let mut rows = stmt.query_map(rusqlite::params![p, content_hash], |r| {
                 Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?))
             })?;
-            if let Some(row) = rows.next() {
-                if let Ok(row) = row {
-                    return Ok(Some(row));
-                }
+            if let Some(Ok(row)) = rows.next() {
+                return Ok(Some(row));
             }
         }
         // Fall back to same-project title similarity (normalized, exact title).
@@ -795,10 +796,8 @@ impl Database {
         let mut rows = stmt.query_map(rusqlite::params![project, normalized], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?))
         })?;
-        if let Some(row) = rows.next() {
-            if let Ok(row) = row {
-                return Ok(Some(row));
-            }
+        if let Some(Ok(row)) = rows.next() {
+            return Ok(Some(row));
         }
         Ok(None)
     }
@@ -829,6 +828,7 @@ impl Database {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_relation(
         &self,
         source_id: i64,
@@ -842,10 +842,10 @@ impl Database {
     ) -> Result<String> {
         let conn = self.get_conn();
         let now = Timestamp::now().0;
-        let sync_id = format!("rel-{}", Uuid::new_v4().to_hex_string());
+        let sync_id = format!("synapsis-rel-{}", Uuid::new_v4().to_hex_string());
         conn.execute(
             "INSERT INTO memory_relations (sync_id, source_id, target_id, relation, judgment_status, reason, evidence, confidence, marked_by_actor, marked_by_kind, session_id, project, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, 'judged', ?5, ?6, ?7, 'engram', 'system', ?8, ?9, ?10, ?10)",
+             VALUES (?1, ?2, ?3, ?4, 'judged', ?5, ?6, ?7, 'synapsis', 'system', ?8, ?9, ?10, ?10)",
             params![sync_id, source_id, target_id, relation, reason, evidence, confidence, session_id, project, now],
         )?;
         Ok(sync_id)
@@ -930,6 +930,7 @@ impl Database {
         Ok(updated as i64)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn log_audit(
         &self,
         action: &str,
@@ -1069,6 +1070,7 @@ impl Database {
         }))
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn get_observation_by_id_raw(
         &self,
         id: i64,

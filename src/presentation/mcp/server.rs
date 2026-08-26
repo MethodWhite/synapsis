@@ -98,7 +98,7 @@ pub struct AgentMessage {
 
 impl McpServer {
     pub fn new(db: Arc<Database>) -> Self {
-        let auth_enabled = std::env::var("SYNAPSIS_AUTH").is_ok();
+        let auth_enabled = crate::config::auth_enabled();
         Self {
             db: db.clone(),
             recycle: RecycleBin::new(crate::config::data_dir()),
@@ -203,7 +203,7 @@ impl McpServer {
             }
         };
 
-        // Auth check: if SYNAPSIS_AUTH is set, require valid API key in initialize
+        // Auth check: when SYNAPSIS_AUTH is explicitly enabled, require a valid API key.
         if let Some(ref _classifier) = self.classifier {
             let is_initialize = request["method"].as_str() == Some("initialize");
             if !is_initialize {
@@ -1273,7 +1273,7 @@ impl McpServer {
             "auth_classify_agent" => match &self.classifier {
                 Some(c) => tools::handle_auth_classify_agent(c, id, args),
                 None => Ok(
-                    json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Auth not enabled (set SYNAPSIS_AUTH env var)"}}),
+                    json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Auth not enabled (set SYNAPSIS_AUTH=true)"}}),
                 ),
             },
             "task_create" => tools::handle_task_create(&self.task_queue, id, args),

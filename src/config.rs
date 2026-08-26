@@ -3,8 +3,19 @@ use std::sync::OnceLock;
 
 static QUIET: OnceLock<bool> = OnceLock::new();
 
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 pub fn is_quiet() -> bool {
-    *QUIET.get_or_init(|| std::env::var("SYNAPSIS_QUIET").is_ok() || std::env::var("QUIET").is_ok())
+    *QUIET.get_or_init(|| env_flag("SYNAPSIS_QUIET") || env_flag("QUIET"))
 }
 
 pub fn data_dir() -> PathBuf {
@@ -21,7 +32,16 @@ pub fn port() -> u16 {
     std::env::var("SYNAPSIS_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
+        .filter(|port| *port != 0)
         .unwrap_or(7438)
+}
+
+pub fn bind_host() -> String {
+    std::env::var("SYNAPSIS_BIND_HOST")
+        .ok()
+        .map(|host| host.trim().to_string())
+        .filter(|host| !host.is_empty())
+        .unwrap_or_else(|| "127.0.0.1".to_string())
 }
 
 pub fn log_level() -> String {
@@ -32,32 +52,45 @@ pub fn db_key() -> Option<Vec<u8>> {
     if let Ok(hex_key) = std::env::var("SYNAPSIS_DB_KEY") {
         hex::decode(&hex_key).ok().filter(|k| !k.is_empty())
     } else if let Ok(b64_key) = std::env::var("SYNAPSIS_DB_KEY_BASE64") {
-        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &b64_key).ok()
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &b64_key)
+            .ok()
+            .filter(|k| !k.is_empty())
     } else {
         None
     }
 }
 
 pub fn insecure_tls() -> bool {
-    std::env::var("SYNAPSIS_INSECURE_TLS").is_ok()
+    env_flag("SYNAPSIS_INSECURE_TLS")
 }
 
 pub fn allow_private_mcp() -> bool {
-    std::env::var("SYNAPSIS_ALLOW_PRIVATE_MCP").is_ok()
+    env_flag("SYNAPSIS_ALLOW_PRIVATE_MCP")
 }
 
 pub fn allow_dangerous_shell() -> bool {
-    std::env::var("SYNAPSIS_ALLOW_DANGEROUS_SHELL").is_ok()
+    env_flag("SYNAPSIS_ALLOW_DANGEROUS_SHELL")
+}
+
+pub fn auth_enabled() -> bool {
+    env_flag("SYNAPSIS_AUTH")
 }
 
 pub fn secret_key() -> Option<String> {
     std::env::var("SYNAPSIS_SECRET_KEY")
         .ok()
-        .filter(|k| !k.is_empty())
+        .map(|key| key.trim().to_string())
+        .filter(|key| !key.is_empty())
 }
 
 pub fn api_keys() -> Vec<String> {
     std::env::var("SYNAPSIS_API_KEYS")
-        .map(|v| v.split(',').map(|s| s.trim().to_string()).collect())
+        .map(|v| {
+            v.split(',')
+                .map(str::trim)
+                .filter(|key| !key.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
         .unwrap_or_default()
 }

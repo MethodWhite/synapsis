@@ -625,12 +625,12 @@ pub fn handle_agent_register(
     }
     let role = role_str.parse::<AgentRole>().unwrap_or(AgentRole::General);
     let mut agent = Agent::new(name.clone(), role, description);
-    if let Some(parent) = args["parent_agent_id"].as_str() {
-        if !parent.is_empty() {
-            agent
-                .metadata
-                .insert("parent_agent_id".to_string(), parent.to_string());
-        }
+    if let Some(parent) = args["parent_agent_id"].as_str()
+        && !parent.is_empty()
+    {
+        agent
+            .metadata
+            .insert("parent_agent_id".to_string(), parent.to_string());
     }
     let agent_id = agents.register(agent);
     let parent_note = args["parent_agent_id"]
@@ -678,8 +678,8 @@ pub fn handle_task_create(
     };
     let priority = match args["priority"].as_i64().unwrap_or(1) {
         p if p >= 3 => Priority::Critical,
-        p if p == 2 => Priority::High,
-        p if p == 1 => Priority::Normal,
+        2 => Priority::High,
+        1 => Priority::Normal,
         _ => Priority::Low,
     };
     let task_id = task_queue.create_task(payload, vec!["developer".to_string()], priority);
@@ -1905,12 +1905,7 @@ pub fn handle_orchestrator_tree(
             sub_agents.len()
         )];
         for a in &sub_agents {
-            lines.push(format!(
-                "- {} ({:?}) [{}]",
-                a.name,
-                a.role,
-                format!("{:?}", a.state)
-            ));
+            lines.push(format!("- {} ({:?}) [{:?}]", a.name, a.role, a.state));
         }
         lines.join("\n")
     };

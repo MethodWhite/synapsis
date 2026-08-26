@@ -1,9 +1,9 @@
 //! # Context Registry
 //!
 //! Registro central de contextos con gestión inteligente.
-//! A diferencia de Engram:
-//! - NO carga todo en memoria
-//! - Aislamiento real entre contextos
+//! Principios:
+//! - Ventana de memoria acotada
+//! - Aislamiento entre contextos
 //! - Reciclaje inteligente en frío
 //! - Carga perezosa y prefetch
 
@@ -339,7 +339,7 @@ impl ContextRegistry {
 
         // Aplicar acciones basadas en ranking
         for ranked_ctx in ranked {
-            if ranked_ctx.should_evict && self.working_set.get(&ranked_ctx.context_id).is_none() {
+            if ranked_ctx.should_evict && !self.working_set.contains(&ranked_ctx.context_id) {
                 // Archivar en frío
                 if let Some(ctx) = self
                     .hot_contexts

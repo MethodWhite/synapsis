@@ -9,7 +9,7 @@ use synapsis::infrastructure::database::Database;
 use synapsis::presentation::mcp::McpServer;
 
 fn test_server() -> McpServer {
-    let db = Arc::new(Database::new());
+    let db = Arc::new(Database::in_memory());
     McpServer::new(db)
 }
 

@@ -1,7 +1,7 @@
 //! # Cold Storage System
 //!
 //! Sistema de almacenamiento en frío para contextos inactivos.
-//! A diferencia de Engram, NO ELIMINA datos - los archiva inteligentemente.
+//! Conserva los datos fuera de la memoria activa mediante archivado inteligente.
 //!
 //! Principios:
 //! 1. Nunca eliminar, solo archivar
