@@ -144,11 +144,7 @@ fn main() {
     }
 
     let engine = Arc::new(synapsis::core::x402::X402Engine::new(&wallet, &rpc));
-    let bind_addr = if host.contains(':') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    };
+    let bind_addr = synapsis::config::bind_addr(&host, port);
     let listener = TcpListener::bind(&bind_addr).expect("Failed to bind");
 
     eprintln!("╔══════════════════════════════════════════════╗");

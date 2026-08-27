@@ -145,8 +145,9 @@ impl GlobalContext {
                 .and_then(|v| v.value().ok().cloned());
         }
 
-        // No cachear, devolver valor directamente
-        Some(ContextValue::String("loaded-not-cached".to_string()))
+        // Sin almacenamiento conectado no podemos reconstruir el valor.
+        // Devolver None evita presentar datos simulados como persistidos.
+        self.load_from_storage(name)
     }
 
     fn should_cache(&self, name: &str, metadata: &VarMetadata) -> bool {
@@ -182,9 +183,10 @@ impl GlobalContext {
     }
 
     fn load_from_storage(&self, _name: &str) -> Option<ContextValue> {
-        // En implementación real, cargaría del almacenamiento
-        // Por ahora retornamos un placeholder
-        Some(ContextValue::Null)
+        // La persistencia se conectará cuando GlobalContext reciba el puerto de
+        // almacenamiento. Mientras tanto, una variable ausente debe seguir
+        // siendo ausente, nunca un valor sintético.
+        None
     }
 
     /// Obtiene múltiples variables relacionadas (prefetches)

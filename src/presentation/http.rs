@@ -55,11 +55,7 @@ impl HttpTransport {
 
     pub fn start(&self, port: u16) {
         let host = crate::config::bind_host();
-        let addr = if host.contains(':') {
-            format!("[{host}]:{port}")
-        } else {
-            format!("{host}:{port}")
-        };
+        let addr = crate::config::bind_addr(&host, port);
         let listener = TcpListener::bind(&addr).expect("Failed to bind HTTP server");
         let proto = if self.tls_config.is_some() {
             "HTTPS"

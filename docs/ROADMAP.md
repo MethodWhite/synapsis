@@ -1,9 +1,14 @@
 # 🎯 Synapsis - Roadmap & Missing Features
 
-**Current Status:** ✅ **Development-Ready**  
+**Current Status:** ⚠️ **Development-Ready with core stubs**
 **Target Status:** 🎯 **Production-Ready**
 
-**Date:** 2026-03-27
+**Date:** 2026-08-26
+
+> Nota: el servidor Synapsis tiene una cobertura de pruebas amplia y sus binarios
+> compilan correctamente, pero algunas capacidades expuestas por MCP todavía
+> dependen de implementaciones stub en `synapsis-core`. En particular, el
+> `FilesystemWatchdog` aún no observa archivos ni conserva eventos reales.
 
 ---
 
@@ -20,6 +25,16 @@
 | **Community** | ⚠️ 1 contributor | 3/10 |
 
 **Overall Score:** **7.7/10** - Development-Ready, Not Production-Ready
+
+### Bloqueador actual: watchdog y capacidades de protección
+
+- [ ] Implementar monitoreo real en `synapsis-core`.
+- [ ] Persistir snapshots y eventos de integridad.
+- [ ] Exponer estadísticas y verificación reales al servidor MCP.
+- [ ] Añadir pruebas de rutas protegidas, cambios de archivos y recuperación.
+
+Mientras estas funciones sigan siendo stubs en la dependencia, Synapsis debe
+reportarlas como capacidades parciales y no como protección activa.
 
 ---
 

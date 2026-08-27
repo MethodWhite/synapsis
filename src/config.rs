@@ -44,6 +44,15 @@ pub fn bind_host() -> String {
         .unwrap_or_else(|| "127.0.0.1".to_string())
 }
 
+/// Formats a host and port for TCP binding, including IPv6 bracket notation.
+pub fn bind_addr(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
 pub fn log_level() -> String {
     std::env::var("SYNAPSIS_LOG").unwrap_or_else(|_| "info".to_string())
 }
@@ -93,4 +102,20 @@ pub fn api_keys() -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bind_addr;
+
+    #[test]
+    fn formats_ipv4_bind_address() {
+        assert_eq!(bind_addr("127.0.0.1", 7438), "127.0.0.1:7438");
+    }
+
+    #[test]
+    fn formats_ipv6_bind_address() {
+        assert_eq!(bind_addr("::1", 7438), "[::1]:7438");
+        assert_eq!(bind_addr("[::1]", 7438), "[::1]:7438");
+    }
 }

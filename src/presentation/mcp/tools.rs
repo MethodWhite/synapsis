@@ -349,20 +349,23 @@ pub fn handle_antibrick_enable(
     }))
 }
 
-pub fn handle_watchdog_stats(_watchdog: &FilesystemWatchdog, id: &Value) -> anyhow::Result<Value> {
-    Ok(json!({
+fn watchdog_unavailable(id: &Value) -> Value {
+    json!({
         "jsonrpc": "2.0",
         "id": id,
-        "result": { "content": [{ "type": "text", "text": json!({"events": 0}).to_string() }] }
-    }))
+        "error": {
+            "code": -32004,
+            "message": "Filesystem watchdog backend is not implemented in synapsis-core"
+        }
+    })
+}
+
+pub fn handle_watchdog_stats(_watchdog: &FilesystemWatchdog, id: &Value) -> anyhow::Result<Value> {
+    Ok(watchdog_unavailable(id))
 }
 
 pub fn handle_watchdog_verify(_watchdog: &FilesystemWatchdog, id: &Value) -> anyhow::Result<Value> {
-    Ok(json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": { "content": [{ "type": "text", "text": json!({"ok": true}).to_string() }] }
-    }))
+    Ok(watchdog_unavailable(id))
 }
 
 pub fn handle_watchdog_snapshot(
@@ -377,11 +380,7 @@ pub fn handle_watchdog_snapshot(
             "error": { "code": -32602, "message": "Cannot snapshot entire filesystem. Specify a project path." }
         }));
     }
-    Ok(json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": { "content": [{ "type": "text", "text": json!({"snapshotted": true}).to_string() }] }
-    }))
+    Ok(watchdog_unavailable(id))
 }
 
 pub fn handle_watchdog_events(
@@ -389,11 +388,7 @@ pub fn handle_watchdog_events(
     id: &Value,
     _args: &Value,
 ) -> anyhow::Result<Value> {
-    Ok(json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": { "content": [{ "type": "text", "text": "[]" }] }
-    }))
+    Ok(watchdog_unavailable(id))
 }
 
 pub fn handle_watchdog_check_path(
@@ -401,13 +396,8 @@ pub fn handle_watchdog_check_path(
     id: &Value,
     args: &Value,
 ) -> anyhow::Result<Value> {
-    let _path = args["path"].as_str().unwrap_or(".").to_string();
-    // TODO: call _watchdog.is_path_protected() once exposed
-    Ok(json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": { "content": [{ "type": "text", "text": json!({"protected": false}).to_string() }] }
-    }))
+    let _path = args["path"].as_str().unwrap_or(".");
+    Ok(watchdog_unavailable(id))
 }
 
 fn is_private_url(url_str: &str) -> bool {
