@@ -66,7 +66,9 @@ impl Tui {
 
     #[cfg(not(feature = "tui"))]
     pub fn run(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        Err(Box::new(SynapsisError::internal_unimplemented()))
+        Err(Box::new(SynapsisError::internal(
+            "TUI support is disabled; rebuild with the `tui` feature",
+        )))
     }
 
     #[allow(dead_code)]
