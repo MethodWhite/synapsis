@@ -17,7 +17,7 @@
 | Category | Status | Score |
 |----------|--------|-------|
 | **Build** | ✅ Working | 10/10 |
-| **Tests** | ✅ Passing (2/2) | 7/10 |
+| **Tests** | ✅ Passing (35/35 lib tests) | 8/10 |
 | **Documentation** | ✅ Complete (47 files) | 9/10 |
 | **Code Quality** | ⚠️ Warnings | 7/10 |
 | **Security (PQC)** | ✅ Real Kyber-512 | 10/10 |
@@ -82,7 +82,7 @@ reportarlas como capacidades parciales y no como protección activa.
 ### 🔴 CRITICAL (Must Have)
 
 #### 1. More Comprehensive Tests
-**Current:** 2/2 lib tests  
+**Current:** 35/35 lib tests  
 **Needed:** 50+ tests with 80%+ coverage
 
 **Missing:**
