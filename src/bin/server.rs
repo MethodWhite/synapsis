@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut port: u16 = 7438;
+    let mut port = synapsis::config::port();
     let mut quic_port: u16 = 7439;
     let mut http_mode = false;
     let mut quic_mode = false;
@@ -21,7 +21,7 @@ fn main() {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--http" | "-h" => http_mode = true,
+            "--http" | "-H" => http_mode = true,
             "--quic" | "-q" => quic_mode = true,
             "--port" | "-p" => {
                 if let Some(p) = args.get(i + 1) {
@@ -51,7 +51,7 @@ fn main() {
                 println!("Synapsis MCP Server");
                 println!("Usage:");
                 println!("  synapsis-server                       Start MCP server (stdio)");
-                println!("  synapsis-server --http                Start MCP server with HTTP/SSE");
+                println!("  synapsis-server --http (-H)           Start MCP server with HTTP/SSE");
                 println!(
                     "  synapsis-server --http --port PORT    Custom HTTP port (default: 7438)"
                 );
