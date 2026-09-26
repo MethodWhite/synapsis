@@ -7,6 +7,45 @@ mod tests {
     use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
     use synapsis::domain::*;
 
+    /// Serialize Database creation + init across the parallel test threads.
+    ///
+    /// This is a TEST-side guard, not a fix. The underlying defect is in
+    /// production code: `run_migrations` has no concurrency guard, so two
+    /// threads (or two processes) calling `init()` on the same fresh database
+    /// race and one dies with "duplicate column name: prev_hash" or a PRIMARY
+    /// KEY violation. On the live database the race is invisible because the
+    /// migrations are already applied and there is nothing left to run.
+    ///
+    /// It only became visible once these tests were pointed at a fresh
+    /// temporary directory instead of the live coordination database. The
+    /// production-side fix (a migration lock) is still outstanding; without
+    /// this guard the suite is order-dependent and fails intermittently.
+    fn init_lock() -> std::sync::MutexGuard<'static, ()> {
+        use std::sync::{Mutex, OnceLock};
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let m = LOCK.get_or_init(|| Mutex::new(()));
+        m.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    ///
+    /// `Database::new()` falls back to `dirs::data_local_dir()/synapsis` when
+    /// SYNAPSIS_DATA_DIR is unset, which is the LIVE coordination database. These
+    /// stress tests were writing into it on every `cargo test` run. Set once per
+    /// binary because the environment is process-global; per-test values would
+    /// race across the parallel test threads.
+    fn isolate_data_dir() {
+        use std::sync::Once;
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            let dir =
+                std::env::temp_dir().join(format!("synapsis-test-stress-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).ok();
+            // SAFETY: test-scoped env change, applied once before any Database::new().
+            unsafe {
+                std::env::set_var("SYNAPSIS_DATA_DIR", &dir);
+            }
+        });
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // STRESS TEST: Concurrent Observations
     // ═══════════════════════════════════════════════════════════════════
@@ -16,6 +55,8 @@ mod tests {
         use std::sync::Arc;
         use synapsis::infrastructure::Database;
 
+        let _guard = init_lock();
+        isolate_data_dir();
         let storage = Arc::new(Database::new());
         storage.init().unwrap();
 
@@ -71,6 +112,8 @@ mod tests {
         use std::sync::Arc;
         use synapsis::infrastructure::Database;
 
+        let _guard = init_lock();
+        isolate_data_dir();
         let storage = Arc::new(Database::new());
         storage.init().unwrap();
 
@@ -213,6 +256,8 @@ mod tests {
     fn test_observation_crud() {
         use synapsis::infrastructure::Database;
 
+        let _guard = init_lock();
+        isolate_data_dir();
         let db = Database::new();
         db.init().unwrap();
 
