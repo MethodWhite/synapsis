@@ -2,7 +2,7 @@
 //! Each migration is a numbered step that can be applied sequentially.
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -230,49 +230,121 @@ fn migration_v7_add_audit_chain(conn: &Connection) -> Result<()> {
 
 /// Backfill audit_log entries that were created before the audit chain columns
 /// existed (v7 added them with empty defaults, leaving old rows un-hashed).
-/// Recomputes data_hash and chain_hash in order so verify_audit_chain passes.
+/// Existing hashed entries must already form a valid chain; never normalize or
+/// overwrite evidence of a disconnected or partially populated chain.
 fn migration_v8_backfill_audit_chain(conn: &Connection) -> Result<()> {
     use sha2::{Digest, Sha256};
 
-    let mut prev: String =
-        "0000000000000000000000000000000000000000000000000000000000000000".to_string();
+    type AuditRow = (
+        i64,
+        String,
+        Option<i64>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
+        String,
+        i64,
+    );
+    let rows: Vec<AuditRow> = conn
+        .prepare(
+            "SELECT id, action, observation_id, agent_id, session_id, old_value, new_value, reason,
+                    prev_hash, data_hash, chain_hash, created_at
+             FROM audit_log ORDER BY id ASC",
+        )?
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+                r.get(8)?,
+                r.get(9)?,
+                r.get(10)?,
+                r.get(11)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    let ids: Vec<i64> = conn
-        .prepare("SELECT id FROM audit_log ORDER BY id ASC")?
-        .query_map([], |r| r.get(0))?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    for id in ids {
-        let row: Option<(String, Option<i64>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, i64)> =
-            conn.query_row(
-                "SELECT action, observation_id, agent_id, session_id, old_value, new_value, reason, created_at
-                 FROM audit_log WHERE id = ?1",
-                [id],
-                |r| Ok((
-                    r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?,
-                    r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?,
-                )),
-            )
-            .optional()?;
-
-        let Some((action, oid, agent, session, old_v, new_v, reason, ts)) = row else {
-            continue;
-        };
-
+    let zero_hash = "0000000000000000000000000000000000000000000000000000000000000000";
+    let mut prev = zero_hash.to_string();
+    let mut seen_hashed_row = false;
+    for (
+        id,
+        action,
+        oid,
+        agent,
+        session,
+        old_v,
+        new_v,
+        reason,
+        stored_prev,
+        stored_data,
+        stored_chain,
+        ts,
+    ) in rows
+    {
         let details = format!(
             "action={} oid={:?} agent={:?} session={:?} old={:?} new={:?} reason={:?}",
             action, oid, agent, session, old_v, new_v, reason
         );
-        let data_hash = hex::encode(Sha256::digest(details.as_bytes()));
-        let chain_hash = hex::encode(Sha256::digest(
-            format!("{}:{}:{}", prev, data_hash, ts).as_bytes(),
-        ));
+        let computed_data = hex::encode(Sha256::digest(details.as_bytes()));
+        if !stored_data.is_empty() && stored_data != computed_data {
+            return Err(anyhow::anyhow!(
+                "Migration v8 refused to rewrite audit row {id}: stored data hash does not match its event"
+            ));
+        }
+        let is_legacy_unhashed =
+            stored_prev == zero_hash && stored_data.is_empty() && stored_chain.is_empty();
+        let chain_hash = if is_legacy_unhashed {
+            if seen_hashed_row {
+                return Err(anyhow::anyhow!(
+                    "Migration v8 refused to rewrite audit row {id}: an unhashed row follows hashed audit history"
+                ));
+            }
+            let chain_hash = hex::encode(Sha256::digest(
+                format!("{}:{}:{}", prev, computed_data, ts).as_bytes(),
+            ));
+            conn.execute(
+                "UPDATE audit_log SET prev_hash = ?1, data_hash = ?2, chain_hash = ?3 WHERE id = ?4",
+                rusqlite::params![prev, computed_data, chain_hash, id],
+            )?;
+            chain_hash
+        } else {
+            if stored_data.is_empty() || stored_chain.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "Migration v8 refused to rewrite audit row {id}: hash fields are only partially populated"
+                ));
+            }
+            if stored_prev != prev {
+                return Err(anyhow::anyhow!(
+                    "Migration v8 refused to rewrite audit row {id}: previous hash does not link to the preceding row"
+                ));
+            }
+            if stored_data != computed_data {
+                return Err(anyhow::anyhow!(
+                    "Migration v8 refused to rewrite audit row {id}: stored data hash does not match its event"
+                ));
+            }
+            let expected_chain = hex::encode(Sha256::digest(
+                format!("{}:{}:{}", prev, stored_data, ts).as_bytes(),
+            ));
+            if stored_chain != expected_chain {
+                return Err(anyhow::anyhow!(
+                    "Migration v8 refused to rewrite audit row {id}: stored chain hash is inconsistent"
+                ));
+            }
+            seen_hashed_row = true;
+            stored_chain
+        };
 
-        conn.execute(
-            "UPDATE audit_log SET prev_hash = ?1, data_hash = ?2, chain_hash = ?3 WHERE id = ?4",
-            rusqlite::params![prev, data_hash, chain_hash, id],
-        )?;
         prev = chain_hash;
     }
 
@@ -303,7 +375,7 @@ fn migration_v9_add_thinking(conn: &Connection) -> Result<()> {
             thought TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             UNIQUE(tree_id, branch, step_index)
-        );"
+        );",
     )?;
     Ok(())
 }
@@ -326,7 +398,7 @@ fn migration_v10_add_bridge_messages(conn: &Connection) -> Result<()> {
             delivered INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_bridge_messages_project
-            ON bridge_messages(project, delivered, created_at);"
+            ON bridge_messages(project, delivered, created_at);",
     )?;
     Ok(())
 }
@@ -362,16 +434,19 @@ const MIGRATION_NAMES: &[&str] = &[
 
 /// Run all pending migrations. Returns (current_version, migrations_applied).
 pub fn run_migrations(conn: &Connection) -> Result<(u32, u32)> {
-    conn.execute_batch("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
-        .ok();
+    // Serialize concurrent process startups before reading the version, and make
+    // each migration set atomic. The timeout lets another starter finish first.
+    conn.busy_timeout(std::time::Duration::from_secs(30))
+        .context("configure migration lock wait")?;
+    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+        .context("begin immediate migration transaction")?;
+    tx.execute_batch("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")?;
 
-    let current: u32 = conn
-        .query_row(
-            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
+    let current: u32 = conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+        [],
+        |r| r.get(0),
+    )?;
 
     let migrations = all_migrations();
     let mut applied = 0;
@@ -380,8 +455,8 @@ pub fn run_migrations(conn: &Connection) -> Result<(u32, u32)> {
         let version = (i + 1) as u32;
         if version > current {
             let name = MIGRATION_NAMES.get(i).unwrap_or(&"unknown");
-            migration(conn).with_context(|| format!("Migration {} ({}) failed", version, name))?;
-            conn.execute(
+            migration(&tx).with_context(|| format!("Migration {} ({}) failed", version, name))?;
+            tx.execute(
                 "INSERT INTO schema_version (version) VALUES (?1)",
                 rusqlite::params![version],
             )?;
@@ -390,24 +465,23 @@ pub fn run_migrations(conn: &Connection) -> Result<(u32, u32)> {
         }
     }
 
-    Ok((current, applied))
+    let final_version = current.max(migrations.len() as u32);
+    tx.commit().context("commit migration transaction")?;
+    Ok((final_version, applied))
 }
 
 /// Get the current migration status as JSON.
 pub fn get_migration_status(conn: &Connection) -> Result<serde_json::Value> {
-    let current: u32 = conn
-        .query_row(
-            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
+    let current: u32 = conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+        [],
+        |r| r.get(0),
+    )?;
 
     let mut stmt = conn.prepare("SELECT version FROM schema_version ORDER BY version ASC")?;
     let versions: Vec<u32> = stmt
         .query_map([], |r| r.get::<_, u32>(0))?
-        .filter_map(|r| r.ok())
-        .collect();
+        .collect::<rusqlite::Result<Vec<_>>>()?;
 
     let total = all_migrations().len() as u32;
 
@@ -432,15 +506,55 @@ pub fn get_migration_status(conn: &Connection) -> Result<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
+
+    fn version_7_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+            .unwrap();
+        for (index, migration) in all_migrations().iter().take(7).enumerate() {
+            migration(&conn).unwrap();
+            conn.execute(
+                "INSERT INTO schema_version (version) VALUES (?1)",
+                [index as u32 + 1],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn insert_valid_hashed_audit_row(conn: &Connection, action: &str, created_at: i64) {
+        let oid = Some(42_i64);
+        let agent = Some("test-agent".to_string());
+        let session = Some("test-session".to_string());
+        let old_value: Option<String> = None;
+        let new_value = Some("new-value".to_string());
+        let reason = Some("test".to_string());
+        let details = format!(
+            "action={} oid={:?} agent={:?} session={:?} old={:?} new={:?} reason={:?}",
+            action, oid, agent, session, old_value, new_value, reason
+        );
+        let prev_hash = "0000000000000000000000000000000000000000000000000000000000000000";
+        let data_hash = hex::encode(Sha256::digest(details.as_bytes()));
+        let chain_hash = hex::encode(Sha256::digest(
+            format!("{}:{}:{}", prev_hash, data_hash, created_at).as_bytes(),
+        ));
+        conn.execute(
+            "INSERT INTO audit_log (action, observation_id, agent_id, session_id, old_value, new_value, reason, created_at, prev_hash, data_hash, chain_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            rusqlite::params![action, oid, agent, session, old_value, new_value, reason, created_at, prev_hash, data_hash, chain_hash],
+        )
+        .unwrap();
+    }
 
     #[test]
     fn test_run_migrations_fresh_db() {
         let conn = Connection::open_in_memory().unwrap();
         let (current, applied) = run_migrations(&conn).unwrap();
-        assert_eq!(current, 0);
-        assert_eq!(applied, 7);
+        assert_eq!(current, 10);
+        assert_eq!(applied, 10);
         let status = get_migration_status(&conn).unwrap();
-        assert_eq!(status["current_version"], 7);
+        assert_eq!(status["current_version"], 10);
     }
 
     #[test]
@@ -448,7 +562,211 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         let (current, applied) = run_migrations(&conn).unwrap();
-        assert!(current >= 6);
+        assert_eq!(current, 10);
         assert_eq!(applied, 0);
+    }
+
+    #[test]
+    fn v8_preserves_a_valid_existing_chain() {
+        let conn = version_7_db();
+        insert_valid_hashed_audit_row(&conn, "update", 1_700_000_000);
+        let before: (String, String, String) = conn
+            .query_row(
+                "SELECT prev_hash, data_hash, chain_hash FROM audit_log WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+
+        let (version, applied) = run_migrations(&conn).unwrap();
+        let after: (String, String, String) = conn
+            .query_row(
+                "SELECT prev_hash, data_hash, chain_hash FROM audit_log WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+
+        assert_eq!((version, applied), (10, 3));
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn v8_backfills_legacy_rows_in_chain_order() {
+        let conn = version_7_db();
+        conn.execute(
+            "INSERT INTO audit_log (action, created_at) VALUES ('legacy-1', 1), ('legacy-2', 2)",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+        let rows: Vec<(String, String, String)> = conn
+            .prepare("SELECT prev_hash, data_hash, chain_hash FROM audit_log ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[0].0,
+            "0000000000000000000000000000000000000000000000000000000000000000"
+        );
+        assert!(!rows[0].1.is_empty());
+        assert_eq!(rows[1].0, rows[0].2);
+        assert!(!rows[1].1.is_empty());
+        assert!(!rows[1].2.is_empty());
+    }
+
+    #[test]
+    fn migration_failure_rolls_back_prior_backfill_and_version_updates() {
+        let conn = version_7_db();
+        conn.execute(
+            "INSERT INTO audit_log (action, created_at) VALUES ('legacy', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO audit_log (action, created_at, data_hash) VALUES ('tampered', 2, 'not-the-event-hash')",
+            [],
+        )
+        .unwrap();
+
+        assert!(run_migrations(&conn).is_err());
+        let version: u32 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        let first_row_data_hash: String = conn
+            .query_row("SELECT data_hash FROM audit_log WHERE id = 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 7);
+        assert!(first_row_data_hash.is_empty());
+    }
+
+    #[test]
+    fn migration_refuses_to_repair_a_disconnected_hashed_chain() {
+        let conn = version_7_db();
+        insert_valid_hashed_audit_row(&conn, "update-1", 1_700_000_000);
+        insert_valid_hashed_audit_row(&conn, "update-2", 1_700_000_001);
+
+        let original: Vec<(String, String, String)> = conn
+            .prepare("SELECT prev_hash, data_hash, chain_hash FROM audit_log ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+
+        let forged_prev = "f".repeat(64);
+        let forged_chain = hex::encode(Sha256::digest(
+            format!("{}:{}:{}", forged_prev, original[1].1, 1_700_000_001).as_bytes(),
+        ));
+        conn.execute(
+            "UPDATE audit_log SET prev_hash = ?1, chain_hash = ?2 WHERE id = 2",
+            rusqlite::params![forged_prev, forged_chain],
+        )
+        .unwrap();
+
+        let tampered: Vec<(String, String, String)> = conn
+            .prepare("SELECT prev_hash, data_hash, chain_hash FROM audit_log ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+
+        assert!(run_migrations(&conn).is_err());
+
+        let version: u32 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        let after: Vec<(String, String, String)> = conn
+            .prepare("SELECT prev_hash, data_hash, chain_hash FROM audit_log ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+
+        assert_eq!(version, 7);
+        assert_eq!(after, tampered);
+    }
+
+    #[test]
+    fn migration_refuses_legacy_rows_after_hashed_history() {
+        let conn = version_7_db();
+        insert_valid_hashed_audit_row(&conn, "hashed", 1_700_000_000);
+        conn.execute(
+            "INSERT INTO audit_log (action, created_at) VALUES ('unhashed-after-history', 1700000001)",
+            [],
+        )
+        .unwrap();
+
+        assert!(run_migrations(&conn).is_err());
+        let version: u32 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        let fields: (String, String, String) = conn
+            .query_row(
+                "SELECT prev_hash, data_hash, chain_hash FROM audit_log WHERE id = 2",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(version, 7);
+        assert_eq!(
+            fields,
+            (
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                String::new(),
+                String::new(),
+            )
+        );
+    }
+
+    #[test]
+    fn concurrent_migration_startup_is_serialized() {
+        use std::sync::{Arc, Barrier};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "synapsis-migration-lock-{}-{unique}.db",
+            std::process::id()
+        ));
+        let barrier = Arc::new(Barrier::new(2));
+        let handles: Vec<_> = (0..2)
+            .map(|_| {
+                let path = path.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    let conn = Connection::open(&path).unwrap();
+                    barrier.wait();
+                    run_migrations(&conn).unwrap()
+                })
+            })
+            .collect();
+
+        let results: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        assert!(results.iter().all(|(version, _)| *version == 10));
+        assert_eq!(results.iter().map(|(_, applied)| applied).sum::<u32>(), 10);
+
+        let conn = Connection::open(&path).unwrap();
+        let version: u32 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 10);
+        drop(conn);
+        std::fs::remove_file(&path).unwrap();
     }
 }
