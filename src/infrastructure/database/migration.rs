@@ -303,7 +303,7 @@ fn migration_v9_add_thinking(conn: &Connection) -> Result<()> {
             thought TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             UNIQUE(tree_id, branch, step_index)
-        );"
+        );",
     )?;
     Ok(())
 }
@@ -326,7 +326,7 @@ fn migration_v10_add_bridge_messages(conn: &Connection) -> Result<()> {
             delivered INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_bridge_messages_project
-            ON bridge_messages(project, delivered, created_at);"
+            ON bridge_messages(project, delivered, created_at);",
     )?;
     Ok(())
 }
@@ -437,10 +437,16 @@ mod tests {
     fn test_run_migrations_fresh_db() {
         let conn = Connection::open_in_memory().unwrap();
         let (current, applied) = run_migrations(&conn).unwrap();
+        // Derived, not hardcoded: a fresh DB sits at version 0, so run_migrations
+        // must apply every migration exactly once. Hardcoding the count made this
+        // test fail on every added migration; it broke at v10 and has been red on
+        // develop since, which is why `cargo test` stopped at the lib target and
+        // the integration tests never ran.
+        let expected = all_migrations().len() as u32;
         assert_eq!(current, 0);
-        assert_eq!(applied, 7);
+        assert_eq!(applied, expected);
         let status = get_migration_status(&conn).unwrap();
-        assert_eq!(status["current_version"], 7);
+        assert_eq!(status["current_version"], expected);
     }
 
     #[test]
