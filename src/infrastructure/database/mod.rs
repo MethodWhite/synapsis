@@ -639,10 +639,12 @@ impl Database {
             "UPDATE observations SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
             rusqlite::params![now, id],
         )?;
-        let _ = conn.execute(
-            "INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES('delete', ?1, '', '')",
-            params![id],
-        );
+        // observations_fts is a plain fts5(title, content) table, not an
+        // external-content one. The INSERT ... VALUES('delete', ...) form is
+        // the external-content delete command and it ALWAYS fails against a
+        // plain fts5 table; `let _ =` swallowed the error, so every soft
+        // delete, update and revision left the previous text in the index.
+        let _ = conn.execute("DELETE FROM observations_fts WHERE rowid = ?", params![id]);
         Ok(())
     }
 
@@ -745,10 +747,12 @@ impl Database {
             "UPDATE observations SET title = ?1, content = ?2, updated_at = ?3 WHERE id = ?4 AND deleted_at IS NULL",
             params![title, content, now, id],
         )?;
-        let _ = conn.execute(
-            "INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES('delete', ?1, '', '')",
-            params![id],
-        );
+        // observations_fts is a plain fts5(title, content) table, not an
+        // external-content one. The INSERT ... VALUES('delete', ...) form is
+        // the external-content delete command and it ALWAYS fails against a
+        // plain fts5 table; `let _ =` swallowed the error, so every soft
+        // delete, update and revision left the previous text in the index.
+        let _ = conn.execute("DELETE FROM observations_fts WHERE rowid = ?", params![id]);
         let _ = conn.execute(
             "INSERT INTO observations_fts(rowid, title, content) VALUES (?1, ?2, ?3)",
             params![id, title, content],
@@ -818,10 +822,12 @@ impl Database {
             "UPDATE observations SET title = ?1, content = ?2, content_hash = ?3, revision_count = ?4, updated_at = ?5 WHERE id = ?6 AND deleted_at IS NULL",
             params![title, content, hash, revision, now, id],
         )?;
-        let _ = conn.execute(
-            "INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES('delete', ?1, '', '')",
-            params![id],
-        );
+        // observations_fts is a plain fts5(title, content) table, not an
+        // external-content one. The INSERT ... VALUES('delete', ...) form is
+        // the external-content delete command and it ALWAYS fails against a
+        // plain fts5 table; `let _ =` swallowed the error, so every soft
+        // delete, update and revision left the previous text in the index.
+        let _ = conn.execute("DELETE FROM observations_fts WHERE rowid = ?", params![id]);
         let _ = conn.execute(
             "INSERT INTO observations_fts(rowid, title, content) VALUES (?1, ?2, ?3)",
             params![id, title, content],
