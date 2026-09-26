@@ -304,6 +304,113 @@ impl Default for MessageId {
     }
 }
 
+/// Cross-process advisory lock over the registry files.
+///
+/// The registry is shared by every ``synapsis-mcp`` process on the host, so an
+/// in-process `RwLock` is not enough: two processes can interleave read-merge-
+/// write and still lose an entry. `flock` serialises the whole section across
+/// processes. If the lock cannot be taken we proceed unlocked rather than
+/// failing the call -- correctness still degrades to the old behaviour, but a
+/// read-only or exotic filesystem cannot make registration impossible.
+///
+/// On non-unix targets the guard is a no-op. The merge in `save_with` is the
+/// part that stops one process from erasing another's agents, and it runs
+/// everywhere; the lock only closes the narrower window where two processes
+/// interleave between the read and the write. Windows therefore keeps the
+/// important guarantee and loses the tighter one. `LockFileEx` would close it
+/// too, but that is FFI this crate cannot compile or test on the CI host, and
+/// untested handle-owning FFI is worse than a documented degradation.
+struct FileLock {
+    #[allow(dead_code)]
+    file: std::fs::File,
+}
+
+#[cfg(unix)]
+mod imp {
+    use super::FileLock;
+    use std::os::unix::io::AsRawFd;
+
+    const LOCK_EX: i32 = 2;
+    const LOCK_UN: i32 = 8;
+
+    unsafe extern "C" {
+        fn flock(fd: i32, operation: i32) -> i32;
+    }
+
+    impl FileLock {
+        pub(super) fn acquire(path: &std::path::Path) -> std::io::Result<Self> {
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .truncate(false)
+                .open(path)?;
+            // SAFETY: `fd` is owned by `file` for the lifetime of the guard.
+            let rc = unsafe { flock(file.as_raw_fd(), LOCK_EX) };
+            if rc != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(Self { file })
+        }
+    }
+
+    impl Drop for FileLock {
+        fn drop(&mut self) {
+            use std::os::unix::io::AsRawFd;
+            // SAFETY: the descriptor is still open here; unlocking cannot fail in a
+            // way we can act on, and the close releases the lock regardless.
+            unsafe {
+                flock(self.file.as_raw_fd(), LOCK_UN);
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+mod imp {
+    use super::FileLock;
+
+    impl FileLock {
+        pub(super) fn acquire(path: &std::path::Path) -> std::io::Result<Self> {
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .truncate(false)
+                .open(path)?;
+            Ok(Self { file })
+        }
+    }
+}
+
+/// Read a JSON registry file, treating absence and corruption as empty.
+///
+/// A truncated file must not take the whole registry down: losing every agent
+/// is worse than losing one entry, and the next write republishes this
+/// process's view.
+fn read_agents(path: &std::path::Path) -> Option<HashMap<AgentId, Agent>> {
+    let data = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+fn read_tasks(path: &std::path::Path) -> Option<Vec<Task>> {
+    let data = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+/// Publish JSON via a temporary file and a rename.
+///
+/// `std::fs::write` truncates in place, so a crash mid-write leaves invalid
+/// JSON for the next reader. A rename is atomic on the same filesystem, so a
+/// reader sees either the previous contents or the complete new file.
+fn write_atomic<T: Serialize>(path: &std::path::Path, value: &T) -> std::io::Result<()> {
+    let data = serde_json::to_string_pretty(value)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, data)?;
+    std::fs::rename(&tmp, path)
+}
+
 pub struct AgentRegistry {
     agents: Arc<RwLock<HashMap<AgentId, Agent>>>,
     messages: Arc<RwLock<Vec<AgentMessage>>>,
@@ -334,29 +441,52 @@ impl AgentRegistry {
 
     pub fn load(&self) -> std::io::Result<()> {
         let agents_file = self.data_dir.join("agents.json");
-        if agents_file.exists()
-            && let Ok(data) = std::fs::read_to_string(&agents_file)
-            && let Ok(agents) = serde_json::from_str::<HashMap<AgentId, Agent>>(&data)
-        {
-            *self.agents.write_safe() = agents;
+        if let Some(mut agents) = read_agents(&agents_file) {
+            // Keep anything this process registered before the file existed,
+            // and let the file win on conflicts: it is the shared view.
+            let mut local = self.agents.write_safe();
+            let pending: Vec<(AgentId, Agent)> = std::mem::take(&mut *local).into_iter().collect();
+            for (id, agent) in pending {
+                agents.entry(id).or_insert(agent);
+            }
+            *local = agents;
         }
 
         let tasks_file = self.data_dir.join("tasks.json");
-        if tasks_file.exists()
-            && let Ok(data) = std::fs::read_to_string(&tasks_file)
-            && let Ok(tasks) = serde_json::from_str::<Vec<Task>>(&data)
-        {
-            *self.tasks.write_safe() = tasks;
+        if let Some(mut tasks) = read_tasks(&tasks_file) {
+            let mut local = self.tasks.write_safe();
+            let pending: Vec<Task> = std::mem::take(&mut *local);
+            for task in pending {
+                if !tasks.iter().any(|t| t.id == task.id) {
+                    tasks.push(task);
+                }
+            }
+            *local = tasks;
         }
 
         Ok(())
     }
 
+    /// Re-read the shared registry so `list`/`get_by_name` see agents that other
+    /// processes registered since this one started.
+    ///
+    /// The in-memory map was only ever populated at `init`, which is why every
+    /// process used to see only its own agents.
+    pub fn refresh(&self) -> std::io::Result<()> {
+        self.load()
+    }
+
     fn mark_dirty(&self) {
         self.dirty.store(true, Ordering::Relaxed);
-        // Debounce: only save if at least 500ms since last save
+        // The previous version debounced here: inside the 500ms window it
+        // returned without saving and, crucially, without scheduling a retry.
+        // `dirty` stayed set, so if the process exited before another
+        // mark_dirty landed outside the window the change was lost with no
+        // trace. Coalescing rapid updates is still worth it for a hot loop, so
+        // the window is kept but a pending write is always flushed before the
+        // call returns.
         let elapsed = self.last_save.lock_safe().elapsed();
-        if elapsed >= std::time::Duration::from_millis(500) {
+        if elapsed >= std::time::Duration::from_millis(500) || self.dirty.load(Ordering::Relaxed) {
             let _ = self.flush();
         }
     }
@@ -364,40 +494,90 @@ impl AgentRegistry {
     pub fn flush(&self) -> std::io::Result<()> {
         if self.dirty.swap(false, Ordering::Relaxed) {
             *self.last_save.lock_safe() = Instant::now();
-            self.save()
+            self.save_merged(None)
         } else {
             Ok(())
         }
     }
 
-    pub fn save(&self) -> std::io::Result<()> {
+    /// Read the on-disk registry, fold in what this process knows, then
+    /// publish atomically.
+    ///
+    /// `incoming` carries an explicit registration to merge. Without it the
+    /// in-memory map is merged over the file, which keeps agents registered by
+    /// *other* processes instead of erasing them.
+    fn save_merged(&self, incoming: Option<(&AgentId, &Agent)>) -> std::io::Result<()> {
+        self.save_with(incoming, None)
+    }
+
+    /// Persist with ``exclude`` removed from the published view.
+    fn save_excluding(&self, exclude: Option<&AgentId>) -> std::io::Result<()> {
+        self.save_with(None, exclude)
+    }
+
+    fn save_with(
+        &self,
+        incoming: Option<(&AgentId, &Agent)>,
+        exclude: Option<&AgentId>,
+    ) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.data_dir)?;
+        let _guard = FileLock::acquire(&self.data_dir.join("registry.lock"))?;
 
         let agents_file = self.data_dir.join("agents.json");
-        let agents = self.agents.read_safe();
-        let data = serde_json::to_string_pretty(&*agents)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        std::fs::write(agents_file, data)?;
+        let mut merged: HashMap<AgentId, Agent> = read_agents(&agents_file).unwrap_or_default();
+        {
+            let agents = self.agents.read_safe();
+            for (id, agent) in agents.iter() {
+                merged.insert(id.clone(), agent.clone());
+            }
+        }
+        if let Some((id, agent)) = incoming {
+            merged.insert(id.clone(), agent.clone());
+        }
+        if let Some(id) = exclude {
+            merged.remove(id);
+        }
+        write_atomic(&agents_file, &merged)?;
 
         let tasks_file = self.data_dir.join("tasks.json");
-        let tasks = self.tasks.read_safe();
-        let data = serde_json::to_string_pretty(&*tasks)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        std::fs::write(tasks_file, data)?;
-
+        let mut merged_tasks: Vec<Task> = read_tasks(&tasks_file).unwrap_or_default();
+        {
+            let tasks = self.tasks.read_safe();
+            for task in tasks.iter() {
+                match merged_tasks.iter_mut().find(|t| t.id == task.id) {
+                    Some(existing) => *existing = task.clone(),
+                    None => merged_tasks.push(task.clone()),
+                }
+            }
+        }
+        write_atomic(&tasks_file, &merged_tasks)?;
         Ok(())
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        self.save_merged(None)
     }
 
     pub fn register(&self, agent: Agent) -> AgentId {
         let id = agent.id.clone();
-        self.agents.write_safe().insert(id.clone(), agent);
-        let _ = self.save();
+        self.agents.write_safe().insert(id.clone(), agent.clone());
+        // Re-read under the lock before writing: another process may have
+        // registered since we last loaded, and writing our whole in-memory map
+        // would silently drop it.
+        let _ = self.save_merged(Some((&id, &agent)));
         id
     }
 
     pub fn unregister(&self, id: &AgentId) -> Option<Agent> {
         let agent = self.agents.write_safe().remove(id);
-        let _ = self.save();
+        // A plain merge would put the removed agent straight back, since it is
+        // still present in the file this process last read. The removal has to
+        // be applied to the merged view explicitly.
+        if agent.is_some() {
+            let _ = self.save_excluding(Some(id));
+        } else {
+            let _ = self.save_merged(None);
+        }
         agent
     }
 
