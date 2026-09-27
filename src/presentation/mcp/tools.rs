@@ -635,7 +635,11 @@ pub fn handle_skill_list(skills: &SkillRegistry, id: &Value) -> anyhow::Result<V
     }))
 }
 
-pub fn handle_skill_unregister(skills: &SkillRegistry, id: &Value, args: &Value) -> anyhow::Result<Value> {
+pub fn handle_skill_unregister(
+    skills: &SkillRegistry,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
     let sid = args["id"].as_str().unwrap_or("");
     if sid.is_empty() {
         return Ok(json!({
@@ -792,7 +796,9 @@ pub fn handle_standard_unregister(
             "error": { "code": -32602, "message": "Missing required parameter: id" }
         }));
     }
-    match standards.unregister(&crate::infrastructure::standards::StandardId(sid.to_string())) {
+    match standards.unregister(&crate::infrastructure::standards::StandardId(
+        sid.to_string(),
+    )) {
         Some(_) => Ok(json!({
             "jsonrpc": "2.0", "id": id,
             "result": { "content": [{ "type": "text", "text": format!("Standard {} unregistered", sid) }] }
@@ -823,7 +829,12 @@ pub fn handle_recommend_tooling(
         }));
     }
 
-    let haystack = format!("{} {} {}", task, project.to_lowercase(), context.to_lowercase());
+    let haystack = format!(
+        "{} {} {}",
+        task,
+        project.to_lowercase(),
+        context.to_lowercase()
+    );
     let tokens: Vec<String> = haystack
         .split(|c: char| !c.is_alphanumeric())
         .filter(|t| t.len() >= 3)
@@ -866,7 +877,9 @@ pub fn handle_recommend_tooling(
                 score = score.saturating_sub(2);
             }
             let category_words = match s.category {
-                SkillCategory::Security => vec!["security", "seguridad", "vulnerab", "pentest", "hack"],
+                SkillCategory::Security => {
+                    vec!["security", "seguridad", "vulnerab", "pentest", "hack"]
+                }
                 SkillCategory::Coding => vec!["coding", "codigo", "code", "program", "implement"],
                 SkillCategory::Testing => vec!["test", "testing", "qa", "calidad", "prueba"],
                 SkillCategory::DevOps => vec!["devops", "ci", "cd", "deploy", "infra", "pipeline"],
@@ -908,16 +921,87 @@ pub fn handle_recommend_tooling(
 
     // --- Tool suggestions by keyword domain ---
     let tool_map: Vec<(&str, Vec<&str>, &str)> = vec![
-        ("mem_save / mem_search / mem_context", vec!["memory", "memoria", "recuerd", "context", "observacion", "observation", "sesion", "session"], "Persistir y recuperar contexto del trabajo para este proyecto"),
-        ("worker_execute / worker_status", vec!["worker", "delegar", "subagente", "ejecutar", "task", "tarea"], "Delegar ejecución a un worker o comprobar su estado"),
-        ("task_create / task_list", vec!["plan", "planif", "pendiente", "todo", "roadmap"], "Registrar y hacer seguimiento de tareas"),
-        ("secure_read_file / secure_write_file", vec!["archivo", "file", "leer", "escribir", "editar", "codigo", "code"], "Leer o escribir archivos de forma sandboxed"),
-        ("vault_store / vault_retrieve", vec!["secreto", "secret", "token", "clave", "credential", "apikey"], "Guardar o recuperar secretos de forma cifrada"),
-        ("pqc_encrypt / pqc_decrypt", vec!["cifrar", "encrypt", "post-quantum", "datos sensibles"], "Cifrar datos sensibles con criptografía post-cuántica"),
-        ("graph_search / graph_context", vec!["grafo", "graph", "entidad", "relacion", "relation"], "Explorar relaciones entre entidades del knowledge graph"),
-        ("agentic_search", vec!["investigar", "research", "busqueda", "search", "web"], "Búsqueda agéntica expandida cuando se necesita investigación profunda"),
-        ("db_backup / db_integrity", vec!["backup", "respaldo", "integridad", "database", "basededatos"], "Verificar integridad o respaldar la base de datos"),
-        ("sync_memory / sync_status", vec!["sincroniz", "sync", "commit", "git"], "Sincronizar memoria con el motor Git"),
+        (
+            "mem_save / mem_search / mem_context",
+            vec![
+                "memory",
+                "memoria",
+                "recuerd",
+                "context",
+                "observacion",
+                "observation",
+                "sesion",
+                "session",
+            ],
+            "Persistir y recuperar contexto del trabajo para este proyecto",
+        ),
+        (
+            "worker_execute / worker_status",
+            vec![
+                "worker",
+                "delegar",
+                "subagente",
+                "ejecutar",
+                "task",
+                "tarea",
+            ],
+            "Delegar ejecución a un worker o comprobar su estado",
+        ),
+        (
+            "task_create / task_list",
+            vec!["plan", "planif", "pendiente", "todo", "roadmap"],
+            "Registrar y hacer seguimiento de tareas",
+        ),
+        (
+            "secure_read_file / secure_write_file",
+            vec![
+                "archivo", "file", "leer", "escribir", "editar", "codigo", "code",
+            ],
+            "Leer o escribir archivos de forma sandboxed",
+        ),
+        (
+            "vault_store / vault_retrieve",
+            vec![
+                "secreto",
+                "secret",
+                "token",
+                "clave",
+                "credential",
+                "apikey",
+            ],
+            "Guardar o recuperar secretos de forma cifrada",
+        ),
+        (
+            "pqc_encrypt / pqc_decrypt",
+            vec!["cifrar", "encrypt", "post-quantum", "datos sensibles"],
+            "Cifrar datos sensibles con criptografía post-cuántica",
+        ),
+        (
+            "graph_search / graph_context",
+            vec!["grafo", "graph", "entidad", "relacion", "relation"],
+            "Explorar relaciones entre entidades del knowledge graph",
+        ),
+        (
+            "agentic_search",
+            vec!["investigar", "research", "busqueda", "search", "web"],
+            "Búsqueda agéntica expandida cuando se necesita investigación profunda",
+        ),
+        (
+            "db_backup / db_integrity",
+            vec![
+                "backup",
+                "respaldo",
+                "integridad",
+                "database",
+                "basededatos",
+            ],
+            "Verificar integridad o respaldar la base de datos",
+        ),
+        (
+            "sync_memory / sync_status",
+            vec!["sincroniz", "sync", "commit", "git"],
+            "Sincronizar memoria con el motor Git",
+        ),
     ];
 
     let mut suggested_tools: Vec<Value> = Vec::new();
@@ -942,7 +1026,8 @@ pub fn handle_recommend_tooling(
             .iter()
             .take(15)
             .filter(|(sc, _)| {
-                *sc > 0 && (best_skill_score == 0 || *sc >= (best_skill_score as f32 * 0.4) as usize)
+                *sc > 0
+                    && (best_skill_score == 0 || *sc >= (best_skill_score as f32 * 0.4) as usize)
             })
             .filter(|(_, s)| {
                 if seen.contains(&s.name) {
@@ -993,7 +1078,9 @@ pub fn handle_recommend_tooling(
             .collect()
     };
 
-    let guidance = if strong_skills.is_empty() && strong_standards.is_empty() && suggested_tools.is_empty()
+    let guidance = if strong_skills.is_empty()
+        && strong_standards.is_empty()
+        && suggested_tools.is_empty()
     {
         "No he encontrado coincidencias fuertes con esa tarea. Te sugiero: (1) usa mem_save para registrar la tarea en memoria, (2) busca en el repositorio de estándares con standard_search, (3) consulta el knowledge graph con graph_search para ver contexto relacionado, o (4) delega a un worker con worker_execute. Si describes mejor la tarea (p.ej. 'auditar seguridad del MCP', 'diseñar arquitectura', 'escribir tests'), podré sugerir algo más preciso."
             .to_string()
@@ -1014,12 +1101,7 @@ pub fn handle_recommend_tooling(
                 "Estándares aplicables: {}",
                 strong_standards
                     .iter()
-                    .map(|v| format!(
-                        "{}[{}] — {}",
-                        v["name"],
-                        v["code"],
-                        v["purpose"]
-                    ))
+                    .map(|v| format!("{}[{}] — {}", v["name"], v["code"], v["purpose"]))
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
@@ -1052,7 +1134,10 @@ pub fn handle_recommend_tooling(
 }
 
 fn score_corpus(tokens: &[String], corpus: &str) -> usize {
-    tokens.iter().filter(|t| corpus.contains(t.as_str())).count()
+    tokens
+        .iter()
+        .filter(|t| corpus.contains(t.as_str()))
+        .count()
 }
 
 fn skill_purpose(s: &Skill) -> String {
@@ -1450,9 +1535,7 @@ pub fn handle_mem_session_start(
             // Proactive context: pull recent observations and suggested skills
             // for this project so the agent starts with memory loaded.
             let mut parts = vec![format!("Session started: {}", sid)];
-            let recent = db
-                .search_fts(project, Some(project), 5)
-                .unwrap_or_default();
+            let recent = db.search_fts(project, Some(project), 5).unwrap_or_default();
             if !recent.is_empty() {
                 parts.push(format!("\nRecent context for '{}':", project));
                 for r in recent.iter().take(5) {
@@ -1471,9 +1554,7 @@ pub fn handle_mem_session_start(
             }
 
             let text = parts.join("\n");
-            Ok(
-                json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}),
-            )
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
         }
         Err(e) => {
             Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
@@ -1602,7 +1683,10 @@ pub fn handle_bridge_publish(db: &Database, id: &Value, args: &Value) -> anyhow:
     let from_session = args["from_session"].as_str().unwrap_or("").to_string();
     let from_agent = args["from_agent"].as_str().unwrap_or("").to_string();
     let content = args["content"].as_str().unwrap_or("").to_string();
-    let message_type = args["message_type"].as_str().unwrap_or("observation").to_string();
+    let message_type = args["message_type"]
+        .as_str()
+        .unwrap_or("observation")
+        .to_string();
     let to_session = args["to_session"].as_str().map(|s| s.to_string());
     if project.is_empty() || content.is_empty() {
         return Ok(
@@ -1626,8 +1710,12 @@ pub fn handle_bridge_publish(db: &Database, id: &Value, args: &Value) -> anyhow:
         &message_type,
         &content,
     ) {
-        Ok(()) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Message published: {} ({})", message_id, message_type)}]}})),
-        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        Ok(()) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Message published: {} ({})", message_id, message_type)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
     }
 }
 
@@ -1645,7 +1733,9 @@ pub fn handle_bridge_inbox(db: &Database, id: &Value, args: &Value) -> anyhow::R
     match db.bridge_inbox(&project, session_id, agent_id, from_agent, limit) {
         Ok(msgs) => {
             if msgs.is_empty() {
-                return Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"No pending messages."}]}}));
+                return Ok(
+                    json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"No pending messages."}]}}),
+                );
             }
             let mut lines = vec![format!("Inbox ({}):", msgs.len())];
             for m in &msgs {
@@ -1658,20 +1748,20 @@ pub fn handle_bridge_inbox(db: &Database, id: &Value, args: &Value) -> anyhow::R
                     m["content"].as_str().unwrap_or("")
                 ));
             }
-            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":lines.join("\n")}]}}))
+            Ok(
+                json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":lines.join("\n")}]}}),
+            )
         }
-        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
     }
 }
 
 pub fn handle_bridge_ack(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
     let ids: Vec<&str> = args["message_ids"]
         .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<&str>>()
-        })
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<&str>>())
         .unwrap_or_default();
     if ids.is_empty() {
         return Ok(
@@ -1679,8 +1769,12 @@ pub fn handle_bridge_ack(db: &Database, id: &Value, args: &Value) -> anyhow::Res
         );
     }
     match db.bridge_ack(&ids) {
-        Ok(n) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Acknowledged {} message(s)", n)}]}})),
-        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        Ok(n) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Acknowledged {} message(s)", n)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
     }
 }
 
@@ -2818,8 +2912,12 @@ pub fn handle_think_start(
         );
     }
     match thinking.start_tree(&tree_id, project, session_id, &topic) {
-        Ok(()) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Thinking tree started: {} ({})", tree_id, topic)}]}})),
-        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        Ok(()) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Thinking tree started: {} ({})", tree_id, topic)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
     }
 }
 
@@ -2838,8 +2936,12 @@ pub fn handle_think_step(
         );
     }
     match thinking.add_step(&tree_id, &thought, branch, parent_index) {
-        Ok(step) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Step {} added (branch {}): {}", step.step_index, step.branch, step.thought)}]}})),
-        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        Ok(step) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Step {} added (branch {}): {}", step.step_index, step.branch, step.thought)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
     }
 }
 
@@ -2869,12 +2971,21 @@ pub fn handle_think_state(
                     .parent_index
                     .map(|p| format!(" <- {}", p))
                     .unwrap_or_default();
-                lines.push(format!("{}{}. [b{}] {}{}", indent, s.step_index, s.branch, s.thought, parent));
+                lines.push(format!(
+                    "{}{}. [b{}] {}{}",
+                    indent, s.step_index, s.branch, s.thought, parent
+                ));
             }
-            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":lines.join("\n")}]}}))
+            Ok(
+                json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":lines.join("\n")}]}}),
+            )
         }
-        Ok(None) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Tree '{}' not found", tree_id)}})),
-        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        Ok(None) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Tree '{}' not found", tree_id)}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
     }
 }
 
@@ -2891,7 +3002,11 @@ pub fn handle_think_finish(
         );
     }
     match thinking.finish_tree(&tree_id, status) {
-        Ok(()) => Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Thinking tree '{}' finished ({})", tree_id, status)}]}})),
-        Err(e) => Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}})),
+        Ok(()) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Thinking tree '{}' finished ({})", tree_id, status)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
     }
 }

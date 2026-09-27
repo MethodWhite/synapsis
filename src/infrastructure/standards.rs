@@ -59,17 +59,13 @@ impl std::str::FromStr for StandardCategory {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_lowercase().as_str() {
             "security" | "sec" | "seguridad" => Self::Security,
-            "dev-process" | "devprocess" | "devops" | "proceso" | "process" => {
-                Self::DevProcess
-            }
+            "dev-process" | "devprocess" | "devops" | "proceso" | "process" => Self::DevProcess,
             "architecture" | "arch" | "arquitectura" => Self::Architecture,
             "compliance" | "grc" | "grc-compliance" => Self::Compliance,
             "data" | "datos" => Self::Data,
             "testing" | "quality" | "calidad" | "pruebas" => Self::Testing,
             "documentation" | "docs" | "documentación" => Self::Documentation,
-            "project" | "project-management" | "proyectos" | "pm" => {
-                Self::ProjectManagement
-            }
+            "project" | "project-management" | "proyectos" | "pm" => Self::ProjectManagement,
             "ops" | "operaciones" | "runbook" => Self::Ops,
             _ => Self::Custom,
         })
@@ -207,8 +203,7 @@ impl StandardRegistry {
         let file = self.data_dir.join("standards.json");
         if file.exists()
             && let Ok(data) = std::fs::read_to_string(&file)
-            && let Ok(standards) =
-                serde_json::from_str::<HashMap<StandardId, Standard>>(&data)
+            && let Ok(standards) = serde_json::from_str::<HashMap<StandardId, Standard>>(&data)
         {
             *self.standards.write_safe() = standards;
         }

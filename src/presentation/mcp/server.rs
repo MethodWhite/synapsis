@@ -15,10 +15,10 @@ use crate::core::auth::permissions::Permission;
 use crate::core::auth::tpm::TpmMfaProvider;
 use crate::core::auto_integrate::AutoIntegrate;
 use crate::core::chunk_query::ChunkQueryManager;
-use crate::core::sequential_thinking::SequentialThinking;
 use crate::core::discovery::EnvironmentDiscovery;
 use crate::core::recycle::RecycleBin;
 use crate::core::resource_manager::ResourceManager;
+use crate::core::sequential_thinking::SequentialThinking;
 use crate::core::session_manager::SessionManager;
 use crate::core::sync::GitSyncEngine;
 use crate::core::task_queue::TaskQueue;
@@ -1600,8 +1600,13 @@ impl McpServer {
             "mem_recycle_search" | "mem_recycle_stats" => Some(Permission::ReadRecycleBin),
             "mem_recycle_delete" => Some(Permission::PurgeRecycleBin),
 
-            "skill_register" | "skill_list" | "skill_unregister" | "standard_register"
-            | "standard_list" | "standard_search" | "standard_unregister"
+            "skill_register"
+            | "skill_list"
+            | "skill_unregister"
+            | "standard_register"
+            | "standard_list"
+            | "standard_search"
+            | "standard_unregister"
             | "recommend_tooling" => Some(Permission::ManageAgents),
             "agent_register" | "agent_unregister" | "agent_list" | "agent_list_by_project" => {
                 Some(Permission::ManageAgents)

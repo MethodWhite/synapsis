@@ -68,7 +68,11 @@ fn inventory() -> Vec<StandaresItem> {
                 continue;
             }
             let fname = parts.last().unwrap_or(&"").trim_end_matches(".md");
-            let sub = if parts.len() >= 3 { parts[parts.len() - 2] } else { "" };
+            let sub = if parts.len() >= 3 {
+                parts[parts.len() - 2]
+            } else {
+                ""
+            };
             let name = if fname == "skill" || fname == "skills" {
                 sub.to_string()
             } else {

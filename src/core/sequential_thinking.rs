@@ -170,9 +170,8 @@ impl SequentialThinking {
                 .filter_map(|r| r.ok())
                 .collect()
         } else {
-            let mut stmt = conn.prepare(
-                "SELECT tree_id FROM thinking_trees ORDER BY updated_at DESC LIMIT ?1",
-            )?;
+            let mut stmt = conn
+                .prepare("SELECT tree_id FROM thinking_trees ORDER BY updated_at DESC LIMIT ?1")?;
             stmt.query_map(rusqlite::params![limit], |r| r.get(0))?
                 .filter_map(|r| r.ok())
                 .collect()
