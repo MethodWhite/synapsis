@@ -85,7 +85,10 @@ fn resolve_within_root(input: &str) -> std::io::Result<std::path::PathBuf> {
         root.join(candidate)
     };
     // Reject obvious traversal before touching the filesystem.
-    if resolved.components().any(|c| matches!(c, Component::ParentDir)) {
+    if resolved
+        .components()
+        .any(|c| matches!(c, Component::ParentDir))
+    {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             "Path traversal detected",
