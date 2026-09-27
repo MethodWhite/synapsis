@@ -5,6 +5,43 @@ All notable changes to Synapsis will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0](https://github.com/MethodWhite/synapsis/compare/v0.11.0...v0.12.0) (2026-08-12)
+
+
+### Features
+
+* add Cargo Deny bot to CI + fix deny.toml ([7af3351](https://github.com/MethodWhite/synapsis/commit/7af3351be3b72f2715f6faa8a97b9b6320b39383))
+* add synapsis-wallet as optional dependency ([90fdb7a](https://github.com/MethodWhite/synapsis/commit/90fdb7a25046d526299e48fd821be47fd198a9c1))
+* add TypeScript SDK for API consumers (packages/synapsis-client/) ([db5dc99](https://github.com/MethodWhite/synapsis/commit/db5dc996b7e5f86e0a71d99e13dd685ee342c4c3))
+* Arca wallet integration (--features arca, optional) ([2494e04](https://github.com/MethodWhite/synapsis/commit/2494e0492ec27391df4d2bbf650362f2efedd3e1))
+* cross-platform session bridge + session sharing tools ([980445c](https://github.com/MethodWhite/synapsis/commit/980445c505d97754fd57f4c397081e5c77f52f4d))
+* database migration system + 6 sequential migrations + MCP tool ([aede4a8](https://github.com/MethodWhite/synapsis/commit/aede4a8a39a1d82408f5c6da09567079a763852c))
+* Ed25519 license system + SME tiers + keygen tool ([a839b30](https://github.com/MethodWhite/synapsis/commit/a839b30f0f9423adc0dd60b4d98ac94087571b25))
+* license generator CLI (synapsis-license-gen) + fix escape in tools.rs ([7d2cc3c](https://github.com/MethodWhite/synapsis/commit/7d2cc3cfaf2201b9b498bf7ae3ff50bb4245dae2))
+* MCP auto-config system + fix hardcoded paths, consolidate match, remove dead code ([5a714b1](https://github.com/MethodWhite/synapsis/commit/5a714b1b9cb44f2e952da82ec784c3db3671fc4f))
+* premium features gate (license → x402 → block) ([4b3ea07](https://github.com/MethodWhite/synapsis/commit/4b3ea0717bb2cbffeb02d25040c91a6aee5061f8))
+* synapsis license sign + flujo completo de firma ([f4e3b29](https://github.com/MethodWhite/synapsis/commit/f4e3b29dd1f4a1336912a68e84871e811445cf04))
+* x402 HTTP integration + /.well-known/x402 endpoint + wallet support ([2e3563d](https://github.com/MethodWhite/synapsis/commit/2e3563d38df9db0977e33e780b526b764f277482))
+* x402 payment system + premium features + discovery endpoint ([e88342a](https://github.com/MethodWhite/synapsis/commit/e88342a735b6b87e7e2de86fb34dff2ce917c41f))
+
+
+### Bug Fixes
+
+* add node_modules to gitignore, remove from tracking ([3a4103b](https://github.com/MethodWhite/synapsis/commit/3a4103bfe32456bac518676b881247f5cb7ddee8))
+* cargo fmt + cargo-deny 0.19.8 config + cargo audit clean ([910e1d6](https://github.com/MethodWhite/synapsis/commit/910e1d61afd5c0fcf4ce993a11f58fc64d73e2ca))
+* CI formatting and audit ([da5a6a0](https://github.com/MethodWhite/synapsis/commit/da5a6a0c6b2f579aa901d9b944941ecb8e463c20))
+* exclude component name from release tag (use v* format) ([#37](https://github.com/MethodWhite/synapsis/issues/37)) ([483307b](https://github.com/MethodWhite/synapsis/commit/483307be3123bcd93cc5935d1be09fb1cf855871))
+* opencode config format (mcpServers -&gt; mcp) + fix autoconfig ([af62a32](https://github.com/MethodWhite/synapsis/commit/af62a32ca5e30368b94a8a9a7298c67ebbc9bbaf))
+* osv-scanner action [@v2](https://github.com/v2) -&gt; [@v2](https://github.com/v2).3.8 (specific version) ([c731b94](https://github.com/MethodWhite/synapsis/commit/c731b94df137791a6707b84f65721af6d915625d))
+* platform_catalog - JetBrains protocol REST, Chinese platforms no MCP, add re-export ([8f0dfc0](https://github.com/MethodWhite/synapsis/commit/8f0dfc0b51af8f81c4ee54e5cfac51031bd28514))
+* release.yml YAML syntax + osv-scanner action to v2 ([269ad68](https://github.com/MethodWhite/synapsis/commit/269ad68112b357b810ae9a4f3fbe101cccf7face))
+* remove all Python deps from Synapsis ecosystem ([118a6da](https://github.com/MethodWhite/synapsis/commit/118a6da5c2b4ce0df92e9d178ff5050dce8573a3))
+* rename synapsis-wallet -&gt; Arca (self-hosted wallet management) ([4ab55e5](https://github.com/MethodWhite/synapsis/commit/4ab55e52e0d376583d5d124e9c8c3e70f09f99dd))
+* restore synapsis-core git dependency (path→git) ([6586753](https://github.com/MethodWhite/synapsis/commit/6586753a221e8dd74675a01bebec147bbda57896))
+* test_generate_synapsis_mcp_entry supports both mcp and mcpServers ([3abb4bd](https://github.com/MethodWhite/synapsis/commit/3abb4bde4455c4f65149c3db32ec3cf2a5ed7893))
+* tools audit — JSON-RPC errors, FTS O(n^2), input validation ([1c222e2](https://github.com/MethodWhite/synapsis/commit/1c222e2fa8172b08b6df550e1f3412831cf93b08))
+* zero cargo warnings, zero actionlint warnings ([#36](https://github.com/MethodWhite/synapsis/issues/36)) ([ef4e022](https://github.com/MethodWhite/synapsis/commit/ef4e022b0572f2606a74bfe00675d44a9af9e9c5))
+
 ## [0.11.0](https://github.com/MethodWhite/synapsis/compare/v0.10.0...v0.11.0) (2026-07-10)
 
 
