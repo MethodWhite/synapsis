@@ -124,6 +124,17 @@ jobs:
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Repeated here on purpose. The action does not read
+          # .cargo/audit.toml, so the ignore list configured in that file only
+          # ever applied to local `cargo audit` runs and never to CI. That is
+          # why this job stayed red while the file claimed otherwise.
+          # Keep the two lists in sync.
+          ignore: >-
+            RUSTSEC-2026-0097
+            RUSTSEC-2024-0436
+            RUSTSEC-2026-0002
+            RUSTSEC-2026-0187
+            RUSTSEC-2025-0009
 
   deny:
     name: Cargo Deny
