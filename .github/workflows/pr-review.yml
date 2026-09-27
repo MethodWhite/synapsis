@@ -91,7 +91,7 @@ jobs:
           # check, so Auto-approve died with "elapsed time 600 exceeds timeout
           # 600" while Test (Windows) was still in_progress at 11m31s. This now
           # outlasts the largest timeout-minutes among the gated jobs, which is
-          # MSRV at 30.
+          # clippy at 30.
           timeout: 2400
 
       - name: Auto-approve
