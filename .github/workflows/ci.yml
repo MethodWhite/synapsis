@@ -14,9 +14,22 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   PRIVATE_REPOS_TOKEN: ${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}
-  GIT_CONFIG_COUNT: 1
-  GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
-  GIT_CONFIG_VALUE_0: https://github.com/
+  # The git URL rewrite is deliberately NOT set at workflow level.
+  #
+  # It used to live here, so every step inherited it, including the eleven
+  # actions/checkout steps. That rewrite embeds an access token in a URL, and
+  # checkout persists that URL as the origin remote in the workspace .git/config.
+  # Every job then ran cargo, cargo deny, tests and upload-artifact in a
+  # workspace holding a credential that none of them needed.
+  #
+  # Scoping it to the steps that actually run cargo is enough: the six private
+  # git dependencies are only fetched by cargo. Nothing else needs it, there is
+  # no LFS and no submodules, so no checkout needs it.
+  #
+  # This is credential hygiene. It is NOT the fix for the macOS checkout hang:
+  # ubuntu and Windows run the same checkout with the same env and pass, so that
+  # rewrite was never the cause there. The macOS runner hang is unexplained and
+  # stays mitigated with continue-on-error.
 
 jobs:
 
@@ -39,6 +52,9 @@ jobs:
         run: cargo test -- --test-threads=1
         env:
           RUST_BACKTRACE: 1
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -65,6 +81,9 @@ jobs:
         run: cargo check --all-targets
         env:
           RUST_BACKTRACE: 1
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
 
   fmt:
     name: Format
@@ -77,6 +96,10 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt -- --check
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
 
   clippy:
     name: Clippy
@@ -89,6 +112,10 @@ jobs:
         with:
           components: clippy
       - run: cargo clippy
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
 
   msrv:
     name: MSRV (1.95.0)
@@ -99,6 +126,10 @@ jobs:
       - uses: ./.github/actions/setup-synapsis
       - uses: dtolnay/rust-toolchain@1.95.0
       - run: cargo check
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
 
   actionlint:
     name: Validate workflows
@@ -148,6 +179,10 @@ jobs:
           tool: cargo-deny
       - name: Check licenses and advisories
         run: cargo deny check
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
 
   sbom:
     name: SBOM (Supply Chain)
@@ -162,6 +197,10 @@ jobs:
         run: |
           cargo install cargo-cyclonedx 2>/dev/null || true
           cargo cyclonedx 2>/dev/null || echo "SBOM generation skipped"
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
         with:
@@ -198,6 +237,10 @@ jobs:
           cargo geiger --output-format GitHub --update-readme || true
           cargo geiger --output-format Json > geiger-report.json || true
           cargo geiger --deny-warn --manifest-path Cargo.toml || true
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.PRIVATE_REPOS_TOKEN || secrets.G_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
 
   ci-status:
     name: ci
