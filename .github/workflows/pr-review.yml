@@ -80,7 +80,13 @@ jobs:
         uses: poseidon/wait-for-status-checks@v0.5.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ignore: 'PR Review,Auto-approve,Enforce labels,Analyze changes,Check conventions'
+          # actionlint is ignored on purpose. reviewdog/action-actionlint reports
+          # conclusion "neutral" when it finds nothing at the configured level,
+          # and poseidon/wait-for-status-checks counts "neutral" as
+          # unsuccessful. Without this the job fails in about six seconds, on
+          # its first poll, before it ever waits for CI. It is not waiting on
+          # macOS and never was.
+          ignore: 'PR Review,Auto-approve,Enforce labels,Analyze changes,Check conventions,actionlint'
           timeout: 600
 
       - name: Auto-approve
@@ -117,7 +123,7 @@ jobs:
         uses: poseidon/wait-for-status-checks@v0.5.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ignore: 'PR Review,Auto-approve,Enforce labels,Analyze changes,Check conventions,Deps auto-approve'
+          ignore: 'PR Review,Auto-approve,Enforce labels,Analyze changes,Check conventions,Deps auto-approve,actionlint'
           timeout: 600
 
       - name: Auto-approve dependabot PR
