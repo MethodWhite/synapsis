@@ -64,7 +64,12 @@ jobs:
   test-windows:
     name: Test (Windows)
     runs-on: windows-latest
-    timeout-minutes: 60
+    # This job is a cargo check plus a vcpkg install. It took 11m31s on
+    # 2026-09-27. The old 60 minute budget was not a real limit, it was just
+    # wide enough that Auto-approve, which waits 2400s, could never be sure the
+    # job had settled. See the timeout on the wait-for-status-checks steps in
+    # pr-review.yml.
+    timeout-minutes: 25
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

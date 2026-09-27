@@ -87,7 +87,12 @@ jobs:
           # its first poll, before it ever waits for CI. It is not waiting on
           # macOS and never was.
           ignore: 'PR Review,Auto-approve,Enforce labels,Analyze changes,Check conventions,actionlint'
-          timeout: 600
+          # 2400s, not 600s. The old value was shorter than the slowest gated
+          # check, so Auto-approve died with "elapsed time 600 exceeds timeout
+          # 600" while Test (Windows) was still in_progress at 11m31s. This now
+          # outlasts the largest timeout-minutes among the gated jobs, which is
+          # MSRV at 30.
+          timeout: 2400
 
       - name: Auto-approve
         uses: hmarr/auto-approve-action@v4
@@ -124,7 +129,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ignore: 'PR Review,Auto-approve,Enforce labels,Analyze changes,Check conventions,Deps auto-approve,actionlint'
-          timeout: 600
+          timeout: 2400
 
       - name: Auto-approve dependabot PR
         uses: hmarr/auto-approve-action@v4
