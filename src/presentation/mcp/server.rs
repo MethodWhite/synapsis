@@ -18,6 +18,7 @@ use crate::core::chunk_query::ChunkQueryManager;
 use crate::core::discovery::EnvironmentDiscovery;
 use crate::core::recycle::RecycleBin;
 use crate::core::resource_manager::ResourceManager;
+use crate::core::sequential_thinking::SequentialThinking;
 use crate::core::session_manager::SessionManager;
 use crate::core::sync::GitSyncEngine;
 use crate::core::task_queue::TaskQueue;
@@ -32,6 +33,7 @@ use crate::domain::*;
 use crate::infrastructure::agents::AgentRegistry;
 use crate::infrastructure::database::Database;
 use crate::infrastructure::skills::SkillRegistry;
+use crate::infrastructure::standards::StandardRegistry;
 
 use super::graph_tools;
 use super::html::format_args_snapshot;
@@ -56,6 +58,7 @@ macro_rules! debug_log {
 pub struct McpServer {
     db: Arc<Database>,
     skills: Arc<SkillRegistry>,
+    standards: Arc<StandardRegistry>,
     agents: Arc<AgentRegistry>,
     task_queue: Arc<TaskQueue>,
     antibrick: Arc<AntiBrickEngine>,
@@ -65,6 +68,7 @@ pub struct McpServer {
     session_mgr: SessionManager,
     timelines: TimelineManager,
     chunks: ChunkQueryManager,
+    thinking: SequentialThinking,
     vault: SecureVault,
     workers: WorkerOrchestrator,
     git_sync: GitSyncEngine,
@@ -106,6 +110,7 @@ impl McpServer {
             session_mgr: SessionManager::new(db.clone()),
             timelines: TimelineManager::new(db.clone()),
             chunks: ChunkQueryManager::new(db.clone()),
+            thinking: SequentialThinking::new(db.clone()),
             vault: SecureVault::new(crate::config::data_dir()),
             workers: {
                 let mut wo = WorkerOrchestrator::new();
@@ -131,6 +136,7 @@ impl McpServer {
             classifier: auth_enabled.then(AgentClassifier::new),
             challenge: auth_enabled.then(ChallengeResponse::new),
             skills: Arc::new(SkillRegistry::new()),
+            standards: Arc::new(StandardRegistry::new()),
             agents: Arc::new(AgentRegistry::new()),
             task_queue: {
                 let tq = Arc::new(TaskQueue::new(None));
@@ -149,6 +155,7 @@ impl McpServer {
     pub fn init(&self) {
         self.db.init().expect("Failed to initialize database");
         self.skills.init().ok();
+        self.standards.init().ok();
         self.agents.init().ok();
         info_log!("[Synapsis MCP] Server initialized");
     }
@@ -203,7 +210,7 @@ impl McpServer {
             }
         };
 
-        // Auth check: if SYNAPSIS_AUTH is set, require valid API key in initialize
+        // Auth check: if SYNAPSIS_AUTH is set, require a valid API key.
         if let Some(ref _classifier) = self.classifier {
             let is_initialize = request["method"].as_str() == Some("initialize");
             if !is_initialize {
@@ -211,8 +218,15 @@ impl McpServer {
                     .as_str()
                     .or_else(|| request["params"]["token"].as_str())
                     .unwrap_or("");
-                if key.is_empty() {
-                    return Some(json!({"jsonrpc":"2.0","id":&request["id"],"error":{"code":-32001,"message":"Authentication required. Pass api_key in params."}}).to_string());
+                let keys = crate::config::api_keys();
+                let valid = if keys.is_empty() {
+                    // No keys configured: require a non-empty key (minimal gate).
+                    !key.is_empty()
+                } else {
+                    keys.iter().any(|k| k == key)
+                };
+                if !valid {
+                    return Some(json!({"jsonrpc":"2.0","id":&request["id"],"error":{"code":-32001,"message":"Authentication failed: invalid api_key."}}).to_string());
                 }
             }
         }
@@ -234,6 +248,9 @@ impl McpServer {
                         | "task_create"
                         | "agent_register"
                         | "skill_register"
+                        | "skill_unregister"
+                        | "standard_register"
+                        | "standard_unregister"
                         | "watchdog_snapshot"
                         | "antibrick_enable"
                 );
@@ -313,14 +330,22 @@ impl McpServer {
             "resources/list" => Ok(json!({
                 "jsonrpc": "2.0",
                 "id": id,
-                "result": { "resources": [
-                    {"uri": "synapsis://memory", "name": "Synapsis Memory"},
-                    {"uri": "synapsis://skills", "name": "Synapsis Skills"},
-                    {"uri": "synapsis://agents", "name": "Synapsis Agents"}
-                ]}
+                "result": { "resources": super::standares::list_resources() }
+            })),
+            "resources/templates/list" => Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "templates": [] }
             })),
             "resources/read" => {
                 let uri = request["params"]["uri"].as_str().unwrap_or("");
+                if let Some(contents) = super::standares::read_resource(uri) {
+                    return Ok(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": contents
+                    }));
+                }
                 let stats = self.db.stats().unwrap_or(json!({}));
                 let default_zero = json!(0);
                 let text = format!(
@@ -544,6 +569,72 @@ impl McpServer {
                     "inputSchema": { "type": "object", "properties": {} }
                 },
                 {
+                    "name": "skill_unregister",
+                    "description": "Unregister a skill by id",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": { "id": { "type": "string" } },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "standard_register",
+                    "description": "Register a new standard (normative rule, e.g. S-46 MCP Security). Standards are distinct from skills: they describe how things must be, and compliance is mandatory.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string", "description": "Short name, e.g. mcp-security" },
+                            "title": { "type": "string", "description": "Human title, e.g. Seguridad de Servidores MCP" },
+                            "description": { "type": "string" },
+                            "code": { "type": "string", "description": "Normative code, e.g. S-46" },
+                            "category": { "type": "string", "default": "custom", "description": "security | dev-process | architecture | compliance | data | testing | documentation | project-management | ops | custom" },
+                            "status": { "type": "string", "default": "normative", "description": "normative | derived | informative | draft" },
+                            "inherits_from": { "type": "array", "items": { "type": "string" }, "description": "Parent standards codes" },
+                            "base_refs": { "type": "array", "items": { "type": "string" }, "description": "Base references (specs, frameworks)" },
+                            "scope": { "type": "string" },
+                            "tags": { "type": "array", "items": { "type": "string" } },
+                            "content": { "type": "string", "description": "Full standard content (markdown)" }
+                        },
+                        "required": ["name", "title", "description"]
+                    }
+                },
+                {
+                    "name": "standard_list",
+                    "description": "List all registered standards",
+                    "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "standard_search",
+                    "description": "Search standards by name, code, title, description or tags",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": { "query": { "type": "string" } },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "standard_unregister",
+                    "description": "Unregister a standard by id",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": { "id": { "type": "string" } },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "recommend_tooling",
+                    "description": "Intelligent selection assistant. Given the current task description, suggests which skills, standards and Synapsis tools to use and for what purpose. Falls back to sensible alternatives when no strong match.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "task": { "type": "string", "description": "What the model is about to do" },
+                            "project": { "type": "string", "description": "Optional project context" },
+                            "context": { "type": "string", "description": "Optional extra context" }
+                        },
+                        "required": ["task"]
+                    }
+                },
+                {
                     "name": "agent_register",
                     "description": "Register a new agent",
                     "inputSchema": {
@@ -579,6 +670,55 @@ impl McpServer {
                     "name": "task_list",
                     "description": "List all tasks",
                     "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "think_start",
+                    "description": "Start a sequential thinking tree (structured reasoning)",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "tree_id": { "type": "string" },
+                            "topic": { "type": "string" },
+                            "project": { "type": "string" },
+                            "session_id": { "type": "string" }
+                        },
+                        "required": ["tree_id", "topic"]
+                    }
+                },
+                {
+                    "name": "think_step",
+                    "description": "Add a reasoning step to a thinking tree",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "tree_id": { "type": "string" },
+                            "thought": { "type": "string" },
+                            "branch": { "type": "integer", "default": 0 },
+                            "parent_index": { "type": "integer" }
+                        },
+                        "required": ["tree_id", "thought"]
+                    }
+                },
+                {
+                    "name": "think_state",
+                    "description": "Get the current state of a thinking tree",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": { "tree_id": { "type": "string" } },
+                        "required": ["tree_id"]
+                    }
+                },
+                {
+                    "name": "think_finish",
+                    "description": "Finish a thinking tree with a status",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "tree_id": { "type": "string" },
+                            "status": { "type": "string", "default": "completed" }
+                        },
+                        "required": ["tree_id"]
+                    }
                 },
                 {
                     "name": "mcp_call",
@@ -1120,6 +1260,48 @@ impl McpServer {
                     }
                 },
                 {
+                    "name": "bridge_publish",
+                    "description": "Publish a structured message to the cross-platform mailbox (agents/IDEs in the same project can consume it).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project": { "type": "string" },
+                            "from_session": { "type": "string" },
+                            "from_agent": { "type": "string" },
+                            "content": { "type": "string" },
+                            "message_type": { "type": "string", "default": "observation" },
+                            "to_session": { "type": "string" }
+                        },
+                        "required": ["project", "from_session", "from_agent", "content"]
+                    }
+                },
+                {
+                    "name": "bridge_inbox",
+                    "description": "Read undelivered cross-platform messages for the project (optionally for this agent/session).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project": { "type": "string" },
+                            "session_id": { "type": "string" },
+                            "agent_id": { "type": "string" },
+                            "from_agent": { "type": "string" },
+                            "limit": { "type": "integer", "default": 20 }
+                        },
+                        "required": ["project"]
+                    }
+                },
+                {
+                    "name": "bridge_ack",
+                    "description": "Mark mailbox messages as delivered/consumed.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "message_ids": { "type": "array", "items": { "type": "string" } }
+                        },
+                        "required": ["message_ids"]
+                    }
+                },
+                {
                     "name": "audit_verify",
                     "description": "Verify the integrity of the audit log hash chain.",
                     "inputSchema": {
@@ -1180,6 +1362,27 @@ impl McpServer {
                     "name": "premium_status",
                     "description": "Check premium feature availability, license status, and x402 payment info.",
                     "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "standares_search",
+                    "description": "Buscar en el repositorio de estándares y skills (~/Standares).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string", "description": "Término a buscar" }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "standares_stats",
+                    "description": "Estadísticas del repositorio de estándares y skills.",
+                    "inputSchema": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "standares_list",
+                    "description": "Inventario completo de estándares y skills.",
+                    "inputSchema": { "type": "object", "properties": {} }
                 }
             ]}
         }))
@@ -1200,7 +1403,7 @@ impl McpServer {
         match name {
             "mem_save" => tools::handle_mem_save(&self.db, id, args),
             "mem_search" => tools::handle_mem_search(&self.db, id, args),
-            "mem_context" => tools::handle_mem_context(&self.db, id, args),
+            "mem_context" => tools::handle_mem_context(&self.db, &self.skills, id, args),
             "mem_timeline" => tools::handle_mem_timeline(&self.timelines, id, args),
             "mem_stats" => tools::handle_mem_stats(&self.db, id),
             "mem_delete" => tools::handle_mem_delete(&self.db, id, args),
@@ -1208,7 +1411,9 @@ impl McpServer {
             "mem_get_observation" => tools::handle_mem_get_observation(&self.db, id, args),
             "mem_judge" => tools::handle_mem_judge(&self.db, id, args),
             "mem_compare" => tools::handle_mem_compare(&self.db, id, args),
-            "mem_session_start" => tools::handle_mem_session_start(&self.session_mgr, id, args),
+            "mem_session_start" => {
+                tools::handle_mem_session_start(&self.session_mgr, &self.db, &self.skills, id, args)
+            }
             "mem_session_end" => tools::handle_mem_session_end(&self.session_mgr, id, args),
             "mem_session_summary" => tools::handle_mem_session_summary(&self.session_mgr, id, args),
             "mem_doctor" => tools::handle_mem_doctor(&self.db, id),
@@ -1236,6 +1441,14 @@ impl McpServer {
             "db_migration_status" => tools::handle_db_migration_status(&self.db, id),
             "skill_register" => tools::handle_skill_register(&self.skills, id, args),
             "skill_list" => tools::handle_skill_list(&self.skills, id),
+            "skill_unregister" => tools::handle_skill_unregister(&self.skills, id, args),
+            "standard_register" => tools::handle_standard_register(&self.standards, id, args),
+            "standard_list" => tools::handle_standard_list(&self.standards, id),
+            "standard_search" => tools::handle_standard_search(&self.standards, id, args),
+            "standard_unregister" => tools::handle_standard_unregister(&self.standards, id, args),
+            "recommend_tooling" => {
+                tools::handle_recommend_tooling(&self.skills, &self.standards, id, args)
+            }
             "agent_register" => tools::handle_agent_register(&self.agents, id, args),
             "agent_list" => tools::handle_agent_list(&self.agents, id),
             "agent_unregister" => tools::handle_agent_unregister(&self.agent_ext, id, args),
@@ -1270,6 +1483,9 @@ impl McpServer {
             "shared_sessions_list" => tools::handle_shared_sessions_list(id),
             "shared_sessions_by_project" => tools::handle_shared_sessions_by_project(id, args),
             "shared_sessions_broadcast" => tools::handle_shared_sessions_broadcast(id, args),
+            "bridge_publish" => tools::handle_bridge_publish(&self.db, id, args),
+            "bridge_inbox" => tools::handle_bridge_inbox(&self.db, id, args),
+            "bridge_ack" => tools::handle_bridge_ack(&self.db, id, args),
             "auth_classify_agent" => match &self.classifier {
                 Some(c) => tools::handle_auth_classify_agent(c, id, args),
                 None => Ok(
@@ -1278,6 +1494,10 @@ impl McpServer {
             },
             "task_create" => tools::handle_task_create(&self.task_queue, id, args),
             "task_list" => tools::handle_task_list(&self.task_queue, id),
+            "think_start" => tools::handle_think_start(&self.thinking, id, args),
+            "think_step" => tools::handle_think_step(&self.thinking, id, args),
+            "think_state" => tools::handle_think_state(&self.thinking, id, args),
+            "think_finish" => tools::handle_think_finish(&self.thinking, id, args),
             "mcp_call" => tools::handle_mcp_call(id, args),
             "browser_navigate" => tools::handle_browser_navigate(id, args),
             "browser_snapshot" => tools::handle_browser_snapshot(id, args),
@@ -1287,6 +1507,9 @@ impl McpServer {
             "agentic_search" => graph_tools::handle_agentic_search(&self.db, id, args),
             "audit_verify" => graph_tools::handle_audit_verify(&self.db, id),
             "premium_status" => tools::handle_premium_status(id),
+            "standares_search" => super::standares::handle_standares_search(id, args),
+            "standares_stats" => super::standares::handle_standares_stats(id),
+            "standares_list" => super::standares::handle_standares_list(id),
             _ => Ok(json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -1363,7 +1586,10 @@ impl McpServer {
             | "mem_stats"
             | "mem_get_observation"
             | "mem_doctor"
-            | "mem_audit_log" => Some(Permission::ReadContext),
+            | "mem_audit_log"
+            | "standares_search"
+            | "standares_stats"
+            | "standares_list" => Some(Permission::ReadContext),
 
             "mem_session_start"
             | "mem_session_end"
@@ -1374,12 +1600,20 @@ impl McpServer {
             "mem_recycle_search" | "mem_recycle_stats" => Some(Permission::ReadRecycleBin),
             "mem_recycle_delete" => Some(Permission::PurgeRecycleBin),
 
-            "skill_register" | "skill_list" => Some(Permission::ManageAgents),
+            "skill_register"
+            | "skill_list"
+            | "skill_unregister"
+            | "standard_register"
+            | "standard_list"
+            | "standard_search"
+            | "standard_unregister"
+            | "recommend_tooling" => Some(Permission::ManageAgents),
             "agent_register" | "agent_unregister" | "agent_list" | "agent_list_by_project" => {
                 Some(Permission::ManageAgents)
             }
 
-            "task_create" | "task_list" => Some(Permission::ExecuteTask),
+            "task_create" | "task_list" | "think_start" | "think_step" | "think_state"
+            | "think_finish" => Some(Permission::ExecuteTask),
             "worker_execute" | "worker_status" => Some(Permission::ExecuteTask),
 
             "pqc_encrypt" | "vault_store" | "vault_session_key" | "vault_list_sessions" => {

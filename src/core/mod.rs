@@ -53,6 +53,7 @@ pub mod chunk_query;
 pub mod license;
 pub mod premium;
 pub mod providers;
+pub mod sequential_thinking;
 pub mod session_bridge;
 pub use synapsis_core::core::session_id;
 pub mod session_manager;

@@ -38,6 +38,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - name: Install OpenSSL (Windows, sqlcipher dependency)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          vcpkg install openssl:x64-windows
+          echo "OPENSSL_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows" >> "$GITHUB_ENV"
+          echo "OPENSSL_INCLUDE_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include" >> "$GITHUB_ENV"
+          echo "OPENSSL_LIB_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib" >> "$GITHUB_ENV"
       - run: cargo build --release --target ${{ matrix.target }} --bin synapsis --bin synapsis-mcp --bin synapsis-server
       - name: Package (Unix)
         if: runner.os != 'Windows' && success()
