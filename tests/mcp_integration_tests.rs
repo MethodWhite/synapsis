@@ -8,7 +8,32 @@ use std::sync::Arc;
 use synapsis::infrastructure::database::Database;
 use synapsis::presentation::mcp::McpServer;
 
+/// Point the data dir at a throwaway location before any Database is built.
+///
+/// Without this, `Database::new()` falls back to `dirs::data_local_dir()/synapsis`,
+/// which is the LIVE database the agents use to coordinate. Every `cargo test`
+/// run was therefore injecting its fixtures ("Test Memory", "Rust Programming",
+/// "First"/"Second"/"Third", "Agent N Bug Fix M") into the real shared memory.
+/// That is where the 1095 junk observations came from.
+///
+/// Set once per test binary on purpose: the environment is process-global, so
+/// giving each test its own directory would race across the parallel test
+/// threads. One directory per process is what actually isolates production.
+fn isolate_data_dir() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let dir = std::env::temp_dir().join(format!("synapsis-test-mcp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).ok();
+        // SAFETY: test-scoped env change, applied once before any Database::new().
+        unsafe {
+            std::env::set_var("SYNAPSIS_DATA_DIR", &dir);
+        }
+    });
+}
+
 fn test_server() -> McpServer {
+    isolate_data_dir();
     let db = Arc::new(Database::new());
     McpServer::new(db)
 }

@@ -136,13 +136,18 @@ pub fn strip_html(html: &str) -> String {
         }
         if c == '<' {
             let mut tag_name = String::new();
-            let mut rest = String::new();
+            // Consume until '>' (end of tag), capturing the tag name first.
             for ch in chars.by_ref() {
-                if ch == '>' || ch == ' ' {
-                    if ch == '>' {
-                        break;
+                if ch == '>' {
+                    break;
+                }
+                if ch.is_whitespace() && !tag_name.is_empty() {
+                    // Skip the rest of the tag (attributes) up to '>'.
+                    for c2 in chars.by_ref() {
+                        if c2 == '>' {
+                            break;
+                        }
                     }
-                    rest.push(ch);
                     break;
                 }
                 tag_name.push(ch);
@@ -164,10 +169,23 @@ pub fn strip_html(html: &str) -> String {
                 || lower == "tr"
                 || lower == "/tr"
                 || lower == "li"
+                || lower == "h1"
+                || lower == "/h1"
+                || lower == "h2"
+                || lower == "/h2"
+                || lower == "h3"
+                || lower == "/h3"
+                || lower == "pre"
+                || lower == "/pre"
+                || lower == "table"
+                || lower == "/table"
             {
                 text.push('\n');
             }
-            in_tag = true;
+            // The '>' closing the tag was already consumed by the inner loop,
+            // so do NOT leave in_tag=true (that would drop all content until
+            // the next '>').
+            in_tag = false;
             continue;
         }
         if c == '>' && in_tag {

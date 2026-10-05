@@ -4,7 +4,14 @@
 set -euo pipefail
 
 SYNAPSIS_URL="${SYNAPSIS_URL:-http://127.0.0.1:7438}"
-MCP_BINARY="${MCP_BINARY:-/home/methodwhite/Proyectos/synapsis/target/release/synapsis-mcp}"
+# Resolve the MCP binary via PATH, falling back to this repo's release build.
+if command -v synapsis-mcp &>/dev/null; then
+    MCP_BINARY="${MCP_BINARY:-synapsis-mcp}"
+elif [ -x "$(dirname "${BASH_SOURCE[0]}")/../target/release/synapsis-mcp" ]; then
+    MCP_BINARY="${MCP_BINARY:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/target/release/synapsis-mcp}"
+else
+    MCP_BINARY="${MCP_BINARY:-synapsis-mcp}"
+fi
 
 mcp_request() {
     local method="$1" data="$2"

@@ -6,11 +6,13 @@
 use crate::infrastructure::agents::AgentRegistry;
 use crate::infrastructure::database::Database;
 use crate::infrastructure::skills::SkillRegistry;
+use crate::infrastructure::standards::StandardRegistry;
 use std::sync::Arc;
 
 pub struct SharedState {
     pub db: Arc<Database>,
     pub skills: Arc<SkillRegistry>,
+    pub standards: Arc<StandardRegistry>,
     pub agents: Arc<AgentRegistry>,
 }
 
@@ -21,6 +23,7 @@ impl SharedState {
         Self {
             db: Arc::clone(&db),
             skills: Arc::new(SkillRegistry::new()),
+            standards: Arc::new(StandardRegistry::new()),
             agents: Arc::new(AgentRegistry::new()),
         }
     }
@@ -28,18 +31,26 @@ impl SharedState {
     pub fn init(&self) {
         self.skills.init().ok();
         self.skills.register_default_skills();
+        self.standards.init().ok();
         self.agents.init().ok();
     }
 
     pub fn with_db(db: Arc<Database>) -> Self {
         let skills = Arc::new(SkillRegistry::new());
+        let standards = Arc::new(StandardRegistry::new());
         let agents = Arc::new(AgentRegistry::new());
 
         skills.init().ok();
         skills.register_default_skills();
+        standards.init().ok();
         agents.init().ok();
 
-        Self { db, skills, agents }
+        Self {
+            db,
+            skills,
+            standards,
+            agents,
+        }
     }
 }
 

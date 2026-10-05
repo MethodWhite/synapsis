@@ -639,10 +639,12 @@ impl Database {
             "UPDATE observations SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
             rusqlite::params![now, id],
         )?;
-        let _ = conn.execute(
-            "INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES('delete', ?1, '', '')",
-            params![id],
-        );
+        // observations_fts is a plain fts5(title, content) table, not an
+        // external-content one. The INSERT ... VALUES('delete', ...) form is
+        // the external-content delete command and it ALWAYS fails against a
+        // plain fts5 table; `let _ =` swallowed the error, so every soft
+        // delete, update and revision left the previous text in the index.
+        let _ = conn.execute("DELETE FROM observations_fts WHERE rowid = ?", params![id]);
         Ok(())
     }
 
@@ -745,10 +747,12 @@ impl Database {
             "UPDATE observations SET title = ?1, content = ?2, updated_at = ?3 WHERE id = ?4 AND deleted_at IS NULL",
             params![title, content, now, id],
         )?;
-        let _ = conn.execute(
-            "INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES('delete', ?1, '', '')",
-            params![id],
-        );
+        // observations_fts is a plain fts5(title, content) table, not an
+        // external-content one. The INSERT ... VALUES('delete', ...) form is
+        // the external-content delete command and it ALWAYS fails against a
+        // plain fts5 table; `let _ =` swallowed the error, so every soft
+        // delete, update and revision left the previous text in the index.
+        let _ = conn.execute("DELETE FROM observations_fts WHERE rowid = ?", params![id]);
         let _ = conn.execute(
             "INSERT INTO observations_fts(rowid, title, content) VALUES (?1, ?2, ?3)",
             params![id, title, content],
@@ -818,10 +822,12 @@ impl Database {
             "UPDATE observations SET title = ?1, content = ?2, content_hash = ?3, revision_count = ?4, updated_at = ?5 WHERE id = ?6 AND deleted_at IS NULL",
             params![title, content, hash, revision, now, id],
         )?;
-        let _ = conn.execute(
-            "INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES('delete', ?1, '', '')",
-            params![id],
-        );
+        // observations_fts is a plain fts5(title, content) table, not an
+        // external-content one. The INSERT ... VALUES('delete', ...) form is
+        // the external-content delete command and it ALWAYS fails against a
+        // plain fts5 table; `let _ =` swallowed the error, so every soft
+        // delete, update and revision left the previous text in the index.
+        let _ = conn.execute("DELETE FROM observations_fts WHERE rowid = ?", params![id]);
         let _ = conn.execute(
             "INSERT INTO observations_fts(rowid, title, content) VALUES (?1, ?2, ?3)",
             params![id, title, content],
@@ -973,28 +979,31 @@ impl Database {
     pub fn verify_audit_chain(&self) -> Result<Vec<String>> {
         let conn = self.get_conn();
         let mut stmt = conn.prepare(
-            "SELECT id, action, agent_id, old_value, new_value, reason, created_at, prev_hash, data_hash, chain_hash
+            "SELECT id, action, observation_id, agent_id, session_id, old_value, new_value, reason, created_at, prev_hash, data_hash, chain_hash
              FROM audit_log ORDER BY id ASC"
         )?;
         let rows = stmt.query_map([], |row| {
             let action: String = row.get(1)?;
-            let agent: Option<String> = row.get(2)?;
-            let old_v: Option<String> = row.get(3)?;
-            let new_v: Option<String> = row.get(4)?;
-            let reason: Option<String> = row.get(5)?;
+            let oid: Option<i64> = row.get(2)?;
+            let agent: Option<String> = row.get(3)?;
+            let session: Option<String> = row.get(4)?;
+            let old_v: Option<String> = row.get(5)?;
+            let new_v: Option<String> = row.get(6)?;
+            let reason: Option<String> = row.get(7)?;
+            // Must match log_audit's details format exactly, else hash verification fails.
             let details = format!(
-                "action={} oid= agent={:?} old={:?} new={:?} reason={:?}",
-                action, agent, old_v, new_v, reason
+                "action={} oid={:?} agent={:?} session={:?} old={:?} new={:?} reason={:?}",
+                action, oid, agent, session, old_v, new_v, reason
             );
             Ok(audit_chain::AuditEntry {
                 id: row.get::<_, i64>(0)? as u64,
                 action,
                 agent_id: agent.unwrap_or_default(),
                 details,
-                timestamp: row.get::<_, i64>(6)?,
-                prev_hash: row.get::<_, String>(7).unwrap_or_default(),
-                data_hash: row.get::<_, String>(8).unwrap_or_default(),
-                chain_hash: row.get::<_, String>(9).unwrap_or_default(),
+                timestamp: row.get::<_, i64>(8)?,
+                prev_hash: row.get::<_, String>(9).unwrap_or_default(),
+                data_hash: row.get::<_, String>(10).unwrap_or_default(),
+                chain_hash: row.get::<_, String>(11).unwrap_or_default(),
                 signature: None,
             })
         })?;
@@ -1023,6 +1032,98 @@ impl Database {
             }))
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Publish a structured message into the cross-platform mailbox.
+    pub fn bridge_publish(
+        &self,
+        message_id: &str,
+        project: &str,
+        from_session: &str,
+        from_agent: &str,
+        to_session: Option<&str>,
+        message_type: &str,
+        content: &str,
+    ) -> Result<()> {
+        let conn = self.get_conn();
+        let now = Timestamp::now().0;
+        conn.execute(
+            "INSERT INTO bridge_messages (message_id, project, from_session, from_agent, to_session, message_type, content, created_at, delivered)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
+            params![
+                message_id,
+                project,
+                from_session,
+                from_agent,
+                to_session,
+                message_type,
+                content,
+                now
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Fetch undelivered messages for a project, optionally targeted at a
+    /// specific agent/session or from a specific sender.
+    pub fn bridge_inbox(
+        &self,
+        project: &str,
+        session_id: Option<&str>,
+        agent_id: Option<&str>,
+        from_agent: Option<&str>,
+        limit: i32,
+    ) -> Result<Vec<serde_json::Value>> {
+        let conn = self.get_conn();
+        let mut sql = String::from(
+            "SELECT message_id, project, from_session, from_agent, to_session, message_type, content, created_at, delivered
+             FROM bridge_messages WHERE project = ?1 AND delivered = 0",
+        );
+        let mut params_vec: Vec<rusqlite::types::Value> = vec![project.to_string().into()];
+        if let Some(s) = session_id {
+            sql.push_str(" AND (to_session IS NULL OR to_session = ?");
+            params_vec.push(s.to_string().into());
+            sql.push_str(")");
+        }
+        if let Some(a) = agent_id {
+            sql.push_str(" AND from_agent != ?");
+            params_vec.push(a.to_string().into());
+        }
+        if let Some(f) = from_agent {
+            sql.push_str(" AND from_agent = ?");
+            params_vec.push(f.to_string().into());
+        }
+        sql.push_str(" ORDER BY created_at ASC LIMIT ?");
+        params_vec.push((limit as i64).into());
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+            Ok(serde_json::json!({
+                "message_id": row.get::<_, String>(0)?,
+                "project": row.get::<_, String>(1)?,
+                "from_session": row.get::<_, String>(2)?,
+                "from_agent": row.get::<_, String>(3)?,
+                "to_session": row.get::<_, Option<String>>(4)?,
+                "message_type": row.get::<_, String>(5)?,
+                "content": row.get::<_, String>(6)?,
+                "created_at": row.get::<_, i64>(7)?,
+                "delivered": row.get::<_, i64>(8)?,
+            }))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Mark mailbox messages as delivered (consumed by the receiving agent).
+    pub fn bridge_ack(&self, message_ids: &[&str]) -> Result<usize> {
+        let conn = self.get_conn();
+        let mut count = 0usize;
+        for mid in message_ids {
+            count += conn.execute(
+                "UPDATE bridge_messages SET delivered = 1 WHERE message_id = ?1 AND delivered = 0",
+                params![mid],
+            )?;
+        }
+        Ok(count)
     }
 
     pub fn doctor_check(&self) -> Result<serde_json::Value> {

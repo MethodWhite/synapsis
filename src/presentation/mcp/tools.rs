@@ -8,6 +8,9 @@ use crate::domain::*;
 use crate::infrastructure::agents::{Agent, AgentRegistry, AgentRole, AgentState};
 use crate::infrastructure::database::Database;
 use crate::infrastructure::skills::{Skill, SkillCategory, SkillRegistry};
+use crate::infrastructure::standards::{
+    Standard, StandardCategory, StandardRegistry, StandardStatus,
+};
 use serde_json::{Value, json};
 
 use super::html::{
@@ -127,9 +130,15 @@ pub fn handle_mem_search(db: &Database, id: &Value, args: &Value) -> anyhow::Res
     }))
 }
 
-pub fn handle_mem_context(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+pub fn handle_mem_context(
+    db: &Database,
+    skills: &SkillRegistry,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
     let limit = args["limit"].as_i64().unwrap_or(5) as i32;
     let project = args["project"].as_str();
+    let query = args["query"].as_str().unwrap_or("");
 
     let timeline = db.get_timeline_direct(limit).unwrap_or_default();
     let total = db.stats().unwrap_or_default();
@@ -147,6 +156,23 @@ pub fn handle_mem_context(db: &Database, id: &Value, args: &Value) -> anyhow::Re
         let c = entry.observation.content.as_str();
         let preview: String = c.chars().take(150).collect();
         context_parts.push(format!("\n{}. **{}**\n   {}", i + 1, t, preview));
+    }
+
+    // Proactive: suggest relevant skills from the catalog based on the query
+    // or project, so the agent loads the right capabilities without searching.
+    let search_term = if !query.is_empty() {
+        query
+    } else {
+        project.unwrap_or("")
+    };
+    if !search_term.is_empty() {
+        let suggested = skills.search(search_term);
+        if !suggested.is_empty() {
+            context_parts.push(format!("\nSuggested skills ({}):", suggested.len()));
+            for s in suggested.iter().take(8) {
+                context_parts.push(format!("- **{}** — {}", s.name, s.description));
+            }
+        }
     }
 
     let text = context_parts.join("\n");
@@ -609,6 +635,549 @@ pub fn handle_skill_list(skills: &SkillRegistry, id: &Value) -> anyhow::Result<V
     }))
 }
 
+pub fn handle_skill_unregister(
+    skills: &SkillRegistry,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let sid = args["id"].as_str().unwrap_or("");
+    if sid.is_empty() {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": "Missing required parameter: id" }
+        }));
+    }
+    match skills.unregister(&crate::infrastructure::skills::SkillId(sid.to_string())) {
+        Some(_) => Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "result": { "content": [{ "type": "text", "text": format!("Skill {} unregistered", sid) }] }
+        })),
+        None => Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32001, "message": format!("Skill not found: {}", sid) }
+        })),
+    }
+}
+
+fn opt_str(args: &Value, key: &str) -> Option<String> {
+    args[key].as_str().map(|s| s.to_string())
+}
+
+fn str_array(args: &Value, key: &str) -> Vec<String> {
+    args[key]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn handle_standard_register(
+    standards: &StandardRegistry,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let name = args["name"].as_str().unwrap_or("").to_string();
+    let title = args["title"].as_str().unwrap_or("").to_string();
+    let description = args["description"].as_str().unwrap_or("").to_string();
+    if name.is_empty() || title.is_empty() {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": "Missing required parameters: name and title" }
+        }));
+    }
+    let category_str = args["category"].as_str().unwrap_or("custom");
+    let status_str = args["status"].as_str().unwrap_or("normative");
+    let code = args["code"].as_str().unwrap_or("").to_string();
+    let scope = args["scope"].as_str().unwrap_or("").to_string();
+    let content = args["content"].as_str().unwrap_or("").to_string();
+    let inherits = str_array(args, "inherits_from");
+    let bases = str_array(args, "base_refs");
+    let tags = str_array(args, "tags");
+
+    let mut standard = Standard::new(name.clone(), title.clone(), description)
+        .with_code(&code)
+        .with_category(
+            category_str
+                .parse::<StandardCategory>()
+                .unwrap_or(StandardCategory::Custom),
+        )
+        .with_status(
+            status_str
+                .parse::<StandardStatus>()
+                .unwrap_or(StandardStatus::Normative),
+        )
+        .with_inherits(inherits)
+        .with_bases(bases)
+        .with_tags(tags);
+    if !scope.is_empty() {
+        standard = standard.with_scope(&scope);
+    }
+    if !content.is_empty() {
+        standard = standard.with_content(&content);
+    }
+
+    let standard_id = standards.register(standard);
+    Ok(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "content": [{ "type": "text", "text": format!("Standard '{}' registered with id={}", name, standard_id.0) }] }
+    }))
+}
+
+pub fn handle_standard_list(standards: &StandardRegistry, id: &Value) -> anyhow::Result<Value> {
+    let list = standards.list();
+    let text = if list.is_empty() {
+        "No standards registered.".to_string()
+    } else {
+        let mut lines = vec![format!("Standards ({}):", list.len())];
+        for s in &list {
+            let code = if s.code.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", s.code)
+            };
+            lines.push(format!("- {}{} — {} ({})", s.name, code, s.title, s.id.0));
+        }
+        lines.join("\n")
+    };
+    Ok(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "content": [{ "type": "text", "text": text }] }
+    }))
+}
+
+pub fn handle_standard_search(
+    standards: &StandardRegistry,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let query = args["query"].as_str().unwrap_or("");
+    if query.is_empty() {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": "Missing required parameter: query" }
+        }));
+    }
+    let hits = standards.search(query);
+    let items: Vec<Value> = hits
+        .iter()
+        .map(|s| {
+            json!({
+                "id": s.id.0,
+                "code": s.code,
+                "name": s.name,
+                "title": s.title,
+                "description": s.description,
+                "category": format!("{:?}", s.category).to_lowercase(),
+                "status": format!("{:?}", s.status).to_lowercase(),
+            })
+        })
+        .collect();
+    Ok(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "content": [{ "type": "text", "text": serde_json::to_string_pretty(&items).unwrap_or_default() }] }
+    }))
+}
+
+pub fn handle_standard_unregister(
+    standards: &StandardRegistry,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let sid = args["id"].as_str().unwrap_or("");
+    if sid.is_empty() {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": "Missing required parameter: id" }
+        }));
+    }
+    match standards.unregister(&crate::infrastructure::standards::StandardId(
+        sid.to_string(),
+    )) {
+        Some(_) => Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "result": { "content": [{ "type": "text", "text": format!("Standard {} unregistered", sid) }] }
+        })),
+        None => Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32001, "message": format!("Standard not found: {}", sid) }
+        })),
+    }
+}
+
+/// Intelligent selection assistant: given a task description, rank the best
+/// skills, standards and Synapsis tools to use, each with its purpose. Falls
+/// back to category-based alternatives when no strong match is found.
+pub fn handle_recommend_tooling(
+    skills: &SkillRegistry,
+    standards: &StandardRegistry,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let task = args["task"].as_str().unwrap_or("").to_lowercase();
+    let project = opt_str(args, "project").unwrap_or_default();
+    let context = opt_str(args, "context").unwrap_or_default();
+    if task.trim().is_empty() {
+        return Ok(json!({
+            "jsonrpc": "2.0", "id": id,
+            "error": { "code": -32602, "message": "Missing required parameter: task" }
+        }));
+    }
+
+    let haystack = format!(
+        "{} {} {}",
+        task,
+        project.to_lowercase(),
+        context.to_lowercase()
+    );
+    let tokens: Vec<String> = haystack
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| t.len() >= 3)
+        .map(|t| t.to_lowercase())
+        .collect();
+
+    // --- Skill scoring (name/description/tags overlap) ---
+    let all_skills = skills.list(None);
+    let mut scored_skills: Vec<(usize, &Skill)> = all_skills
+        .iter()
+        .map(|s| {
+            let is_placeholder = s.description.starts_with("Skill/standard —")
+                || s.description.starts_with("Skill/estándar");
+            let desc = if is_placeholder || s.description.len() < 8 {
+                s.instructions.clone()
+            } else {
+                s.description.clone()
+            };
+            let corpus = format!(
+                "{} {} {} {}",
+                s.name,
+                desc,
+                s.tags.join(" "),
+                format!("{:?}", s.category)
+            )
+            .to_lowercase();
+            let mut score = score_corpus(&tokens, &corpus);
+            // Strong weight on exact name match: a skill whose name appears
+            // in the task is almost always the right one.
+            let name_tokens: Vec<String> = s
+                .name
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|t| t.len() >= 3)
+                .map(|t| t.to_lowercase())
+                .collect();
+            if !name_tokens.is_empty() && name_tokens.iter().all(|nt| haystack.contains(nt)) {
+                score += 5;
+            }
+            if is_placeholder {
+                score = score.saturating_sub(2);
+            }
+            let category_words = match s.category {
+                SkillCategory::Security => {
+                    vec!["security", "seguridad", "vulnerab", "pentest", "hack"]
+                }
+                SkillCategory::Coding => vec!["coding", "codigo", "code", "program", "implement"],
+                SkillCategory::Testing => vec!["test", "testing", "qa", "calidad", "prueba"],
+                SkillCategory::DevOps => vec!["devops", "ci", "cd", "deploy", "infra", "pipeline"],
+                SkillCategory::Data => vec!["data", "datos", "etl", "pipeline", "analytics"],
+                SkillCategory::Documentation => vec!["doc", "document", "manual", "readme"],
+                SkillCategory::Research => vec!["research", "investig", "paper", "estudio"],
+                SkillCategory::Design => vec!["design", "diseño", "ui", "ux"],
+                _ => vec![],
+            };
+            let bonus = if category_words.iter().any(|w| haystack.contains(w)) {
+                score / 2 + 1
+            } else {
+                0
+            };
+            (score + bonus, s)
+        })
+        .collect();
+    scored_skills.sort_by(|a, b| b.0.cmp(&a.0));
+
+    // --- Standard scoring ---
+    let all_standards = standards.list();
+    let mut scored_standards: Vec<(usize, &Standard)> = all_standards
+        .iter()
+        .map(|s| {
+            let corpus = format!(
+                "{} {} {} {} {}",
+                s.name,
+                s.title,
+                s.description,
+                s.tags.join(" "),
+                s.code
+            )
+            .to_lowercase();
+            let score = score_corpus(&tokens, &corpus);
+            (score, s)
+        })
+        .collect();
+    scored_standards.sort_by(|a, b| b.0.cmp(&a.0));
+
+    // --- Tool suggestions by keyword domain ---
+    let tool_map: Vec<(&str, Vec<&str>, &str)> = vec![
+        (
+            "mem_save / mem_search / mem_context",
+            vec![
+                "memory",
+                "memoria",
+                "recuerd",
+                "context",
+                "observacion",
+                "observation",
+                "sesion",
+                "session",
+            ],
+            "Persistir y recuperar contexto del trabajo para este proyecto",
+        ),
+        (
+            "worker_execute / worker_status",
+            vec![
+                "worker",
+                "delegar",
+                "subagente",
+                "ejecutar",
+                "task",
+                "tarea",
+            ],
+            "Delegar ejecución a un worker o comprobar su estado",
+        ),
+        (
+            "task_create / task_list",
+            vec!["plan", "planif", "pendiente", "todo", "roadmap"],
+            "Registrar y hacer seguimiento de tareas",
+        ),
+        (
+            "secure_read_file / secure_write_file",
+            vec![
+                "archivo", "file", "leer", "escribir", "editar", "codigo", "code",
+            ],
+            "Leer o escribir archivos de forma sandboxed",
+        ),
+        (
+            "vault_store / vault_retrieve",
+            vec![
+                "secreto",
+                "secret",
+                "token",
+                "clave",
+                "credential",
+                "apikey",
+            ],
+            "Guardar o recuperar secretos de forma cifrada",
+        ),
+        (
+            "pqc_encrypt / pqc_decrypt",
+            vec!["cifrar", "encrypt", "post-quantum", "datos sensibles"],
+            "Cifrar datos sensibles con criptografía post-cuántica",
+        ),
+        (
+            "graph_search / graph_context",
+            vec!["grafo", "graph", "entidad", "relacion", "relation"],
+            "Explorar relaciones entre entidades del knowledge graph",
+        ),
+        (
+            "agentic_search",
+            vec!["investigar", "research", "busqueda", "search", "web"],
+            "Búsqueda agéntica expandida cuando se necesita investigación profunda",
+        ),
+        (
+            "db_backup / db_integrity",
+            vec![
+                "backup",
+                "respaldo",
+                "integridad",
+                "database",
+                "basededatos",
+            ],
+            "Verificar integridad o respaldar la base de datos",
+        ),
+        (
+            "sync_memory / sync_status",
+            vec!["sincroniz", "sync", "commit", "git"],
+            "Sincronizar memoria con el motor Git",
+        ),
+    ];
+
+    let mut suggested_tools: Vec<Value> = Vec::new();
+    for (name, kws, purpose) in &tool_map {
+        let score = kws.iter().filter(|k| haystack.contains(**k)).count();
+        if score > 0 {
+            suggested_tools.push(json!({
+                "tool": name,
+                "purpose": purpose,
+                "confidence": confidence_label(score as f32 / kws.len().max(1) as f32)
+            }));
+        }
+    }
+
+    // --- Fallback categories when task matches nothing strongly ---
+    let best_skill_score = scored_skills.first().map(|(s, _)| *s).unwrap_or(0);
+    let best_std_score = scored_standards.first().map(|(s, _)| *s).unwrap_or(0);
+
+    let strong_skills: Vec<Value> = {
+        let mut seen: Vec<String> = Vec::new();
+        scored_skills
+            .iter()
+            .take(15)
+            .filter(|(sc, _)| {
+                *sc > 0
+                    && (best_skill_score == 0 || *sc >= (best_skill_score as f32 * 0.4) as usize)
+            })
+            .filter(|(_, s)| {
+                if seen.contains(&s.name) {
+                    false
+                } else {
+                    seen.push(s.name.clone());
+                    true
+                }
+            })
+            .take(5)
+            .map(|(sc, s)| {
+                json!({
+                    "type": "skill",
+                    "name": s.name,
+                    "purpose": skill_purpose(s),
+                    "confidence": confidence_label(*sc as f32 / tokens.len().max(1) as f32)
+                })
+            })
+            .collect()
+    };
+
+    let strong_standards: Vec<Value> = {
+        let mut seen: Vec<String> = Vec::new();
+        scored_standards
+            .iter()
+            .take(15)
+            .filter(|(sc, _)| {
+                *sc > 0 && (best_std_score == 0 || *sc >= (best_std_score as f32 * 0.4) as usize)
+            })
+            .filter(|(_, s)| {
+                if seen.contains(&s.name) {
+                    false
+                } else {
+                    seen.push(s.name.clone());
+                    true
+                }
+            })
+            .take(5)
+            .map(|(sc, s)| {
+                json!({
+                    "type": "standard",
+                    "name": s.name,
+                    "code": s.code,
+                    "purpose": s.title,
+                    "confidence": confidence_label(*sc as f32 / tokens.len().max(1) as f32)
+                })
+            })
+            .collect()
+    };
+
+    let guidance = if strong_skills.is_empty()
+        && strong_standards.is_empty()
+        && suggested_tools.is_empty()
+    {
+        "No he encontrado coincidencias fuertes con esa tarea. Te sugiero: (1) usa mem_save para registrar la tarea en memoria, (2) busca en el repositorio de estándares con standard_search, (3) consulta el knowledge graph con graph_search para ver contexto relacionado, o (4) delega a un worker con worker_execute. Si describes mejor la tarea (p.ej. 'auditar seguridad del MCP', 'diseñar arquitectura', 'escribir tests'), podré sugerir algo más preciso."
+            .to_string()
+    } else {
+        let mut parts = Vec::new();
+        if !strong_skills.is_empty() {
+            parts.push(format!(
+                "Skills recomendados: {}",
+                strong_skills
+                    .iter()
+                    .map(|v| format!("{} ({})", v["name"], v["purpose"]))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if !strong_standards.is_empty() {
+            parts.push(format!(
+                "Estándares aplicables: {}",
+                strong_standards
+                    .iter()
+                    .map(|v| format!("{}[{}] — {}", v["name"], v["code"], v["purpose"]))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if !suggested_tools.is_empty() {
+            parts.push(format!(
+                "Herramientas Synapsis: {}",
+                suggested_tools
+                    .iter()
+                    .map(|v| format!("{} → {}", v["tool"], v["purpose"]))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ));
+        }
+        parts.join("\n")
+    };
+
+    Ok(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "content": [{ "type": "text", "text": serde_json::to_string_pretty(&json!({
+            "task": task,
+            "project": project,
+            "skills": strong_skills,
+            "standards": strong_standards,
+            "tools": suggested_tools,
+            "guidance": guidance,
+        })).unwrap_or_default() }] }
+    }))
+}
+
+fn score_corpus(tokens: &[String], corpus: &str) -> usize {
+    tokens
+        .iter()
+        .filter(|t| corpus.contains(t.as_str()))
+        .count()
+}
+
+fn skill_purpose(s: &Skill) -> String {
+    let is_placeholder = s.description.starts_with("Skill/standard —")
+        || s.description.starts_with("Skill/estándar")
+        || s.description.trim().is_empty();
+    if !is_placeholder {
+        return s.description.clone();
+    }
+    // Fall back to the first meaningful non-heading, non-metadata line.
+    for line in s.instructions.lines() {
+        let l = line.trim();
+        if l.is_empty()
+            || l.starts_with('#')
+            || l.starts_with("---")
+            || l.starts_with('>')
+            || l.starts_with("- **")
+            || l.starts_with("- Estándar")
+            || l.starts_with('-') && l.contains(":")
+            || l.starts_with("name:")
+            || l.starts_with("description:")
+            || l.starts_with("version:")
+        {
+            continue;
+        }
+        return l.chars().take(200).collect();
+    }
+    s.description.clone()
+}
+
+fn confidence_label(ratio: f32) -> &'static str {
+    if ratio >= 0.5 {
+        "alta"
+    } else if ratio >= 0.25 {
+        "media"
+    } else {
+        "baja"
+    }
+}
+
 pub fn handle_agent_register(
     agents: &AgentRegistry,
     id: &Value,
@@ -933,6 +1502,8 @@ pub fn handle_mem_compare(db: &Database, id: &Value, args: &Value) -> anyhow::Re
 
 pub fn handle_mem_session_start(
     sessions: &crate::core::session_manager::SessionManager,
+    db: &Database,
+    skills: &SkillRegistry,
     id: &Value,
     args: &Value,
 ) -> anyhow::Result<Value> {
@@ -960,9 +1531,30 @@ pub fn handle_mem_session_start(
                 &session_bridge::detect_platform(),
             );
             bridge.register_session(shared);
-            Ok(
-                json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Session started: {}", sid)}]}}),
-            )
+
+            // Proactive context: pull recent observations and suggested skills
+            // for this project so the agent starts with memory loaded.
+            let mut parts = vec![format!("Session started: {}", sid)];
+            let recent = db.search_fts(project, Some(project), 5).unwrap_or_default();
+            if !recent.is_empty() {
+                parts.push(format!("\nRecent context for '{}':", project));
+                for r in recent.iter().take(5) {
+                    let t = r["title"].as_str().unwrap_or("");
+                    let c = r["content"].as_str().unwrap_or("");
+                    let preview: String = c.chars().take(120).collect();
+                    parts.push(format!("\n- **{}**\n  {}", t, preview));
+                }
+            }
+            let suggested = skills.search(project);
+            if !suggested.is_empty() {
+                parts.push(format!("\nSuggested skills ({}):", suggested.len()));
+                for s in suggested.iter().take(6) {
+                    parts.push(format!("- **{}** — {}", s.name, s.description));
+                }
+            }
+
+            let text = parts.join("\n");
+            Ok(json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]}}))
         }
         Err(e) => {
             Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
@@ -1084,6 +1676,106 @@ pub fn handle_shared_sessions_broadcast(id: &Value, args: &Value) -> anyhow::Res
     Ok(
         json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Broadcast to {} peer(s):\n{}", notifications.len(), notifications.join("\n"))}]}}),
     )
+}
+
+pub fn handle_bridge_publish(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let project = args["project"].as_str().unwrap_or("").to_string();
+    let from_session = args["from_session"].as_str().unwrap_or("").to_string();
+    let from_agent = args["from_agent"].as_str().unwrap_or("").to_string();
+    let content = args["content"].as_str().unwrap_or("").to_string();
+    let message_type = args["message_type"]
+        .as_str()
+        .unwrap_or("observation")
+        .to_string();
+    let to_session = args["to_session"].as_str().map(|s| s.to_string());
+    if project.is_empty() || content.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'project' or 'content'"}}),
+        );
+    }
+    let message_id = format!(
+        "msg-{}-{:x}",
+        project,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    match db.bridge_publish(
+        &message_id,
+        &project,
+        &from_session,
+        &from_agent,
+        to_session.as_deref(),
+        &message_type,
+        &content,
+    ) {
+        Ok(()) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Message published: {} ({})", message_id, message_type)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
+    }
+}
+
+pub fn handle_bridge_inbox(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let project = args["project"].as_str().unwrap_or("").to_string();
+    let session_id = args["session_id"].as_str();
+    let agent_id = args["agent_id"].as_str();
+    let from_agent = args["from_agent"].as_str();
+    let limit = args["limit"].as_i64().unwrap_or(20) as i32;
+    if project.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'project'"}}),
+        );
+    }
+    match db.bridge_inbox(&project, session_id, agent_id, from_agent, limit) {
+        Ok(msgs) => {
+            if msgs.is_empty() {
+                return Ok(
+                    json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"No pending messages."}]}}),
+                );
+            }
+            let mut lines = vec![format!("Inbox ({}):", msgs.len())];
+            for m in &msgs {
+                lines.push(format!(
+                    "\n[{}] {} → {} ({})\n{}",
+                    m["message_id"].as_str().unwrap_or(""),
+                    m["from_agent"].as_str().unwrap_or(""),
+                    m["to_session"].as_str().unwrap_or("everyone"),
+                    m["message_type"].as_str().unwrap_or(""),
+                    m["content"].as_str().unwrap_or("")
+                ));
+            }
+            Ok(
+                json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":lines.join("\n")}]}}),
+            )
+        }
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
+    }
+}
+
+pub fn handle_bridge_ack(db: &Database, id: &Value, args: &Value) -> anyhow::Result<Value> {
+    let ids: Vec<&str> = args["message_ids"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<&str>>())
+        .unwrap_or_default();
+    if ids.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'message_ids'"}}),
+        );
+    }
+    match db.bridge_ack(&ids) {
+        Ok(n) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Acknowledged {} message(s)", n)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
+    }
 }
 
 pub fn handle_mem_doctor(db: &Database, id: &Value) -> anyhow::Result<Value> {
@@ -2203,4 +2895,118 @@ pub fn handle_premium_status(id: &Value) -> anyhow::Result<Value> {
         "id": id,
         "result": { "content": [{ "type": "text", "text": text }] }
     }))
+}
+
+pub fn handle_think_start(
+    thinking: &crate::core::sequential_thinking::SequentialThinking,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let tree_id = args["tree_id"].as_str().unwrap_or("").to_string();
+    let topic = args["topic"].as_str().unwrap_or("").to_string();
+    let project = args["project"].as_str();
+    let session_id = args["session_id"].as_str();
+    if tree_id.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'tree_id'"}}),
+        );
+    }
+    match thinking.start_tree(&tree_id, project, session_id, &topic) {
+        Ok(()) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Thinking tree started: {} ({})", tree_id, topic)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
+    }
+}
+
+pub fn handle_think_step(
+    thinking: &crate::core::sequential_thinking::SequentialThinking,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let tree_id = args["tree_id"].as_str().unwrap_or("").to_string();
+    let thought = args["thought"].as_str().unwrap_or("").to_string();
+    let branch = args["branch"].as_i64().unwrap_or(0);
+    let parent_index = args["parent_index"].as_i64();
+    if tree_id.is_empty() || thought.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'tree_id' or 'thought'"}}),
+        );
+    }
+    match thinking.add_step(&tree_id, &thought, branch, parent_index) {
+        Ok(step) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Step {} added (branch {}): {}", step.step_index, step.branch, step.thought)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
+    }
+}
+
+pub fn handle_think_state(
+    thinking: &crate::core::sequential_thinking::SequentialThinking,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let tree_id = args["tree_id"].as_str().unwrap_or("").to_string();
+    if tree_id.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'tree_id'"}}),
+        );
+    }
+    match thinking.get_tree(&tree_id) {
+        Ok(Some(tree)) => {
+            let mut lines = vec![format!(
+                "Thinking tree '{}' [{}] — {} ({} steps)",
+                tree.tree_id,
+                tree.status,
+                tree.topic,
+                tree.steps.len()
+            )];
+            for s in &tree.steps {
+                let indent = "  ".repeat(s.branch as usize);
+                let parent = s
+                    .parent_index
+                    .map(|p| format!(" <- {}", p))
+                    .unwrap_or_default();
+                lines.push(format!(
+                    "{}{}. [b{}] {}{}",
+                    indent, s.step_index, s.branch, s.thought, parent
+                ));
+            }
+            Ok(
+                json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":lines.join("\n")}]}}),
+            )
+        }
+        Ok(None) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":format!("Tree '{}' not found", tree_id)}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
+    }
+}
+
+pub fn handle_think_finish(
+    thinking: &crate::core::sequential_thinking::SequentialThinking,
+    id: &Value,
+    args: &Value,
+) -> anyhow::Result<Value> {
+    let tree_id = args["tree_id"].as_str().unwrap_or("").to_string();
+    let status = args["status"].as_str().unwrap_or("completed");
+    if tree_id.is_empty() {
+        return Ok(
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Missing 'tree_id'"}}),
+        );
+    }
+    match thinking.finish_tree(&tree_id, status) {
+        Ok(()) => Ok(
+            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Thinking tree '{}' finished ({})", tree_id, status)}]}}),
+        ),
+        Err(e) => {
+            Ok(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":e.to_string()}}))
+        }
+    }
 }

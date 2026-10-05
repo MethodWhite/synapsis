@@ -2,7 +2,7 @@
 //! Each migration is a numbered step that can be applied sequentially.
 
 use anyhow::{Context, Result};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -228,6 +228,109 @@ fn migration_v7_add_audit_chain(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Backfill audit_log entries that were created before the audit chain columns
+/// existed (v7 added them with empty defaults, leaving old rows un-hashed).
+/// Recomputes data_hash and chain_hash in order so verify_audit_chain passes.
+fn migration_v8_backfill_audit_chain(conn: &Connection) -> Result<()> {
+    use sha2::{Digest, Sha256};
+
+    let mut prev: String =
+        "0000000000000000000000000000000000000000000000000000000000000000".to_string();
+
+    let ids: Vec<i64> = conn
+        .prepare("SELECT id FROM audit_log ORDER BY id ASC")?
+        .query_map([], |r| r.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for id in ids {
+        let row: Option<(String, Option<i64>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, i64)> =
+            conn.query_row(
+                "SELECT action, observation_id, agent_id, session_id, old_value, new_value, reason, created_at
+                 FROM audit_log WHERE id = ?1",
+                [id],
+                |r| Ok((
+                    r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?,
+                    r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?,
+                )),
+            )
+            .optional()?;
+
+        let Some((action, oid, agent, session, old_v, new_v, reason, ts)) = row else {
+            continue;
+        };
+
+        let details = format!(
+            "action={} oid={:?} agent={:?} session={:?} old={:?} new={:?} reason={:?}",
+            action, oid, agent, session, old_v, new_v, reason
+        );
+        let data_hash = hex::encode(Sha256::digest(details.as_bytes()));
+        let chain_hash = hex::encode(Sha256::digest(
+            format!("{}:{}:{}", prev, data_hash, ts).as_bytes(),
+        ));
+
+        conn.execute(
+            "UPDATE audit_log SET prev_hash = ?1, data_hash = ?2, chain_hash = ?3 WHERE id = ?4",
+            rusqlite::params![prev, data_hash, chain_hash, id],
+        )?;
+        prev = chain_hash;
+    }
+
+    Ok(())
+}
+
+/// Sequential thinking trees: reasoning steps that branch and track depth.
+/// Keeps reasoning state inside Synapsis instead of depending on an external
+/// MCP server like sequential-thinking.
+fn migration_v9_add_thinking(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS thinking_trees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tree_id TEXT NOT NULL UNIQUE,
+            project TEXT,
+            session_id TEXT,
+            topic TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS thinking_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tree_id TEXT NOT NULL,
+            step_index INTEGER NOT NULL,
+            parent_index INTEGER,
+            branch INTEGER NOT NULL DEFAULT 0,
+            thought TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE(tree_id, branch, step_index)
+        );",
+    )?;
+    Ok(())
+}
+
+/// Cross-platform message mailbox: agents publish structured messages that
+/// peers in the same project can consume, so IDE/TUI/CLI sessions communicate
+/// intelligently instead of only receiving flat notification strings.
+fn migration_v10_add_bridge_messages(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS bridge_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT NOT NULL UNIQUE,
+            project TEXT NOT NULL,
+            from_session TEXT NOT NULL,
+            from_agent TEXT NOT NULL,
+            to_session TEXT,
+            message_type TEXT NOT NULL DEFAULT 'observation',
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            delivered INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_bridge_messages_project
+            ON bridge_messages(project, delivered, created_at);",
+    )?;
+    Ok(())
+}
+
 /// Registry of all migrations. Add new migrations at the END.
 pub fn all_migrations() -> Vec<MigrationFn> {
     vec![
@@ -238,6 +341,9 @@ pub fn all_migrations() -> Vec<MigrationFn> {
         migration_v5_add_memory_relations,
         migration_v6_add_x402_payments,
         migration_v7_add_audit_chain,
+        migration_v8_backfill_audit_chain,
+        migration_v9_add_thinking,
+        migration_v10_add_bridge_messages,
     ]
 }
 
@@ -249,6 +355,9 @@ const MIGRATION_NAMES: &[&str] = &[
     "v5_memory_relations",
     "v6_x402",
     "v7_audit_chain",
+    "v8_backfill_audit_chain",
+    "v9_thinking",
+    "v10_bridge_messages",
 ];
 
 /// Run all pending migrations. Returns (current_version, migrations_applied).
@@ -328,10 +437,16 @@ mod tests {
     fn test_run_migrations_fresh_db() {
         let conn = Connection::open_in_memory().unwrap();
         let (current, applied) = run_migrations(&conn).unwrap();
+        // Derived, not hardcoded: a fresh DB sits at version 0, so run_migrations
+        // must apply every migration exactly once. Hardcoding the count made this
+        // test fail on every added migration; it broke at v10 and has been red on
+        // develop since, which is why `cargo test` stopped at the lib target and
+        // the integration tests never ran.
+        let expected = all_migrations().len() as u32;
         assert_eq!(current, 0);
-        assert_eq!(applied, 7);
+        assert_eq!(applied, expected);
         let status = get_migration_status(&conn).unwrap();
-        assert_eq!(status["current_version"], 7);
+        assert_eq!(status["current_version"], expected);
     }
 
     #[test]

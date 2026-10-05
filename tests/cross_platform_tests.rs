@@ -51,7 +51,7 @@ fn spawn_mcp() -> Child {
         .env("SYNAPSIS_QUIET", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()
         .unwrap_or_else(|e| panic!("Failed to start MCP server from {}: {}", bin_path, e))
 }
