@@ -5,6 +5,24 @@ All notable changes to Synapsis will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0](https://github.com/MethodWhite/synapsis/compare/v0.12.0...v0.13.0) (2026-10-05)
+
+
+### Features
+
+* **bridge:** persistent cross-platform message mailbox ([9d5a4b4](https://github.com/MethodWhite/synapsis/commit/9d5a4b4f5c144c8eba1196fd4ed792ab00b7f949))
+* **mcp:** integrate Standares repository as resources and tools ([b8bec30](https://github.com/MethodWhite/synapsis/commit/b8bec30c3a49e185ca9d30690e8ebbfa12f65abb))
+* **think:** built-in sequential thinking + proactive context ([c4de9c2](https://github.com/MethodWhite/synapsis/commit/c4de9c225e9d7b7fbc2542a99afd5a2a53377d1b))
+
+
+### Bug Fixes
+
+* **audit:** verify_audit_chain format mismatch + v8 backfill of un-hashed entries ([5424f1b](https://github.com/MethodWhite/synapsis/commit/5424f1b3eecffcda22eb3ebb215c8689051e7b4e))
+* **db:** prune the FTS index with DELETE instead of the external-content command ([#65](https://github.com/MethodWhite/synapsis/issues/65)) ([6f46ed9](https://github.com/MethodWhite/synapsis/commit/6f46ed975e77b8d57bc0905cd798f148e1fe8451))
+* **deps:** bump rustls 0.23.43-&gt;0.23.45 (RUSTSEC-2026-0285) ([305d060](https://github.com/MethodWhite/synapsis/commit/305d060b63a47e91a0a5120106024ef928b61bb6))
+* **scripts:** resolve latest release and PATH-based binary paths ([b5e205e](https://github.com/MethodWhite/synapsis/commit/b5e205e4ec0d768c8bb05c1aa2913f2a65c694c1))
+* **web:** strip_html drops all text content ([bcee575](https://github.com/MethodWhite/synapsis/commit/bcee575927d196392ecc47a2e0a5a714b0a7193b))
+
 ## [0.12.0](https://github.com/MethodWhite/synapsis/compare/v0.11.0...v0.12.0) (2026-08-12)
 
 
