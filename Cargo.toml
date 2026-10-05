@@ -54,7 +54,7 @@ path = "src/bin/x402_server.rs"
 synapsis-core = { git = "https://github.com/MethodWhite/synapsis-core", rev = "d97f56767a9bba5eb2df23777bfaad8cbd2717dc", version = "0.9" }
 
 # Arca wallet integration (--features arca for x402 payments)
-arca = { git = "https://github.com/MethodWhite/Arca", optional = true }
+arca = { git = "https://github.com/MethodWhite/Arca", rev = "8c80d4cb938d5cccda41922a79827a3e1dee233c", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rusqlite = { version = "0.31", features = ["bundled", "blob", "serde_json"] }
@@ -101,7 +101,7 @@ rcgen = "0.14"
 
 # TUI (optional)
 crossterm = { version = "0.29", optional = true }
-ratatui = { version = "0.29", optional = true, default-features = false, features = ["crossterm"] }
+ratatui = { version = "0.30.2", optional = true, default-features = false, features = ["crossterm"] }
 
 [dev-dependencies]
 proptest = "1.4"

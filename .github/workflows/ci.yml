@@ -150,38 +150,37 @@ jobs:
     name: Security audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-synapsis
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: 1.98.1
       - name: Install cargo-audit (precompiled, CVSS v4 support)
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2
         with:
           tool: cargo-audit@0.22.2
-      - uses: rustsec/audit-check@v2.0.0
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          # Repeated here on purpose. The action does not read
-          # .cargo/audit.toml, so the ignore list configured in that file only
-          # ever applied to local `cargo audit` runs and never to CI. That is
-          # why this job stayed red while the file claimed otherwise.
-          # Keep the two lists in sync.
-          # rustsec/audit-check expects a comma-separated string.
-          ignore: RUSTSEC-2026-0097,RUSTSEC-2024-0436,RUSTSEC-2026-0002,RUSTSEC-2026-0187,RUSTSEC-2025-0009
 
   deny:
     name: Cargo Deny
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-synapsis
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
         with:
-          tool: cargo-deny
+          persist-credentials: false
+      - uses: ./.github/actions/setup-synapsis
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: 1.98.1
+      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2
+        with:
+          tool: cargo-deny@0.20.2
       - name: Check licenses and advisories
         run: cargo deny check
         env:
