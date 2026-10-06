@@ -53,26 +53,31 @@ jobs:
           mkdir -p release/synapsis
           for bin in synapsis synapsis-mcp synapsis-server; do
             src="target/${{ matrix.target }}/release/$bin"
-            if [ -f "$src" ] && [ -s "$src" ]; then
-              cp "$src" release/synapsis/
-              file release/synapsis/"$bin"
-            fi
+            test -s "$src"
+            cp "$src" release/synapsis/
+            file release/synapsis/"$bin"
           done
           ls -la release/synapsis/
           cp README.md LICENSE release/synapsis/ 2>/dev/null || true
           cd release && tar czf "synapsis-${{ matrix.target }}.tar.gz" synapsis/
       - name: Package (Windows)
         if: runner.os == 'Windows' && success()
-        continue-on-error: true
         shell: pwsh
         run: |
           mkdir release/synapsis -Force > $null
-          copy "target/${{ matrix.target }}/release/synapsis.exe" release/synapsis/ 2>$null
-          copy "target/${{ matrix.target }}/release/synapsis-mcp.exe" release/synapsis/ 2>$null
-          copy "target/${{ matrix.target }}/release/synapsis-server.exe" release/synapsis/ 2>$null
+          foreach ($bin in @("synapsis.exe", "synapsis-mcp.exe", "synapsis-server.exe")) {
+            $src = "target/${{ matrix.target }}/release/$bin"
+            if (!(Test-Path $src) -or (Get-Item $src).Length -eq 0) {
+              throw "Required release binary is missing or empty: $src"
+            }
+            Copy-Item $src release/synapsis/
+          }
           copy README.md release/synapsis/ 2>$null
           copy LICENSE release/synapsis/ 2>$null
           Compress-Archive -Path release/synapsis -DestinationPath "release/synapsis-${{ matrix.target }}.zip" -Force
+          if (!(Test-Path "release/synapsis-${{ matrix.target }}.zip") -or (Get-Item "release/synapsis-${{ matrix.target }}.zip").Length -eq 0) {
+            throw "Windows release archive is missing or empty"
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: synapsis-${{ matrix.target }}
@@ -81,7 +86,6 @@ jobs:
   release:
     name: Create Release
     needs: build
-    if: always() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,8 +97,12 @@ jobs:
       - name: Create or update release
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          ls -la release/
+          files=(release/synapsis-*.tar.gz release/synapsis-*.zip)
+          test "${#files[@]}" -eq 5
+          for file in "${files[@]}"; do test -s "$file"; done
+          ls -lah "${files[@]}"
           gh release create "${{ github.ref_name }}" \
             --title "Synapsis ${{ github.ref_name }}" \
             --generate-notes \

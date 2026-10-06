@@ -5,6 +5,16 @@ All notable changes to Synapsis will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1](https://github.com/MethodWhite/synapsis/compare/v0.13.0...v0.13.1) (2026-10-05)
+
+### Security
+
+* remediate dependency advisories, remove ignored RustSec findings, and enforce full OSV scanning ([#76](https://github.com/MethodWhite/synapsis/pull/76)); pin optional Arca integration to its merged security revision ([Arca #12](https://github.com/MethodWhite/Arca/pull/12)).
+
+### Build
+
+* block release publication when any target build fails or a packaged target artifact is missing or empty.
+
 ## [0.13.0](https://github.com/MethodWhite/synapsis/compare/v0.12.0...v0.13.0) (2026-10-05)
 
 
