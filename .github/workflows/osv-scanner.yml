@@ -3,20 +3,21 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-# Full-lockfile OSV scan: every pull request, push to main, and weekly.
+# Full-lockfile OSV scan: every pull request/push to main or develop, plus daily
+# on the default branch so newly published advisories do not wait a week.
 # Findings remain visible as SARIF/CVSS; do not suppress vulnerabilities.
 
 name: OSV-Scanner
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
   merge_group:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
   schedule:
-    - cron: '33 13 * * 1'
+    - cron: '33 13 * * *'
   push:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
 
 permissions:
   # Require writing security events to upload SARIF file to security tab
