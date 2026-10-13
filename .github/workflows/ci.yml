@@ -129,7 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-synapsis
-      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: dtolnay/rust-toolchain@1.120.0
       - run: cargo check
         env:
           GIT_CONFIG_COUNT: 1
