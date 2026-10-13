@@ -78,7 +78,7 @@ jobs:
           if (!(Test-Path "release/synapsis-${{ matrix.target }}.zip") -or (Get-Item "release/synapsis-${{ matrix.target }}.zip").Length -eq 0) {
             throw "Windows release archive is missing or empty"
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: synapsis-${{ matrix.target }}
           path: release/synapsis-*
