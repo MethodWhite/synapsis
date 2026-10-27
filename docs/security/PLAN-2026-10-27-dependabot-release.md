@@ -12,7 +12,7 @@ Remediar las alertas abiertas de Dependabot del SDK `packages/synapsis-client`, 
 
 La revisión encontró seis alertas Dependabot abiertas, todas para Vite `8.3.2` en el lockfile del SDK y marcadas como dependencias de desarrollo. El PR #83 propone Vite `8.3.5`. Las seis advisories consideran afectada la línea `8.3.0–8.3.2` y fijada desde `8.3.3`; `8.3.5` supera esa versión. El riesgo es de herramientas de desarrollo/build, no evidencia de una vulnerabilidad explotable en el SDK publicado. La exposición concreta depende de las condiciones descritas por cada advisory.
 
-La auditoría actual de `Cargo.lock` añadió hallazgos RustSec posteriores a los PR revisados: Tokio, rustls, rustls-webpki, raíces WebPKI y componentes criptográficos. Se fijaron versiones corregidas para todas las vulnerabilidades; `crypto-bigint 0.7.6` queda como advertencia yanked de Cargo porque es la versión upstream que RustSec señala como corregida. La ruta que la incorpora es opcional (`arca` → K-256); sin `arca`, no forma parte del grafo activo. No se añadió ningún ignore. Esto queda como riesgo documentado que requiere CI y revisión humana antes del tag.
+La auditoría actual de `Cargo.lock` añadió hallazgos RustSec posteriores a los PR revisados: Tokio, rustls, rustls-webpki, raíces WebPKI y componentes criptográficos. Se fijaron versiones corregidas para esas vulnerabilidades; `crypto-bigint 0.7.6` queda como advertencia yanked de Cargo porque es la versión upstream que RustSec señala como corregida. El escaneo completo OSV reveló además GHSA-qwgh-2vcv-g2f7 en `block-buffer 0.10.4`, sin versión corregida compatible declarada por OSV. El árbol llega por varios crates de digest 0.10, incluidos `ed25519-dalek`, `sha2`, `sha3`, `blake2` y `sha1`; parte de esas rutas depende de repos privados. No se añadió ningún ignore. Este finding impide publicar hasta que se elimine/actualice esa ruta o una revisión de seguridad documentada cambie la decisión con evidencia.
 
 El paquete no tenía archivos de prueba aunque declaraba `vitest run`; se añadieron tres pruebas unitarias acotadas al contrato existente de `SynapsisClient.callTool` (JSON-RPC, cabecera de autenticación y errores) para que `npm test` tenga una señal real durante esta actualización.
 
@@ -40,6 +40,7 @@ En este plan, **RCTF** significa **Riesgo, Controles, Trazabilidad y Fallback**.
 - Mantener Vite `8.3.2` conserva seis advisories conocidas en la herramienta de desarrollo.
 - Mantener versiones anteriores de Tokio, rustls, rustls-webpki, las raíces WebPKI y crypto-bigint conserva advisories RustSec, incluidos riesgos de seguridad de I/O, certificados TLS y operaciones criptográficas de tiempo constante.
 - `crypto-bigint 0.7.6` está yanked pese a ser la versión corregida indicada por RustSec; actualizarla limpia vulnerabilidades pero conserva una advertencia que requiere decisión de mantenimiento.
+- OSV identifica `block-buffer 0.10.4` (GHSA-qwgh-2vcv-g2f7) como afectado, con 0 vulnerabilidades corregibles según el propio escaneo. El advisory describe corrupción de posición del buffer tras capturar un panic y uso posterior; actualizar solo el lockfile no lo resuelve porque la versión fijada sigue siendo 0.10.4.
 - Publicar desde una rama de release creada antes de integrar estas correcciones dejaría el tag sin ellas, aunque los PR de seguridad sigan abiertos o pasen pruebas individualmente.
 - Los PR de Dependabot no reciben secretos privados de Actions; el PR #83 ya falló al clonar Arca y el escaneo completo encontró avisos Quinn presentes en su base. Estos fallos no se tratarán como PASS ni se resolverán ampliando permisos.
 
@@ -48,7 +49,7 @@ En este plan, **RCTF** significa **Riesgo, Controles, Trazabilidad y Fallback**.
 - Fijar el árbol reproducible en `package-lock.json` a Vite `8.3.5`; confirmar el paquete resuelto y el árbol npm, no solo el rango de `package.json`.
 - Integrar la actualización Quinn y la exploración OSV sin agregar excepciones o ignores para los advisories.
 - Mantener el token de repositorios privados limitado a los jobs que lo requieren. No publicar Arca, no mover secretos al PR ni usar `pull_request_target` para habilitar secretos a Dependabot.
-- Ejecutar revisión independiente Oura y verificar cada hallazgo contra el lockfile, advisories oficiales, salida de npm/Cargo y checks de CI. La auditoría local terminó con cero vulnerabilidades y una advertencia yanked; el CI debe confirmar con su configuración de cargo-deny.
+- Ejecutar revisión independiente Oura y verificar cada hallazgo contra el lockfile, advisories oficiales, salida de npm/Cargo y checks de CI. La auditoría local de Cargo terminó con cero vulnerabilidades RustSec y una advertencia yanked; OSV encontró GHSA-qwgh-2vcv-g2f7 y falló como gate.
 - El release debe apuntar a un SHA que ya contenga todas las correcciones aceptadas, changelog/manifest calculados desde ese estado y escaneo final limpio.
 
 ### T — Trazabilidad y pruebas
@@ -80,7 +81,7 @@ En este plan, **RCTF** significa **Riesgo, Controles, Trazabilidad y Fallback**.
 
 - Las seis alertas Dependabot se cierran automáticamente tras integrar el lockfile fijado a Vite `8.3.5`.
 - Quinn/`quinn-proto` queda en versiones fijadas sin los advisories cubiertos; OSV vuelve a escanear diariamente y en PR/push/merge queue de `main` y `develop`.
-- `npm audit` y `cargo audit` no reportan vulnerabilidades abiertas para los manifests/lockfiles del release; no se añaden ignores. El resultado local actual de Cargo es cero vulnerabilidades y una advertencia: `crypto-bigint 0.7.6` yanked.
+- `npm audit` y `cargo audit` no reportan vulnerabilidades abiertas para los manifests/lockfiles del release; no se añaden ignores. El resultado local actual de Cargo es cero vulnerabilidades y una advertencia (`crypto-bigint 0.7.6` yanked), pero OSV completo aún falla por `block-buffer 0.10.4` sin versión corregida compatible.
 - Build, pruebas y checks requeridos pasan; el resultado de Windows se informa explícitamente, considerando que el job actual está configurado como `continue-on-error`.
 - Las tres pruebas del SDK verifican la serialización del request MCP, el envío de bearer token y el manejo de errores JSON-RPC.
 - El changelog, manifest, versión, tag y artefactos del release corresponden al SHA que contiene las correcciones. La versión exacta la determina release-please después de reconciliar el PR #78; no se fija manualmente en este plan.
@@ -90,7 +91,7 @@ En este plan, **RCTF** significa **Riesgo, Controles, Trazabilidad y Fallback**.
 
 - Cerrar/silenciar alertas, añadir excepciones a Cargo audit/OSV o afirmar remediación basándose solo en un PR abierto.
 - Publicar un tag/release cuyo SHA no incluya los locks corregidos y las notas pertinentes.
-- Publicar mientras cargo-deny/CI no haya validado el lockfile, o sin decisión documentada sobre `crypto-bigint 0.7.6` yanked.
+- Publicar mientras cargo-deny/CI no haya validado el lockfile, OSV falle por GHSA-qwgh-2vcv-g2f7, o sin decisión documentada sobre `crypto-bigint 0.7.6` yanked.
 - Interpretar los fallos del PR #83 por falta de secreto privado como pruebas aprobadas, o conceder secretos privados a un PR de Dependabot.
 - Afirmar impacto en producción a partir de una dependencia marcada solo de desarrollo, o afirmar seguridad absoluta a partir de Oura/audit aislados.
 - Perder, sobrescribir o reescribir trabajo local existente; forzar push, borrar tags, publicar Arca o modificar permisos/credenciales.
@@ -98,13 +99,14 @@ En este plan, **RCTF** significa **Riesgo, Controles, Trazabilidad y Fallback**.
 
 ## 7. Criterio de cierre
 
-La tarea se cierra cuando el release publicado se identifica por versión, tag y SHA verificables; contiene las correcciones de Vite, Quinn y RustSec, los seis avisos Dependabot están cerrados, OSV/npm/Cargo no presentan vulnerabilidades abiertas relacionadas, cargo-deny y los gates obligatorios están verdes, se ha resuelto o aceptado formalmente la advertencia yanked de `crypto-bigint`, y la remediación de `develop` quedó integrada o registrada con evidencia y responsable como única excepción pendiente.
+La tarea se cierra cuando el release publicado se identifica por versión, tag y SHA verificables; contiene las correcciones de Vite, Quinn y RustSec, los seis avisos Dependabot están cerrados, OSV/npm/Cargo no presentan vulnerabilidades abiertas relacionadas, cargo-deny y los gates obligatorios están verdes, se ha resuelto o aceptado formalmente la advertencia yanked de `crypto-bigint`, GHSA-qwgh-2vcv-g2f7 ya no está en el árbol release (o existe una decisión de riesgo basada en revisión verificable), y la remediación de `develop` quedó integrada o registrada con evidencia y responsable como única excepción pendiente.
 
 ## 8. Estado de ejecución y evidencia local
 
 - Rama `codex/synapsis-security-release-20261027`, basada en `origin/main` `25bab13`; tres commits cherry-picked de remediaciones previas (Quinn, Vite y OSV) y lockfile Cargo actualizado localmente.
 - `packages/synapsis-client`: `npm ci`, `npm run build`, `npm test` (3 pruebas) y `npm audit --audit-level=low` pasaron; Vite resuelve a `8.3.5`, auditoría npm informa 0 vulnerabilidades.
 - Rust: `cargo check --locked --features arca`, `cargo test --locked --features arca -- --test-threads=1` (suite completa; 1 ignorada), `cargo fmt --check` y `cargo audit` pasaron. Cargo audit informó 0 vulnerabilidades y una advertencia yanked para `crypto-bigint 0.7.6`.
-- `cargo deny check` no se pudo ejecutar localmente: el subcomando `cargo-deny` no está instalado. El workflow CI sí lo ejecuta y debe pasar en la rama remota.
+- `cargo deny check` no se pudo ejecutar localmente: el subcomando `cargo-deny` no está instalado. En PR #84, el job remoto Cargo Deny pasó.
 - Oura informó sin vulnerabilidades en el conjunto revisado y sin violaciones de código limpio; esto complementa, pero no reemplaza, Cargo audit/deny ni CI.
-- Pendiente: escaneo OSV del SHA final, CI con acceso privado configurado para PR de mantenedor, revisión/merge, actualización del PR release-please, cierre de alerts y publicación/tag verificable. No hay release publicado por esta tarea aún.
+- CI de PR #84 confirmó el acceso a los repos privados en jobs de mantenedor; Cargo Deny, auditoría de seguridad, pruebas Linux, MSRV, formato, clippy, SBOM, Geiger y escaneo OSV en PR/push pasaron. El workflow de escaneo OSV completo falló: `GHSA-qwgh-2vcv-g2f7`, `block-buffer 0.10.4`, sin versión corregida compatible. Windows y macOS siguen ejecutándose al redactar esta nota.
+- Pendiente: resolver el árbol `block-buffer 0.10.4` que atraviesa dependencias del SDK crypto de repos privados o documentar una aceptación formal tras revisión independiente; concluir CI, obtener revisión/merge, reconciliar release-please, cerrar alerts y verificar publicación/tag. PR #84 sigue abierto; no hay release publicado por esta tarea.
